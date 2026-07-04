@@ -20,7 +20,7 @@ export default function Overview() {
           <Compass size={18} />
           현재 상황
         </div>
-        <div className="mt-4 grid grid-cols-4 gap-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <Metric label="현재 위치" value={zone?.name} sub={`위험도 ${zone?.danger} / 자원 ${zone?.richness}`} />
           <Metric label="승무원" value={`${crew.length}명`} sub="부상 없음" />
           <Metric label="우주 먼지" value={number(dust, 1)} sub="집진기 자동 수집" />

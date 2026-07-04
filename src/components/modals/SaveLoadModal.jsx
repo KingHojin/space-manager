@@ -13,7 +13,7 @@ export default function SaveLoadModal() {
   };
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid gap-3 sm:grid-cols-2">
       <button className="primary-button" onClick={confirmSaved}>저장 확인</button>
       <button className="secondary-button" onClick={newGame}>새 게임</button>
       <p className="col-span-2 text-sm text-slate-400">

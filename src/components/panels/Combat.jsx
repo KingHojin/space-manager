@@ -25,7 +25,7 @@ export default function Combat() {
   };
 
   return (
-    <div className="grid h-full grid-cols-[0.85fr_1.15fr] gap-4">
+    <div className="grid gap-4 lg:h-full lg:grid-cols-[0.85fr_1.15fr]">
       <section>
         <div className="section-title">
           <Crosshair size={18} />
@@ -43,7 +43,7 @@ export default function Combat() {
       </section>
       <section>
         <div className="section-title">FM식 전투 중계</div>
-        <div className="mt-4 h-[calc(100%-2.5rem)] overflow-auto rounded border border-slate-700 bg-slate-950 p-4">
+        <div className="mt-4 max-h-[28rem] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 lg:h-[calc(100%-2.5rem)] lg:max-h-none">
           {feed.map((line, index) => (
             <div key={`${line}-${index}`} className="border-b border-slate-800 py-3 text-sm text-slate-300 last:border-b-0">
               {line}

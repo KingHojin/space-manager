@@ -49,16 +49,16 @@ export default function App() {
   const ModalContent = modal?.component;
 
   return (
-    <div className="h-screen min-w-[1180px] overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex min-h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
       <Header />
-      <div className="grid h-[calc(100vh-8rem)] grid-cols-[14rem_minmax(0,1fr)]">
+      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[14rem_minmax(0,1fr)] lg:grid-rows-1">
         <Sidebar activePanel={activePanel} onChange={setActivePanel} />
         <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
-          <div className="border-b border-slate-700/80 bg-slate-900 px-5 py-3">
+          <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
-            <h2 className="mt-1 text-2xl font-bold text-slate-50">{panels[activePanel].title}</h2>
+            <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
           </div>
-          <div className="min-h-0 overflow-auto p-4">
+          <div className="min-h-0 overflow-auto p-3 sm:p-4">
             <Panel />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />

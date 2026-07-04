@@ -25,6 +25,8 @@ section {
   background: rgb(15 23 42 / 0.76);
   border-radius: 8px;
   padding: 1rem;
+  min-width: 0;
+  overflow-x: auto;
 }
 
 .icon-button {
@@ -48,7 +50,8 @@ section {
 
 .nav-button {
   display: flex;
-  width: 100%;
+  width: max-content;
+  min-width: 7rem;
   align-items: center;
   gap: 0.65rem;
   border-radius: 6px;
@@ -65,7 +68,7 @@ section {
 
 .dock-button {
   display: inline-flex;
-  min-width: 5.5rem;
+  min-width: 0;
   height: 2.5rem;
   align-items: center;
   justify-content: center;
@@ -110,12 +113,12 @@ section {
 
 .panel-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
   gap: 1rem;
 }
 
 .panel-span {
-  grid-column: span 2;
+  grid-column: span 1;
 }
 
 .ticker-mask {
@@ -130,7 +133,7 @@ section {
 
 .map-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(8rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
   gap: 0.75rem;
 }
 
@@ -158,7 +161,8 @@ section {
 
 .ship-blueprint {
   position: relative;
-  height: 28rem;
+  min-height: 24rem;
+  height: clamp(24rem, 68vw, 28rem);
   border: 1px solid rgb(71 85 105);
   border-radius: 8px;
   background:
@@ -180,7 +184,7 @@ section {
 
 .ship-slot {
   position: absolute;
-  width: 9.5rem;
+  width: min(9.5rem, 36vw);
   border: 1px solid rgb(103 232 249 / 0.55);
   border-radius: 6px;
   background: rgb(15 23 42 / 0.92);
@@ -207,6 +211,7 @@ section {
 .ship-slot-special { right: 9%; bottom: 16%; }
 
 .data-table {
+  min-width: 42rem;
   width: 100%;
   border-collapse: collapse;
   font-size: 0.875rem;
@@ -229,12 +234,70 @@ section {
 }
 
 .modal-panel {
-  width: min(58rem, calc(100vw - 2rem));
+  width: min(58rem, calc(100vw - 1.5rem));
+  max-height: calc(100dvh - 1.5rem);
   overflow: hidden;
   border: 1px solid rgb(71 85 105);
   border-radius: 8px;
   background: rgb(15 23 42);
   box-shadow: 0 24px 80px rgb(0 0 0 / 0.45);
+}
+
+@media (min-width: 640px) {
+  .dock-button {
+    min-width: 5.5rem;
+  }
+
+  .panel-span {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .nav-button {
+    width: 100%;
+  }
+}
+
+@media (max-width: 639px) {
+  section {
+    padding: 0.85rem;
+  }
+
+  .nav-button {
+    min-width: 5.5rem;
+    justify-content: center;
+    padding: 0.65rem 0.7rem;
+    font-size: 0.8125rem;
+  }
+
+  .dock-button {
+    width: 100%;
+    gap: 0.3rem;
+    font-size: 0.75rem;
+  }
+
+  .dock-button svg,
+  .nav-button svg {
+    flex-shrink: 0;
+  }
+
+  .ship-slot {
+    width: 7.2rem;
+    padding: 0.45rem;
+    font-size: 0.68rem;
+  }
+
+  .ship-slot-engine { left: 31%; bottom: 8%; }
+  .ship-slot-weapona { left: 4%; top: 34%; }
+  .ship-slot-weaponb { right: 4%; top: 34%; }
+  .ship-slot-shield { left: 31%; top: 10%; }
+  .ship-slot-cargo { left: 4%; bottom: 16%; }
+  .ship-slot-special { right: 4%; bottom: 16%; }
+
+  .modal-panel {
+    width: calc(100vw - 1rem);
+  }
 }
 
 .card-flip {

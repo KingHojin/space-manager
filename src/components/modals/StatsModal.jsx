@@ -16,7 +16,7 @@ export default function StatsModal() {
   );
 
   return (
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid gap-4 md:grid-cols-2">
       <section>
         <div className="section-title">승무원 종합</div>
         <div className="mt-3 space-y-2">

@@ -19,7 +19,7 @@ export default function Collector() {
   };
 
   return (
-    <div className="grid h-full grid-cols-[0.8fr_1.2fr] gap-4">
+    <div className="grid gap-4 lg:h-full lg:grid-cols-[0.8fr_1.2fr]">
       <section>
         <div className="section-title">
           <Sparkles size={18} />
@@ -41,7 +41,7 @@ export default function Collector() {
       </section>
       <section>
         <div className="section-title">최근 획득 카드</div>
-        <div className="mt-4 grid grid-cols-2 gap-3">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
           {lastDraw.length === 0 ? (
             <div className="rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm text-slate-400">아직 뽑기 기록이 없습니다.</div>
           ) : (

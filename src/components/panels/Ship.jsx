@@ -6,7 +6,7 @@ import { useShipStore } from "../../stores/shipStore";
 export default function Ship() {
   const { modules, installed } = useShipStore();
   return (
-    <div className="grid h-full grid-cols-[1fr_1fr] gap-4">
+    <div className="grid gap-4 xl:h-full xl:grid-cols-[1fr_1fr]">
       <section>
         <div className="section-title">
           <Rocket size={18} />

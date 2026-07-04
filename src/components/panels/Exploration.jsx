@@ -22,7 +22,7 @@ export default function Exploration() {
   };
 
   return (
-    <div className="grid h-full grid-cols-[1.25fr_0.75fr] gap-4">
+    <div className="grid gap-4 xl:h-full xl:grid-cols-[1.25fr_0.75fr]">
       <section>
         <div className="section-title">
           <Radar size={18} />

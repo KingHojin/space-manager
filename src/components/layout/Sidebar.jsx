@@ -14,8 +14,8 @@ const icons = {
 
 export default function Sidebar({ activePanel, onChange }) {
   return (
-    <aside className="border-r border-slate-700/80 bg-slate-950/80 p-3">
-      <nav className="space-y-1">
+    <aside className="border-b border-slate-700/80 bg-slate-950/80 p-2 lg:border-b-0 lg:border-r lg:p-3">
+      <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
         {MENU_ITEMS.map((item) => {
           const Icon = icons[item.id];
           const active = activePanel === item.id;

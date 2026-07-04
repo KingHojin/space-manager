@@ -11,8 +11,8 @@ const dockItems = [
 
 export default function BottomDock({ onOpen }) {
   return (
-    <div className="h-16 border-t border-slate-700/80 bg-slate-950 px-5">
-      <div className="mx-auto flex h-full max-w-4xl items-center justify-center gap-2">
+    <div className="border-t border-slate-700/80 bg-slate-950 px-3 py-2 sm:h-16 sm:px-5 sm:py-0">
+      <div className="mx-auto grid max-w-4xl grid-cols-3 gap-2 sm:flex sm:h-full sm:items-center sm:justify-center">
         {dockItems.map((item) => {
           const Icon = item.icon;
           return (
