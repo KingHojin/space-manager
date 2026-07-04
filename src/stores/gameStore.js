@@ -30,6 +30,17 @@ export const useGameStore = create(
         set((state) => ({
           resources: { ...state.resources, fuel: Math.max(0, state.resources.fuel - amount) },
         })),
+      spendCredits: (amount) => {
+        if (get().resources.credits < amount) return false;
+        set((state) => ({
+          resources: { ...state.resources, credits: state.resources.credits - amount },
+        }));
+        return true;
+      },
+      addResource: (resource, amount, cap = 100) =>
+        set((state) => ({
+          resources: { ...state.resources, [resource]: Math.min(cap, state.resources[resource] + amount) },
+        })),
       repairHull: (amount) =>
         set((state) => ({
           resources: { ...state.resources, hull: Math.min(100, state.resources.hull + amount) },
