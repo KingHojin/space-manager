@@ -5,8 +5,6 @@ import NewsTicker from "./components/layout/NewsTicker";
 import BottomDock from "./components/layout/BottomDock";
 import Overview from "./components/panels/Overview";
 import Exploration from "./components/panels/Exploration";
-import Combat from "./components/panels/Combat";
-import Hunting from "./components/panels/Hunting";
 import Ship from "./components/panels/Ship";
 import Crew from "./components/panels/Crew";
 import Collector from "./components/panels/Collector";
@@ -18,13 +16,12 @@ import MapModal from "./components/modals/MapModal";
 import CardsModal from "./components/modals/CardsModal";
 import LogModal from "./components/modals/LogModal";
 import SaveLoadModal from "./components/modals/SaveLoadModal";
+import SkillTreeModal from "./components/modals/SkillTreeModal";
 import { useGameClock } from "./systems/gameClock";
 
 const panels = {
   overview: { title: "작전 개요", component: Overview },
   exploration: { title: "탐험", component: Exploration },
-  combat: { title: "전투", component: Combat },
-  hunting: { title: "사냥", component: Hunting },
   ship: { title: "함선", component: Ship },
   crew: { title: "승무원", component: Crew },
   collector: { title: "우주 집진기", component: Collector },
@@ -38,6 +35,7 @@ const modals = {
   cards: { title: "카드", component: CardsModal },
   log: { title: "로그", component: LogModal },
   save: { title: "저장", component: SaveLoadModal },
+  skills: { title: "스킬트리", component: SkillTreeModal },
 };
 
 export default function App() {

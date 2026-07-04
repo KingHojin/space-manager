@@ -1,11 +1,9 @@
-import { BarChart3, Compass, Crosshair, PawPrint, Rocket, Users, Sparkles, Store } from "lucide-react";
+import { BarChart3, Compass, Rocket, Users, Sparkles, Store } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 
 const icons = {
   overview: BarChart3,
   exploration: Compass,
-  combat: Crosshair,
-  hunting: PawPrint,
   ship: Rocket,
   crew: Users,
   collector: Sparkles,

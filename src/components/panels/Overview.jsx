@@ -44,7 +44,7 @@ export default function Overview() {
           위험 평가
         </div>
         <div className="mt-4 text-4xl font-bold text-amber-200">{zone?.danger ?? 1}</div>
-        <p className="mt-2 text-sm text-slate-400">현재 구역 위험도입니다. 4 이상 구역에서는 전투 이벤트 확률이 상승합니다.</p>
+        <p className="mt-2 text-sm text-slate-400">현재 구역 위험도입니다. 4 이상 구역에서는 돌발 이벤트 확률이 상승합니다.</p>
       </section>
       <section className="panel-span">
         <div className="section-title">

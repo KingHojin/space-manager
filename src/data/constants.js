@@ -50,8 +50,6 @@ export const MODULE_SLOTS = ["engine", "weapon-a", "weapon-b", "shield", "cargo"
 export const MENU_ITEMS = [
   { id: "overview", label: "개요" },
   { id: "exploration", label: "탐험" },
-  { id: "combat", label: "전투" },
-  { id: "hunting", label: "사냥" },
   { id: "ship", label: "함선" },
   { id: "crew", label: "승무원" },
   { id: "collector", label: "우주 집진기" },
