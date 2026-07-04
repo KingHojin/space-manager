@@ -2,6 +2,7 @@ import { Radar, Route, ScanLine } from "lucide-react";
 import { getAllZones, getZoneById } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
+import PlanetCanvas from "../three/PlanetCanvas";
 
 export default function Exploration() {
   const zones = getAllZones();
@@ -50,6 +51,9 @@ export default function Exploration() {
           <div className="section-title">
             <ScanLine size={18} />
             구역 정보
+          </div>
+          <div className="mt-4 h-56 w-full overflow-hidden rounded border border-slate-700/70 bg-slate-950/60 sm:h-64">
+            <PlanetCanvas zone={current} interactive />
           </div>
           <div className="mt-4 space-y-3 text-sm">
             <Info label="현재 위치" value={current?.name} />
