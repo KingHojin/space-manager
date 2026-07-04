@@ -51,9 +51,9 @@ export default function App() {
   return (
     <div className="flex min-h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
       <Header />
-      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[14rem_minmax(0,1fr)] lg:grid-rows-1">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[14rem_minmax(0,1fr)] lg:grid-rows-1">
         <Sidebar activePanel={activePanel} onChange={setActivePanel} />
-        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
+        <main className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
           <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
             <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
