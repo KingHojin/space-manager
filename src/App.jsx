@@ -35,7 +35,7 @@ const modals = {
   stats: { title: "스탯", component: StatsModal },
   inventory: { title: "아이템", component: InventoryModal },
   map: { title: "성계 지도", component: MapModal },
-  cards: { title: "카드", component: CardsModal },
+  cards: { title: "스킬 트리", component: CardsModal },
   log: { title: "로그", component: LogModal },
   save: { title: "저장", component: SaveLoadModal },
 };
@@ -59,7 +59,7 @@ export default function App() {
             <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
           </div>
           <div className="min-h-0 overflow-auto p-3 sm:p-4">
-            <Panel />
+            <Panel onOpenSkillTree={() => setActiveModal("cards")} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
         </main>

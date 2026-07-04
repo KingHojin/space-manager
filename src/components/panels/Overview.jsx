@@ -6,7 +6,7 @@ import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { number } from "../../utils/format";
 
-export default function Overview() {
+export default function Overview({ onOpenSkillTree }) {
   const zone = getZoneById(useExplorationStore((state) => state.currentZoneId));
   const resources = useGameStore((state) => state.resources);
   const logs = useGameStore((state) => state.logs);
@@ -37,6 +37,16 @@ export default function Overview() {
           <li>우주 먼지 100 수집 후 카드 뽑기</li>
           <li>숨겨진 구역 1곳 스캔</li>
         </ul>
+      </section>
+      <section className="border-cyan-400/40 bg-cyan-400/10 sm:hidden">
+        <div className="section-title">
+          <Sparkles size={18} />
+          스킬 트리 바로가기
+        </div>
+        <p className="mt-3 text-sm text-slate-300">모바일에서는 하단의 스킬 버튼이나 아래 버튼으로 카드 성장 트리를 바로 확인할 수 있습니다.</p>
+        <button className="primary-button mt-4 w-full" onClick={onOpenSkillTree}>
+          스킬 트리 열기
+        </button>
       </section>
       <section>
         <div className="section-title">

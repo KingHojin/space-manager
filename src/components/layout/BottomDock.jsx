@@ -4,7 +4,7 @@ const dockItems = [
   { id: "stats", label: "스탯", icon: BarChart2 },
   { id: "inventory", label: "아이템", icon: Archive },
   { id: "map", label: "지도", icon: Map },
-  { id: "cards", label: "카드", icon: BookOpen },
+  { id: "cards", label: "스킬", icon: BookOpen },
   { id: "log", label: "로그", icon: ScrollText },
   { id: "save", label: "저장", icon: Save },
 ];
