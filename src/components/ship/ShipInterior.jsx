@@ -10,8 +10,18 @@ const ROOMS = [
   { id: "cargo", label: "창고", icon: Package, left: 63, top: 61, width: 25, height: 24, tone: "border-violet-300/35 bg-violet-300/10" },
 ];
 
+const ROUTES = [
+  ["bridge", "ops"],
+  ["bridge", "medbay"],
+  ["ops", "living"],
+  ["medbay", "cargo"],
+  ["living", "engineering"],
+  ["engineering", "cargo"],
+  ["bridge", "engineering"],
+];
+
 const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
-const OFFSETS = [[0,0],[-5,-3],[5,3],[-4,5],[4,-5],[0,7],[7,0],[-7,0]];
+const OFFSETS = [[0, 0], [-5, -3], [5, 3], [-4, 5], [4, -5], [0, 7], [7, 0], [-7, 0]];
 
 function stableIndex(text, length) {
   let hash = 0;
@@ -30,10 +40,15 @@ function roomFor(member, activity) {
   return ROLE_ROOM[member.role] ?? "living";
 }
 
-function roomPoint(roomId, memberId) {
+function roomCenter(roomId) {
   const room = ROOMS.find((entry) => entry.id === roomId) ?? ROOMS[0];
+  return { x: room.left + room.width / 2, y: room.top + room.height / 2 };
+}
+
+function roomPoint(roomId, memberId) {
   const [offsetX, offsetY] = OFFSETS[stableIndex(memberId, OFFSETS.length)];
-  return { x: room.left + room.width / 2 + offsetX, y: room.top + room.height / 2 + offsetY };
+  const center = roomCenter(roomId);
+  return { x: center.x + offsetX, y: center.y + offsetY };
 }
 
 function markerTone(priority) {
@@ -43,10 +58,29 @@ function markerTone(priority) {
   return "border-cyan-200 bg-cyan-200 text-cyan-950";
 }
 
+function buildRoomState(roomId, roomMembers, roomActivities) {
+  const highPriorityCount = roomActivities.filter((activity) => ["emergency", "high"].includes(activity?.priority)).length;
+  if (highPriorityCount > 0) return { label: `중요 ${highPriorityCount}`, tone: "bg-amber-300/20 text-amber-100 border-amber-300/30" };
+  if (roomMembers.length > 1) return { label: `근무 ${roomMembers.length}`, tone: "bg-cyan-300/15 text-cyan-100 border-cyan-300/30" };
+  if (roomId === "engineering" && roomMembers.length === 0) return { label: "대기", tone: "bg-slate-400/10 text-slate-300 border-slate-500/30" };
+  return null;
+}
+
+function RouteLine({ from, to, active }) {
+  const start = roomCenter(from);
+  const end = roomCenter(to);
+  const midX = (start.x + end.x) / 2;
+  const midY = (start.y + end.y) / 2;
+  const width = Math.hypot(end.x - start.x, end.y - start.y);
+  const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+  return <span className={`absolute h-[2px] origin-center rounded-full ${active ? "bg-cyan-200/50" : "bg-cyan-300/12"}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
+}
+
 export default function ShipInterior({ crew = [], activities = [], compact = false, onCrewClick }) {
   const activityByMember = new Map(activities.map((activity) => [activity.memberId, activity]));
   const aliveCrew = crew.filter((member) => member.alive);
-  const activeRooms = new Set(aliveCrew.map((member) => roomFor(member, activityByMember.get(member.id))));
+  const roomAssignments = aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomFor(member, activityByMember.get(member.id)) }));
+  const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
 
   return (
     <section className="overflow-hidden">
@@ -54,22 +88,25 @@ export default function ShipInterior({ crew = [], activities = [], compact = fal
         <div className="section-title"><Activity size={18} />함선 내부</div>
         <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">실시간 이동</span><span className="hud-chip">승무원 {aliveCrew.length}</span></div>
       </div>
-      <div className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[270px]" : "h-[420px]"}`}>
+      <div className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`}>
         <div className="absolute inset-x-[8%] top-[6%] h-[90%] rounded-[42%] border border-cyan-300/20 bg-gradient-to-b from-slate-900/80 to-slate-950/90" />
+        {ROUTES.map(([from, to]) => <RouteLine key={`${from}-${to}`} from={from} to={to} active={activeRooms.has(from) && activeRooms.has(to)} />)}
         <div className="absolute left-[49%] top-[18%] h-[58%] w-[2px] bg-cyan-300/10" />
         <div className="absolute left-[22%] top-[50%] h-[2px] w-[56%] bg-cyan-300/10" />
         <div className="absolute left-[22%] top-[66%] h-[2px] w-[56%] bg-cyan-300/10" />
         {ROOMS.map((room) => {
           const Icon = room.icon;
+          const assigned = roomAssignments.filter((entry) => entry.roomId === room.id);
+          const state = buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity));
           return (
             <div key={room.id} className={`absolute rounded-xl border p-2 ${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span><Icon size={compact ? 12 : 14} /></div>
+              {state && <span className={`absolute bottom-1 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${state.tone}`}>{state.label}</span>}
             </div>
           );
         })}
-        {aliveCrew.map((member) => {
-          const activity = activityByMember.get(member.id);
-          const point = roomPoint(roomFor(member, activity), member.id);
+        {roomAssignments.map(({ member, activity, roomId }) => {
+          const point = roomPoint(roomId, member.id);
           const priority = getPriorityConfig(activity?.priority ?? "normal");
           return (
             <button key={member.id} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-all duration-700 ease-in-out" style={{ left: `${point.x}%`, top: `${point.y}%` }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"}`}>
@@ -79,7 +116,7 @@ export default function ShipInterior({ crew = [], activities = [], compact = fal
           );
         })}
       </div>
-      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{aliveCrew.slice(0, 6).map((member) => { const activity = activityByMember.get(member.id); const priority = getPriorityConfig(activity?.priority ?? "normal"); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span></button>; })}</div>}
+      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span></button>; })}</div>}
     </section>
   );
 }

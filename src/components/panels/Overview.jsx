@@ -1,4 +1,4 @@
-import { AlertTriangle, Archive, Bell, Briefcase, ChevronRight, Compass, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
+import { AlertTriangle, Archive, Briefcase, ChevronRight, Compass, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
 import { RESOURCES } from "../../data/constants";
 import { contracts } from "../../data/contracts";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
@@ -16,6 +16,7 @@ import { formatGameDate } from "../../systems/gameClock";
 import { getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
+import ShipInterior from "../ship/ShipInterior";
 import { number } from "../../utils/format";
 
 function gaugeTone(value) {
@@ -232,30 +233,33 @@ export default function Overview({ onNavigate, onOpenModal }) {
       </section>
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
-        <section>
-          <div className="flex items-center justify-between gap-3">
-            <div className="section-title"><Users size={18} />승무원 AI 행동</div>
-            <span className="hud-chip hud-chip-accent">자동 배정</span>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {crew.slice(0, 5).map((member, index) => {
-              const activity = crewActivities.find((entry) => entry.memberId === member.id);
-              const actionText = activity ? `${activity.station} · ${activity.action}` : getCrewActivity(member, currentMinute, index);
-              return (
-                <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}>
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span>
-                    <div className="min-w-0">
-                      <div className="truncate font-semibold text-slate-100">{member.name}</div>
-                      <div className="truncate text-xs text-slate-400">{member.role} · {actionText}</div>
+        <div className="grid gap-3">
+          <ShipInterior crew={crew} activities={crewActivities ?? []} compact onCrewClick={() => onNavigate?.("crew")} />
+          <section>
+            <div className="flex items-center justify-between gap-3">
+              <div className="section-title"><Users size={18} />승무원 AI 행동</div>
+              <span className="hud-chip hud-chip-accent">자동 배정</span>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {crew.slice(0, 5).map((member, index) => {
+                const activity = crewActivities.find((entry) => entry.memberId === member.id);
+                const actionText = activity ? `${activity.station} · ${activity.action}` : getCrewActivity(member, currentMinute, index);
+                return (
+                  <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}>
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span>
+                      <div className="min-w-0">
+                        <div className="truncate font-semibold text-slate-100">{member.name}</div>
+                        <div className="truncate text-xs text-slate-400">{member.role} · {actionText}</div>
+                      </div>
                     </div>
-                  </div>
-                  <span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span>
-                </button>
-              );
-            })}
-          </div>
-        </section>
+                    <span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span>
+                  </button>
+                );
+              })}
+            </div>
+          </section>
+        </div>
 
         <TaskQueuePanel onNavigate={onNavigate} />
       </div>
