@@ -1,6 +1,7 @@
 import { Archive, BarChart2, BookOpen, Compass, Crosshair, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
+import { useNavStore } from "../../stores/navStore";
 
 const icons = {
   overview: Home,
@@ -11,6 +12,7 @@ const icons = {
   menu: MenuIcon,
   skilltree: GitBranch,
   crew: Users,
+  recruit: Users,
   collector: Sparkles,
   market: Store,
 };
@@ -25,9 +27,12 @@ const quickActions = [
 ];
 
 export default function Sidebar({ activePanel, onChange, onOpenModal }) {
-  const activeTravel = useExplorationStore((state) => state.activeTravel);
+  const legacyTravel = useExplorationStore((state) => state.activeTravel);
+  const navTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
+  const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const activeTravel = legacyTravel ?? navTravel;
 
   const handlePanel = (item) => {
     if (item.id === "menu") {
@@ -46,7 +51,7 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
           const active = activePanel === item.id;
           const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
           const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
-          const menuAlert = item.id === "menu" && Boolean(pendingTravelEvent);
+          const menuAlert = item.id === "menu" && Boolean(pendingTravelEvent || navPendingEncounter);
           return (
             <button key={item.id} className={`nav-button ${active ? "nav-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handlePanel(item)} disabled={locked}>
               <span className="relative shrink-0">
