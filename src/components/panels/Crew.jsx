@@ -1,6 +1,7 @@
 import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { statLabel } from "../../utils/format";
@@ -37,11 +38,15 @@ function fatigueTone(value) {
 
 function Progress({ task, currentMinute, label }) {
   const progress = Math.max(0, Math.min(100, Math.round(((currentMinute - task.startedAt) / Math.max(1, task.duration)) * 100)));
+  const priority = getPriorityConfig(task.priority);
   return (
     <div className="mt-3 rounded border border-cyan-400/30 bg-cyan-400/10 p-3">
       <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div>
       <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div>
-      <div className="mt-2 text-xs text-slate-400">완료: {formatGameDate(task.completeAt)}</div>
+      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
+        <span className="hud-chip">완료 {formatGameDate(task.completeAt)}</span>
+        <span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span>
+      </div>
     </div>
   );
 }
@@ -64,8 +69,9 @@ export default function Crew() {
     if (!spendCredits(TRAINING_COST)) return addLog(`${member.name} 훈련 실패: 크레딧 부족.`);
     const statKey = trainingByRole[member.role] ?? "scouting";
     const completeAt = currentMinute + TRAINING_MINUTES;
-    startTraining({ memberId: member.id, statKey, completeAt, cost: TRAINING_COST, duration: TRAINING_MINUTES });
-    addLog(`${member.name} 훈련 시작: ${statLabel[statKey]} +1, ₢${TRAINING_COST}, 완료 ${formatGameDate(completeAt)}.`);
+    const priority = inferTrainingPriority(member);
+    startTraining({ memberId: member.id, statKey, completeAt, cost: TRAINING_COST, duration: TRAINING_MINUTES, priority });
+    addLog(`${member.name} 훈련 시작: ${statLabel[statKey]} +1, 우선순위 ${getPriorityConfig(priority).label}, ₢${TRAINING_COST}, 완료 ${formatGameDate(completeAt)}.`);
   };
 
   const rest = (member) => {
@@ -79,8 +85,9 @@ export default function Crew() {
     const rule = treatmentRule(member.injury);
     if (!spendCredits(rule.cost)) return addLog(`${member.name} 치료 실패: 크레딧 부족.`);
     const completeAt = currentMinute + rule.minutes;
-    startTreatment({ memberId: member.id, injury: member.injury, completeAt, cost: rule.cost, duration: rule.minutes, fatiguePenalty: rule.fatiguePenalty });
-    addLog(`${member.name} 치료 시작: ${member.injury}, ₢${rule.cost}, ${formatMinutes(rule.minutes)}, 완료 ${formatGameDate(completeAt)}.`);
+    const priority = inferTreatmentPriority(member.injury);
+    startTreatment({ memberId: member.id, injury: member.injury, completeAt, cost: rule.cost, duration: rule.minutes, fatiguePenalty: rule.fatiguePenalty, priority });
+    addLog(`${member.name} 치료 시작: ${member.injury}, 우선순위 ${getPriorityConfig(priority).label}, ₢${rule.cost}, ${formatMinutes(rule.minutes)}, 완료 ${formatGameDate(completeAt)}.`);
   };
 
   return (
@@ -88,7 +95,7 @@ export default function Crew() {
       <section>
         <div className="section-title"><Users size={18} />승무원 스쿼드</div>
         <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm leading-6 text-slate-300">
-          훈련과 치료는 시간과 크레딧을 소모합니다. 훈련 {formatMinutes(TRAINING_MINUTES)}/₢{TRAINING_COST}, 경상 치료 {formatMinutes(TREATMENT.경상.minutes)}/₢{TREATMENT.경상.cost}, 중상 치료 {formatMinutes(TREATMENT.중상.minutes)}/₢{TREATMENT.중상.cost}.
+          훈련과 치료는 시간과 크레딧을 소모합니다. 치료는 부상 정도에 따라 자동으로 높은 우선순위가 부여되고, 작업 큐에서 직접 변경할 수 있습니다.
         </div>
         <div className="mt-4 grid gap-3">
           {crew.map((member) => {
