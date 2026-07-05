@@ -15,9 +15,14 @@ function ModifierChips({ modifiers }) {
   );
 }
 
+function canAfford(resources, cost) {
+  return (resources.credits ?? 0) >= (cost ?? 0);
+}
+
 export default function RoomCustomization() {
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
+  const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
   const rooms = useShipInteriorStore((state) => state.rooms);
   const upgradeRoomTier = useShipInteriorStore((state) => state.upgradeRoomTier);
@@ -25,25 +30,38 @@ export default function RoomCustomization() {
   const uninstallModule = useShipInteriorStore((state) => state.uninstallModule);
 
   const upgradeTier = (room) => {
+    if (!room) return addLog("방 업그레이드 실패: 방 정보를 찾을 수 없습니다.");
     const nextTier = (room.tier ?? 1) + 1;
     const cost = ROOM_TIER_CONFIG[nextTier]?.upgradeCost ?? null;
     if (!cost) return addLog(`${room.id} 업그레이드 실패: 이미 최대 티어입니다.`);
+    if (!canAfford(resources, cost)) return addLog(`${room.id} 업그레이드 실패: 크레딧 ${cost} 필요.`);
     if (!spendCredits(cost)) return addLog(`${room.id} 업그레이드 실패: 크레딧 ${cost} 필요.`);
     const result = upgradeRoomTier(room.id);
-    addLog(result.ok ? `${room.id} Tier ${nextTier} 업그레이드 완료: ₢${cost}.` : `${room.id} 업그레이드 실패: ${result.reason}`);
+    if (!result.ok) {
+      addResources({ credits: cost });
+      return addLog(`${room.id} 업그레이드 실패: ${result.reason}. 크레딧을 환불했습니다.`);
+    }
+    return addLog(`${room.id} Tier ${nextTier} 업그레이드 완료: ₢${cost}.`);
   };
 
   const install = (room, module) => {
+    if (!room || !module) return addLog("모듈 장착 실패: 방 또는 모듈 정보를 찾을 수 없습니다.");
     const cost = module.cost?.credits ?? 0;
     if (!canInstallRoomModule(room, module)) return addLog(`${module.name} 장착 불가: 조건을 확인하세요.`);
+    if (!canAfford(resources, cost)) return addLog(`${module.name} 장착 실패: 크레딧 ${cost} 필요.`);
     if (!spendCredits(cost)) return addLog(`${module.name} 장착 실패: 크레딧 ${cost} 필요.`);
     const result = installModule(room.id, module.id);
-    addLog(result.ok ? `${room.id}에 ${module.name} 장착 완료: ₢${cost}.` : `${module.name} 장착 실패: ${result.reason}`);
+    if (!result.ok) {
+      addResources({ credits: cost });
+      return addLog(`${module.name} 장착 실패: ${result.reason}. 크레딧을 환불했습니다.`);
+    }
+    return addLog(`${room.id}에 ${module.name} 장착 완료: ₢${cost}.`);
   };
 
   const uninstall = (room, moduleId) => {
+    if (!room) return addLog("모듈 제거 실패: 방 정보를 찾을 수 없습니다.");
     const result = uninstallModule(room.id, moduleId);
-    addLog(result.ok ? `${room.id}에서 ${moduleId} 제거 완료.` : `${moduleId} 제거 실패: ${result.reason}`);
+    return addLog(result.ok ? `${room.id}에서 ${moduleId} 제거 완료.` : `${moduleId} 제거 실패: ${result.reason}`);
   };
 
   return (
@@ -67,11 +85,12 @@ export default function RoomCustomization() {
                 <span className="hud-chip hud-chip-accent">S{Math.round(modifiers.slots ?? 1)}</span>
               </div>
               <ModifierChips modifiers={modifiers} />
-              <button className="secondary-button mt-3 w-full" disabled={!tierCost || resources.credits < tierCost} onClick={() => upgradeTier(room)}>{tierCost ? `Tier ${nextTier} 업그레이드 ₢${tierCost}` : "최대 티어"}</button>
+              <button className="secondary-button mt-3 w-full" disabled={!tierCost || !canAfford(resources, tierCost)} onClick={() => upgradeTier(room)}>{tierCost ? `Tier ${nextTier} 업그레이드 ₢${tierCost}` : "최대 티어"}</button>
               <div className="mt-3 grid gap-2">
                 {roomModules.map((module) => {
                   const installed = (room?.modules ?? []).includes(module.id);
                   const blocked = !canInstallRoomModule(room, module) && !installed;
+                  const cost = module.cost?.credits ?? 0;
                   return (
                     <div key={module.id} className={`rounded border p-2 ${installed ? "border-cyan-300/40 bg-cyan-300/10" : blocked ? "border-slate-800 bg-slate-950/30 opacity-70" : "border-slate-700/70 bg-slate-900/70"}`}>
                       <div className="flex items-start justify-between gap-2">
@@ -83,7 +102,7 @@ export default function RoomCustomization() {
                       </div>
                       <div className="mt-2 text-xs text-cyan-100">{formatRoomEffect(module.effect)}</div>
                       <div className="mt-2 grid grid-cols-2 gap-2">
-                        <button className="secondary-button min-h-8 text-xs" disabled={installed || blocked || resources.credits < (module.cost?.credits ?? 0)} onClick={() => install(room, module)}>장착 ₢{module.cost?.credits ?? 0}</button>
+                        <button className="secondary-button min-h-8 text-xs" disabled={installed || blocked || !canAfford(resources, cost)} onClick={() => install(room, module)}>장착 ₢{cost}</button>
                         <button className="secondary-button min-h-8 text-xs" disabled={!installed} onClick={() => uninstall(room, module.id)}>제거</button>
                       </div>
                     </div>
