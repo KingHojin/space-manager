@@ -1,0 +1,218 @@
+.app-shell {
+  position: relative;
+}
+
+.app-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(115deg, rgb(56 189 248 / 0.06), transparent 32%, rgb(168 85 247 / 0.045) 72%, transparent),
+    radial-gradient(circle at 18% 16%, rgb(14 165 233 / 0.12), transparent 32%),
+    radial-gradient(circle at 82% 88%, rgb(99 102 241 / 0.12), transparent 34%);
+  opacity: 0.9;
+  z-index: 0;
+}
+
+.app-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+section,
+.modal-panel,
+.dock-button,
+.nav-button,
+.zone-node,
+.ship-slot {
+  box-shadow: 0 16px 45px rgb(0 0 0 / 0.22);
+}
+
+section {
+  border-radius: 14px;
+  background:
+    linear-gradient(145deg, rgb(15 23 42 / 0.88), rgb(3 7 18 / 0.82)),
+    radial-gradient(circle at top left, rgb(56 189 248 / 0.1), transparent 38%);
+}
+
+section::after {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.04), transparent 28%, transparent 72%, rgb(56 189 248 / 0.035));
+  opacity: 0.8;
+}
+
+section > * {
+  position: relative;
+  z-index: 1;
+}
+
+.primary-button,
+.secondary-button,
+.dock-button,
+.icon-button {
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.primary-button:hover,
+.secondary-button:hover,
+.dock-button:hover,
+.icon-button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px rgb(56 189 248 / 0.12);
+}
+
+.primary-button {
+  background:
+    linear-gradient(135deg, rgb(14 165 233 / 0.22), rgb(99 102 241 / 0.18)),
+    rgb(8 15 30 / 0.72);
+}
+
+.nav-button {
+  border: 1px solid transparent;
+}
+
+.nav-button:hover,
+.nav-button-active {
+  border-color: rgb(56 189 248 / 0.22);
+  background:
+    linear-gradient(135deg, rgb(56 189 248 / 0.14), rgb(99 102 241 / 0.08)),
+    rgb(8 15 30 / 0.5);
+}
+
+.hud-chip {
+  border-radius: 999px;
+  backdrop-filter: blur(8px);
+}
+
+.modal-panel {
+  background:
+    linear-gradient(145deg, rgb(8 13 26 / 0.98), rgb(3 7 18 / 0.98)),
+    radial-gradient(circle at top left, rgb(56 189 248 / 0.14), transparent 44%);
+}
+
+.ship-blueprint {
+  border-radius: 18px;
+  border-color: rgb(56 189 248 / 0.28);
+  background:
+    linear-gradient(90deg, rgb(56 189 248 / 0.12) 1px, transparent 1px),
+    linear-gradient(rgb(56 189 248 / 0.1) 1px, transparent 1px),
+    radial-gradient(circle at 50% 38%, rgb(56 189 248 / 0.24), transparent 35%),
+    radial-gradient(circle at 50% 86%, rgb(99 102 241 / 0.16), transparent 28%),
+    rgb(3 7 18);
+  background-size: 28px 28px, 28px 28px, auto, auto, auto;
+  overflow: hidden;
+}
+
+.ship-blueprint::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgb(255 255 255 / 0.04), transparent 45%, rgb(56 189 248 / 0.05));
+}
+
+.ship-slot {
+  border-radius: 12px;
+  background:
+    linear-gradient(145deg, rgb(15 23 42 / 0.96), rgb(3 7 18 / 0.94)),
+    radial-gradient(circle at top left, rgb(56 189 248 / 0.12), transparent 34%);
+}
+
+.ship-interior-map {
+  border-color: rgb(56 189 248 / 0.24);
+  background:
+    linear-gradient(90deg, rgb(56 189 248 / 0.075) 1px, transparent 1px),
+    linear-gradient(rgb(56 189 248 / 0.065) 1px, transparent 1px),
+    radial-gradient(circle at 50% 50%, rgb(56 189 248 / 0.14), transparent 38%),
+    radial-gradient(circle at 50% 92%, rgb(99 102 241 / 0.2), transparent 32%),
+    rgb(2 6 23 / 0.96);
+  background-size: 24px 24px, 24px 24px, auto, auto, auto;
+}
+
+.ship-hull-shell {
+  border: 1px solid rgb(125 211 252 / 0.24);
+  background:
+    linear-gradient(180deg, rgb(15 23 42 / 0.68), rgb(2 6 23 / 0.82)),
+    radial-gradient(circle at 50% 14%, rgb(56 189 248 / 0.12), transparent 28%);
+  box-shadow: inset 0 0 40px rgb(56 189 248 / 0.08), 0 0 45px rgb(56 189 248 / 0.08);
+}
+
+.ship-hull-shell::before,
+.ship-hull-shell::after {
+  content: "";
+  position: absolute;
+  top: 24%;
+  bottom: 12%;
+  width: 12%;
+  border: 1px solid rgb(56 189 248 / 0.14);
+  background: rgb(56 189 248 / 0.035);
+}
+
+.ship-hull-shell::before {
+  left: -5%;
+  border-radius: 60% 12% 24% 60%;
+}
+
+.ship-hull-shell::after {
+  right: -5%;
+  border-radius: 12% 60% 60% 24%;
+}
+
+.ship-hull-spine,
+.ship-hull-deck {
+  background: linear-gradient(90deg, transparent, rgb(125 211 252 / 0.32), transparent);
+  box-shadow: 0 0 10px rgb(56 189 248 / 0.15);
+}
+
+.ship-engine-glow {
+  background: radial-gradient(ellipse, rgb(56 189 248 / 0.35), rgb(99 102 241 / 0.12) 48%, transparent 72%);
+  filter: blur(2px);
+}
+
+.ship-corridor-line {
+  background: linear-gradient(90deg, transparent, rgb(56 189 248 / 0.18), transparent);
+  box-shadow: 0 0 10px rgb(56 189 248 / 0.12);
+}
+
+.ship-corridor-line-active {
+  background: linear-gradient(90deg, transparent, rgb(125 211 252 / 0.64), transparent);
+}
+
+.ship-room-zone {
+  overflow: hidden;
+  backdrop-filter: blur(8px);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.045), 0 14px 32px rgb(0 0 0 / 0.24);
+}
+
+.ship-room-zone::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgb(255 255 255 / 0.05), transparent 46%, rgb(56 189 248 / 0.04));
+}
+
+.ship-room-zone > * {
+  position: relative;
+  z-index: 1;
+}
+
+.ship-room-aux {
+  opacity: 0.86;
+  border-style: dashed;
+}
+
+@media (max-width: 639px) {
+  .ship-room-zone {
+    padding: 0.35rem;
+  }
+
+  .ship-interior-map {
+    background-size: 18px 18px, 18px 18px, auto, auto, auto;
+  }
+}
