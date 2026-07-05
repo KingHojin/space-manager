@@ -72,8 +72,20 @@ function applyNavEffect(effect, currentMinute) {
   if (effect.kind === "fuel" && effect.delta) {
     useNavStore.getState().refuel(effect.delta);
     useGameStore.getState().addResources({ fuel: effect.delta });
+    if (effect.delta < 0 && useNavStore.getState().fuel <= 0 && !useNavStore.getState().driftState) {
+      const drift = useNavStore.getState().enterDrift(currentMinute, "fuel_loss_event");
+      drift.effects.forEach((nested) => applyNavEffect(nested, currentMinute));
+      drift.logs.forEach((message) => useGameStore.getState().addLog(`항해: ${message}`));
+    }
   }
   if (effect.kind === "spawnCrisis") useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
+  if (effect.kind === "crewNeeds") {
+    const logs = useCrewStore.getState().tickCrewNeeds({ deltaMinutes: effect.deltaMinutes, mode: effect.mode ?? "normal", severity: effect.severity ?? 1 });
+    logs.forEach((message) => useGameStore.getState().addLog(`승무원 상태: ${message}`));
+  }
+  if (effect.kind === "driftPressure") {
+    if ((effect.minutesDrifting ?? 0) % 120 < (effect.deltaMinutes ?? 0)) useGameStore.getState().addLog(`표류 지속: ${Math.round((effect.minutesDrifting ?? 0) / 60)}시간 경과 · severity ${effect.severity}.`);
+  }
   if (effect.kind === "injure") {
     const crew = useCrewStore.getState().crew.filter((member) => member.alive);
     const target = effect.crewId === "random" ? crew[Math.floor(Math.random() * crew.length)] : crew.find((member) => member.id === effect.crewId);
@@ -92,9 +104,12 @@ function applyNavEffect(effect, currentMinute) {
 }
 
 function processNavigation(currentMinute, deltaMinutes) {
-  const { effects, logs } = useNavStore.getState().tickTravel(deltaMinutes, currentMinute);
-  effects.forEach((effect) => applyNavEffect(effect, currentMinute));
-  logs.forEach((message) => useGameStore.getState().addLog(`항해: ${message}`));
+  const travelResult = useNavStore.getState().tickTravel(deltaMinutes, currentMinute);
+  travelResult.effects.forEach((effect) => applyNavEffect(effect, currentMinute));
+  travelResult.logs.forEach((message) => useGameStore.getState().addLog(`항해: ${message}`));
+  const driftResult = useNavStore.getState().tickDrift(deltaMinutes, currentMinute);
+  driftResult.effects.forEach((effect) => applyNavEffect(effect, currentMinute));
+  driftResult.logs.forEach((message) => useGameStore.getState().addLog(`표류: ${message}`));
 }
 
 export function applyNavigationEncounter(optionId, currentMinute = useGameStore.getState().currentMinute) {
@@ -111,6 +126,12 @@ function processCrewAI(currentMinute) {
   const crewStore = useCrewStore.getState();
   const logs = crewStore.runCrewAI({ currentMinute, resources: useGameStore.getState().resources, activeTravel: nav.travel ?? exploration.activeTravel, pendingTravelEvent: nav.pendingEncounter ?? exploration.pendingTravelEvent, pendingCombatEncounter: exploration.pendingCombatEncounter, installationQueue: useShipStore.getState().installationQueue ?? [], rooms: shipInterior.rooms, activeCrises: shipInterior.activeCrises ?? [], roleCoverage: crewStore.getRoleCoverage() });
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
+}
+
+function processCrewNeeds(deltaMinutes) {
+  if (useNavStore.getState().driftState) return;
+  const logs = useCrewStore.getState().tickCrewNeeds({ deltaMinutes, mode: "normal", severity: 1 });
+  logs.forEach((message) => useGameStore.getState().addLog(`승무원 상태: ${message}`));
 }
 
 function applyRoomJobEffect(effect) {
@@ -164,6 +185,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrewAI(currentMinute);
+  processCrewNeeds(deltaMinutes);
   processRoomJobs(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
   processCrewHealth(currentMinute, deltaMinutes);
