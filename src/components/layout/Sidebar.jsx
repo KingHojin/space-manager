@@ -1,4 +1,4 @@
-import { Archive, BarChart2, BookOpen, Compass, Crosshair, GitBranch, Home, Map, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, BookOpen, Compass, Crosshair, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 
@@ -8,6 +8,7 @@ const icons = {
   combat: Crosshair,
   hunting: PawPrint,
   ship: Rocket,
+  menu: MenuIcon,
   skilltree: GitBranch,
   crew: Users,
   collector: Sparkles,
@@ -26,8 +27,13 @@ const quickActions = [
 export default function Sidebar({ activePanel, onChange, onOpenModal }) {
   const activeTravel = useExplorationStore((state) => state.activeTravel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
+  const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
 
   const handlePanel = (item) => {
+    if (item.id === "menu") {
+      onOpenModal("command");
+      return;
+    }
     if (item.id === "combat" && activeTravel && !pendingCombatEncounter) return;
     onChange(item.id);
   };
@@ -36,16 +42,20 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
     <aside className="flex flex-col border-b border-slate-700/80 bg-slate-950/80 p-2 lg:border-b-0 lg:border-r lg:p-3">
       <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
         {MENU_ITEMS.map((item) => {
-          const Icon = icons[item.id];
+          const Icon = icons[item.id] ?? MenuIcon;
           const active = activePanel === item.id;
           const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
           const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
+          const menuAlert = item.id === "menu" && Boolean(pendingTravelEvent);
           return (
             <button key={item.id} className={`nav-button ${active ? "nav-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handlePanel(item)} disabled={locked}>
-              <Icon size={17} className="shrink-0" />
+              <span className="relative shrink-0">
+                <Icon size={17} />
+                {menuAlert && <span className="absolute -right-1 -top-1 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />}
+              </span>
               <span className="min-w-0">
-                <span className="block truncate">{urgent ? "긴급 교전" : item.label}</span>
-                <span className="hud-label hidden truncate lg:block">{locked ? "항해 중 잠김" : urgent ? "즉시 대응" : item.sub}</span>
+                <span className="block truncate">{urgent ? "긴급 교전" : menuAlert ? "대응 필요" : item.label}</span>
+                <span className="hud-label hidden truncate lg:block">{locked ? "항해 중 잠김" : urgent ? "즉시 대응" : item.id === "menu" ? "팝업 메뉴" : item.sub}</span>
               </span>
             </button>
           );

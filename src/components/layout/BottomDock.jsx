@@ -7,13 +7,14 @@ const tabItems = [
   { id: "exploration", label: "탐사", icon: Compass, type: "panel" },
   { id: "combat", label: "전투", icon: Crosshair, type: "panel" },
   { id: "ship", label: "함선", icon: Rocket, type: "panel" },
-  { id: "menu", label: "메뉴", icon: MenuIcon, type: "panel" },
+  { id: "command", label: "메뉴", icon: MenuIcon, type: "modal" },
 ];
 
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const activeTravel = useExplorationStore((state) => state.activeTravel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
+  const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const hasHighDangerZone = getAllZones().some((zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4);
 
   const handleTab = (item) => {
@@ -32,13 +33,15 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
         const active = activePanel === item.id;
         const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
         const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
+        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent);
         return (
           <button key={item.id} className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handleTab(item)} disabled={locked}>
             <span className="relative inline-flex">
               <Icon size={18} />
               {item.id === "combat" && (urgent || hasHighDangerZone) && <span className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${urgent ? "bg-red-400 animate-pulse" : "bg-red-500"}`} />}
+              {menuAlert && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />}
             </span>
-            <span>{urgent ? "긴급" : item.label}</span>
+            <span>{urgent ? "긴급" : menuAlert ? "대응" : item.label}</span>
           </button>
         );
       })}
