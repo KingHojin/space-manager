@@ -229,11 +229,10 @@ export default function StarMap({
       {isMobileTouch && (
         <button
           type="button"
-          className={`absolute bottom-3 left-3 z-10 rounded border px-3 py-2 text-left text-[0.65rem] shadow-lg backdrop-blur ${interactionMode ? "border-amber-300/60 bg-amber-300/20 text-amber-100" : "border-slate-700/70 bg-slate-950/80 text-slate-300"}`}
+          className={`absolute bottom-2 left-2 z-10 rounded-full border px-2.5 py-1 text-[0.58rem] font-semibold shadow-lg backdrop-blur ${interactionMode ? "border-amber-300/60 bg-amber-300/20 text-amber-100" : "border-slate-700/70 bg-slate-950/75 text-slate-300"}`}
           onClick={() => setInteractionMode((enabled) => !enabled)}
         >
-          <div className="font-semibold">{interactionMode ? "지도 조작 중" : "지도 회전 켜기"}</div>
-          <div className="mt-0.5 text-slate-400">{interactionMode ? "다시 누르면 스크롤 우선" : "기본은 세로 스크롤 우선"}</div>
+          {interactionMode ? "조작 ON" : "지도 조작"}
         </button>
       )}
 
