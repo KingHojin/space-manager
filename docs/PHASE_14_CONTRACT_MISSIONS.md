@@ -82,23 +82,53 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
   - `scopeId = node:<currentNodeId>`
   - default board size remains 3 missions
   - board refresh still uses `missionStore.refreshBoard`
-- Mission cards show:
-  - title
-  - client
-  - category
-  - summary
-  - risk
-  - distance
-  - destination
-  - destination danger
-  - reward preview
-  - tags
-- Accepting a mission now calls `missionStore.acceptMission` and logs the result.
+- Mission cards show title, client, category, summary, risk, distance, destination, destination danger, reward preview, and tags.
+- Accepting a mission calls `missionStore.acceptMission` and logs the result.
 - If the active vessel already has an active mission, the board shows the active mission card and disables accepting another mission.
 - Added an abandon button for the active mission.
 - PR B still does not start navigation automatically.
 - PR B still does not pay rewards.
 - PR B still does not modify combat, encounter, resource, crew, crisis, room job, or navigation formulas.
+
+## PR C implemented — Mission -> Navigation bridge
+
+### Files
+
+- `src/stores/navStore.js`
+- `src/components/modals/MissionBoardModal.jsx`
+- `src/components/panels/Exploration.jsx`
+- `src/data/constants.js`
+- `docs/PHASE_14_CONTRACT_MISSIONS.md`
+
+### Behavior
+
+- Added `navStore.previewRoute(targetNodeId, currentMinute)` so mission UI can validate a route before accepting the mission.
+- Extended `navStore.planRoute(targetNodeId, currentMinute, metadata)` with optional mission metadata:
+  - `missionId`
+  - `missionTitle`
+  - `missionDestinationName`
+- Mission acceptance now:
+  1. validates the destination route,
+  2. accepts the mission,
+  3. creates a navigation travel plan with mission metadata,
+  4. unpauses the clock,
+  5. opens the Exploration panel.
+- If route planning fails after accept, the mission is abandoned immediately to avoid a stuck active mission.
+- Exploration now shows an active mission panel with destination and risk.
+- Navigation status shows `임무 항해` when current travel belongs to a mission.
+- Travel cards show the mission title when mission metadata is present.
+- Arrival logs distinguish mission destination arrival from ordinary node arrival.
+- PR C still does not complete missions.
+- PR C still does not pay rewards.
+
+### Clock speed adjustment
+
+- `GAME_TIME.REAL_SECOND_TO_GAME_MINUTES` changed from `20` to `3`.
+- At speed 1x, 1 real second now advances 3 game minutes.
+- Existing speed multipliers still apply on top:
+  - 1x = 3 game minutes / real second
+  - 2x = 6 game minutes / real second
+  - 4x = 12 game minutes / real second
 
 ## Fleet-safety rule
 
@@ -123,16 +153,6 @@ offered -> active -> completed
 
 Completion currently returns the reward preview object but does not apply it to inventory/resources. Actual payout should be implemented in a later PR where UI and mission travel rules are connected.
 
-## PR C target — Accept Mission -> Navigation bridge
-
-Recommended next small PR:
-
-- On mission accept, select/plan route to mission destination.
-- Show active mission destination in the Exploration panel.
-- Add an active mission card near navigation status.
-- Keep the existing nav system as source of truth for travel.
-- Do not mark mission complete yet unless destination/objective rules are explicitly added.
-
 ## PR D target — Mission completion and payout
 
 Recommended after navigation bridge:
@@ -140,6 +160,7 @@ Recommended after navigation bridge:
 - Complete mission when destination objective is resolved.
 - Apply Dust/item/blueprint/recruit/reputation rewards through existing stores.
 - Add failure cases for abandoned route, critical ship state, or unresolved objective.
+- Decide whether mission completion should require resolving the destination encounter first.
 
 ## Local check
 
@@ -173,6 +194,19 @@ Manual checks for PR B:
 6. Accept one mission and confirm it moves into the active mission card.
 7. Confirm accepting another mission for the same active vessel is blocked/disabled.
 8. Abandon the mission and confirm the board can accept a mission again.
-9. Confirm no travel starts automatically after accepting.
-10. Confirm no rewards are paid after accepting/abandoning.
-11. Confirm no combat, encounter, resource, crew, crisis, room job, or navigation formula values change from PR B alone.
+9. Confirm no rewards are paid after accepting/abandoning.
+10. Confirm no combat, encounter, resource, crew, crisis, or room job values change from PR B alone.
+
+Manual checks for PR C:
+
+1. Open `임무` and confirm each mission shows an `항로` and `예상 시간` preview.
+2. Accept a mission.
+3. Confirm the modal switches to the Exploration panel.
+4. Confirm the clock unpauses.
+5. Confirm the navigation travel card says `임무 항해 상황판`.
+6. Confirm the active mission panel appears in Exploration.
+7. Confirm the travel record contains mission metadata in dev tools if inspected.
+8. Confirm ordinary manual route planning still works with no mission selected.
+9. Confirm at 1x speed, game time advances about 3 minutes per real second.
+10. Confirm no mission reward is paid yet.
+11. Confirm no mission is marked completed yet.

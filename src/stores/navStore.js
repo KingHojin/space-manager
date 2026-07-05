@@ -59,6 +59,34 @@ function driftSeverity(minutesDrifting) {
   return 1;
 }
 
+function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) {
+  if (state.pendingEncounter) return { ok: false, reason: "pendingEncounter" };
+  if (state.travel) return { ok: false, reason: "traveling" };
+  if (state.driftState || state.fuel <= 0) return { ok: false, reason: "drifting" };
+  const route = findRoute(state.sector, state.currentNodeId, targetNodeId);
+  if (route.length < 2) return { ok: false, reason: "noRoute" };
+  const distance = routeDistance(state.sector, route);
+  const fuelCost = Math.max(2, distance * FUEL_PER_DISTANCE);
+  const duration = Math.max(18, Math.round(distance * TRAVEL_MINUTES_PER_DISTANCE));
+  const travel = {
+    fromId: route[0],
+    toId: route[1],
+    targetId: targetNodeId,
+    route,
+    progress: 0,
+    etaMinutes: duration,
+    duration,
+    fuelCost,
+    startedAt: currentMinute,
+    completeAt: currentMinute + duration,
+    lastFuelAt: currentMinute,
+    missionId: metadata.missionId ?? null,
+    missionTitle: metadata.missionTitle ?? null,
+    missionDestinationName: metadata.missionDestinationName ?? null,
+  };
+  return { ok: true, route, distance, fuelCost, duration, travel };
+}
+
 export const useNavStore = create(
   persist(
     (set, get) => {
@@ -85,19 +113,14 @@ export const useNavStore = create(
           const discovered = revealNeighbors(sector, [start], start);
           set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, currentNodeId: start, selectedNodeId: null, route: [start], travel: null, fuel: 100, discovered, visited: [start], pendingEncounter: null, driftState: null, navLog: ["새 섹터 지도가 생성되었습니다."] });
         },
-        planRoute: (targetNodeId, currentMinute = 0) => {
+        previewRoute: (targetNodeId, currentMinute = 0) => buildTravelPlan(get(), targetNodeId, currentMinute),
+        planRoute: (targetNodeId, currentMinute = 0, metadata = {}) => {
           const state = get();
-          if (state.pendingEncounter) return { ok: false, reason: "pendingEncounter" };
-          if (state.travel) return { ok: false, reason: "traveling" };
-          if (state.driftState || state.fuel <= 0) return { ok: false, reason: "drifting" };
-          const route = findRoute(state.sector, state.currentNodeId, targetNodeId);
-          if (route.length < 2) return { ok: false, reason: "noRoute" };
-          const distance = routeDistance(state.sector, route);
-          const fuelCost = Math.max(2, distance * FUEL_PER_DISTANCE);
-          const duration = Math.max(18, Math.round(distance * TRAVEL_MINUTES_PER_DISTANCE));
-          const travel = { fromId: route[0], toId: route[1], targetId: targetNodeId, route, progress: 0, etaMinutes: duration, duration, fuelCost, startedAt: currentMinute, completeAt: currentMinute + duration, lastFuelAt: currentMinute };
-          set({ route, selectedNodeId: targetNodeId, travel, navLog: [`항로 결재: ${route[0]} → ${targetNodeId} · ${Math.round(distance)}u`, ...state.navLog].slice(0, 10) });
-          return { ok: true, travel };
+          const plan = buildTravelPlan(state, targetNodeId, currentMinute, metadata);
+          if (!plan.ok) return plan;
+          const missionPrefix = plan.travel.missionTitle ? `임무 항로 결재: ${plan.travel.missionTitle} · ` : "항로 결재: ";
+          set({ route: plan.route, selectedNodeId: targetNodeId, travel: plan.travel, navLog: [`${missionPrefix}${plan.route[0]} → ${targetNodeId} · ${Math.round(plan.distance)}u`, ...state.navLog].slice(0, 10) });
+          return { ok: true, travel: plan.travel, route: plan.route, distance: plan.distance };
         },
         enterDrift: (currentMinute = 0, reason = "fuel_empty") => {
           const state = get();
@@ -149,7 +172,8 @@ export const useNavStore = create(
           const remainingRoute = (state.travel?.route ?? []).slice(1);
           const sector = withNodeFlags(state.sector, visited, discovered);
           const encounter = rollEncounter({ ...node, discovered: true, visited: true }, visited.length);
-          const logs = [`노드 도착: ${node.name}. 결재 대기 조우가 발생했습니다.`];
+          const missionArrival = state.travel?.missionId && state.travel.targetId === nodeId;
+          const logs = missionArrival ? [`임무 목적지 도착: ${state.travel.missionTitle ?? "계약 임무"} · ${node.name}. 조우 결재 후 임무 처리가 가능합니다.`] : [`노드 도착: ${node.name}. 결재 대기 조우가 발생했습니다.`];
           set({ sector, currentNodeId: nodeId, selectedNodeId: null, route: remainingRoute.length > 0 ? remainingRoute : [nodeId], travel: null, fuel: forcedFuel ?? state.fuel, discovered, visited, pendingEncounter: encounter, navLog: [...logs, ...state.navLog].slice(0, 10) });
           return { effects: [{ kind: "log", message: logs[0] }], logs };
         },
@@ -176,7 +200,7 @@ export const useNavStore = create(
         getNavCard: () => {
           const state = get();
           if (state.pendingEncounter) return { mode: "encounter", priority: "critical", title: state.pendingEncounter.title, desc: state.pendingEncounter.description, meta: state.pendingEncounter.typeLabel };
-          if (state.travel) return { mode: "travel", priority: "medium", title: "항해 진행 중", desc: `${state.travel.fromId} → ${state.travel.toId}`, meta: `${Math.round(state.travel.progress ?? 0)}%` };
+          if (state.travel) return { mode: "travel", priority: "medium", title: state.travel.missionTitle ? "임무 항해 중" : "항해 진행 중", desc: state.travel.missionTitle ? `${state.travel.missionTitle} · ${state.travel.fromId} → ${state.travel.toId}` : `${state.travel.fromId} → ${state.travel.toId}`, meta: `${Math.round(state.travel.progress ?? 0)}%` };
           if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 상태", desc: `연료가 없어 이동할 수 없습니다. 압박 ${Math.round(state.driftState.pressure ?? 0)}%`, meta: `severity ${state.driftState.severity ?? 1}` };
           const current = state.sector.nodes.find((node) => node.id === state.currentNodeId);
           const next = (current?.connections ?? []).map((id) => state.sector.nodes.find((node) => node.id === id)).filter(Boolean)[0];
