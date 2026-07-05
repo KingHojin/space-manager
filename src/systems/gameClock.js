@@ -49,7 +49,22 @@ function processTravel(currentMinute) {
       if (outcome.reveal) useExplorationStore.getState().revealRandomZone();
       if (outcome.crewRisk) applyCrewRisk(outcome.crewRisk);
       summary = `항해 인카운터: ${outcome.title} — ${outcome.message}`;
-      if (outcome.combatHint) summary += " 전투 메뉴에서 추적 교전으로 확장 가능.";
+
+      if (outcome.combatHint) {
+        const destination = getZoneById(activeTravel.toZoneId);
+        useExplorationStore.getState().setPendingCombatEncounter({
+          id: `travel-combat-${currentMinute}`,
+          createdAt: currentMinute,
+          title: outcome.title,
+          message: outcome.message,
+          danger: destination?.danger ?? 2,
+          originZoneId: activeTravel.fromZoneId,
+          targetZoneId: activeTravel.toZoneId,
+        });
+        useGameStore.getState().setPaused(true);
+        summary += " 긴급 교전 상황입니다. 전투 탭에서 대응 지시가 필요합니다.";
+      }
+
       useGameStore.getState().addLog(summary);
       happened = true;
     }
