@@ -183,7 +183,7 @@ export default function Crew() {
       </section>
       <div className="grid gap-4">
         <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} />
-        <section><div className="section-title">역할 커버리지</div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{Object.entries(coverage.byRole ?? {}).map(([role, value]) => <Info key={role} label={role} value={`${value}명`} />)}</div></section>
+        <section><div className="section-title">역할 커버리지</div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{Object.entries(coverage.counts ?? {}).map(([role, value]) => <Info key={role} label={role} value={`${value}명`} />)}</div></section>
         <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4"><div className="section-title">최근 AI 배정</div><div className="mt-3 grid gap-2">{(crewActivityLog ?? []).slice(0, 6).map((entry, index) => <div key={`${entry}-${index}`} className="rounded-xl border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}{(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}</div></section>
       </div>
     </div>
