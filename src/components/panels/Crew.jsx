@@ -6,6 +6,7 @@ import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { statLabel } from "../../utils/format";
+import ShipInterior from "../ship/ShipInterior";
 
 const ROLE_ICONS = {
   함교: { icon: Compass, color: "text-cyan-400" },
@@ -120,7 +121,7 @@ export default function Crew() {
           <Info label="일반" value={`${aiSummary.normal + aiSummary.low}명`} />
         </div>
         <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm leading-6 text-slate-300">
-          승무원은 게임 시간이 흐를 때마다 현재 항해, 위협, 부상, 피로, 작업 큐를 보고 자동으로 행동을 배정받습니다. 플레이어는 직접 행동 하나하나보다 우선순위와 큐를 조정합니다.
+          승무원은 함선 내부에서 AI 명령에 따라 이동합니다. 방 위치는 현재 업무와 연결되고, 시간이 흐르면 마커가 브릿지·기관실·의무실·생활구역 사이를 이동합니다.
         </div>
         <div className="mt-4 grid gap-3">
           {crew.map((member) => {
@@ -151,20 +152,23 @@ export default function Crew() {
           })}
         </div>
       </section>
-      <section>
-        <div className="section-title">스쿼드 종합표</div>
-        <div className="mt-4 overflow-auto rounded border border-slate-700/70">
-          <table className="data-table"><thead><tr><th>이름</th><th>역할</th><th>현재 AI 행동</th>{Object.values(statLabel).map((label) => <th key={label}>{label}</th>)}<th>피로</th><th>상태</th></tr></thead><tbody>{crew.map((member) => { const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id); return <tr key={member.id} className={!member.alive ? "opacity-60" : ""}><td className="font-semibold text-slate-100">{member.name}</td><td><span className="inline-flex items-center gap-1.5"><RoleIcon role={member.role} />{member.role}</span></td><td>{activity ? `${activity.station} · ${activity.action}` : "대기"}</td>{Object.keys(statLabel).map((key) => <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>)}<td><span className={`hud-chip ${fatigueTone(member.fatigue ?? 0)}`}>{member.fatigue ?? 0}</span></td><td><span className={`hud-chip ${!member.alive ? "hud-chip-danger" : member.injury === "정상" ? "hud-chip-success" : "hud-chip-warn"}`}>{!member.alive ? "전사" : member.injury}</span></td></tr>; })}</tbody></table>
-        </div>
+      <div className="grid gap-4">
+        <ShipInterior crew={crew} activities={crewActivities ?? []} />
+        <section>
+          <div className="section-title">스쿼드 종합표</div>
+          <div className="mt-4 overflow-auto rounded border border-slate-700/70">
+            <table className="data-table"><thead><tr><th>이름</th><th>역할</th><th>현재 AI 행동</th>{Object.values(statLabel).map((label) => <th key={label}>{label}</th>)}<th>피로</th><th>상태</th></tr></thead><tbody>{crew.map((member) => { const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id); return <tr key={member.id} className={!member.alive ? "opacity-60" : ""}><td className="font-semibold text-slate-100">{member.name}</td><td><span className="inline-flex items-center gap-1.5"><RoleIcon role={member.role} />{member.role}</span></td><td>{activity ? `${activity.station} · ${activity.action}` : "대기"}</td>{Object.keys(statLabel).map((key) => <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>)}<td><span className={`hud-chip ${fatigueTone(member.fatigue ?? 0)}`}>{member.fatigue ?? 0}</span></td><td><span className={`hud-chip ${!member.alive ? "hud-chip-danger" : member.injury === "정상" ? "hud-chip-success" : "hud-chip-warn"}`}>{!member.alive ? "전사" : member.injury}</span></td></tr>; })}</tbody></table>
+          </div>
+        </section>
 
-        <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4">
+        <section className="rounded border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="section-title">최근 AI 배정 기록</div>
           <div className="mt-3 grid gap-2">
             {(crewActivityLog ?? []).slice(0, 8).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
             {(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}
           </div>
-        </div>
-      </section>
+        </section>
+      </div>
     </div>
   );
 }
