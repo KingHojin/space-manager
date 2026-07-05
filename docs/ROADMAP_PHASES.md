@@ -37,17 +37,27 @@ Implemented:
 Next refinements:
 - Show priority badges inside every ship module card
 - Let the player set priority before job creation
-- Use priority as the first input for crew AI in Phase 3
 
 ## Phase 3 — Crew AI
+Status: base implementation complete
+
 Goal: crew members should act even when the player does not manually command them.
 
-Target systems:
-- Idle behavior
-- Work search
+Implemented:
+- Timed crew AI tick from the game clock
 - Role-based task selection
-- Fatigue and morale-aware behavior
-- Activity report cards
+- Crisis response assignments for combat and travel events
+- Queue-aware treatment/training activity state
+- Fatigue-aware rest behavior
+- Ship resource warning assignments
+- Crew activity state stored in crewStore
+- Home command center reads live AI activity
+- Crew panel shows live AI orders and recent AI assignment logs
+
+Next refinements:
+- Let AI consume unassigned ship jobs directly
+- Add room positions once Phase 4 ship interior exists
+- Add policy overrides in Phase 5
 
 ## Phase 4 — Ship Interior
 Goal: represent the ship as a small operating space with rooms and crew locations.
