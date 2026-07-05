@@ -93,6 +93,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
     nextContracts,
     travelProgress,
     currentMinute,
+    rooms: Object.values(rooms),
   });
   const situationSummary = summarizeSituations(situations);
   const topSituation = situations[0];
