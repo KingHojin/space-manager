@@ -48,16 +48,34 @@ function applyTraining(member, statKey) {
   };
 }
 
+function applyTreatment(member, task) {
+  if (!member.alive) return member;
+  return {
+    ...member,
+    injury: "정상",
+    fatigue: clamp((member.fatigue ?? 0) + (task.fatiguePenalty ?? 10), 0, 100),
+    morale: shiftMorale(member.morale, 1),
+  };
+}
+
 export const useCrewStore = create(
   persist(
     (set, get) => ({
       crew: initialCrew.map((member) => ({ ...member, alive: true })),
       trainingQueue: [],
+      treatmentQueue: [],
       startTraining: ({ memberId, statKey, completeAt, cost, duration }) =>
         set((state) => ({
           trainingQueue: [
             ...state.trainingQueue.filter((task) => task.memberId !== memberId),
             { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, startedAt: completeAt - duration },
+          ],
+        })),
+      startTreatment: ({ memberId, injury, completeAt, cost, duration, fatiguePenalty }) =>
+        set((state) => ({
+          treatmentQueue: [
+            ...state.treatmentQueue.filter((task) => task.memberId !== memberId),
+            { id: crypto.randomUUID(), memberId, injury, completeAt, cost, duration, fatiguePenalty, startedAt: completeAt - duration },
           ],
         })),
       completeReadyTraining: (currentMinute) => {
@@ -76,19 +94,27 @@ export const useCrewStore = create(
           return `${member?.name ?? "승무원"} 역할 훈련 완료.`;
         });
       },
+      completeReadyTreatment: (currentMinute) => {
+        const ready = get().treatmentQueue.filter((task) => task.completeAt <= currentMinute);
+        if (ready.length === 0) return [];
+        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
+        set((state) => ({
+          treatmentQueue: state.treatmentQueue.filter((task) => task.completeAt > currentMinute),
+          crew: state.crew.map((member) => {
+            const task = readyByMember.get(member.id);
+            return task ? applyTreatment(member, task) : member;
+          }),
+        }));
+        return ready.map((task) => {
+          const member = get().crew.find((entry) => entry.id === task.memberId);
+          return `${member?.name ?? "승무원"} 의무실 치료 완료.`;
+        });
+      },
       restMember: (memberId) =>
         set((state) => ({
           crew: state.crew.map((member) =>
             member.id === memberId && member.alive
               ? { ...member, fatigue: clamp((member.fatigue ?? 0) - 28, 0, 100), morale: shiftMorale(member.morale, 1) }
-              : member,
-          ),
-        })),
-      treatMember: (memberId) =>
-        set((state) => ({
-          crew: state.crew.map((member) =>
-            member.id === memberId && member.alive
-              ? { ...member, injury: "정상", fatigue: clamp((member.fatigue ?? 0) + 8, 0, 100), morale: shiftMorale(member.morale, 1) }
               : member,
           ),
         })),
@@ -109,6 +135,7 @@ export const useCrewStore = create(
       applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) =>
         set((state) => ({
           trainingQueue: injury === "전사" ? state.trainingQueue.filter((task) => task.memberId !== memberId) : state.trainingQueue,
+          treatmentQueue: injury === "전사" ? state.treatmentQueue.filter((task) => task.memberId !== memberId) : state.treatmentQueue,
           crew: state.crew.map((member) =>
             member.id === memberId && member.alive
               ? {
@@ -129,6 +156,7 @@ export const useCrewStore = create(
         ...(persistedState ?? {}),
         crew: mergeCrew(persistedState?.crew),
         trainingQueue: persistedState?.trainingQueue ?? [],
+        treatmentQueue: persistedState?.treatmentQueue ?? [],
       }),
     },
   ),
