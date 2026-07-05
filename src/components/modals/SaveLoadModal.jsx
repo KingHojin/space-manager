@@ -9,6 +9,7 @@ const saveKeys = [
   "space-manager-exploration",
   "space-manager-factions",
   "space-manager-contracts",
+  "space-manager-skills",
 ];
 
 export default function SaveLoadModal() {
@@ -20,7 +21,7 @@ export default function SaveLoadModal() {
 
   const exportSave = () => {
     const data = Object.fromEntries(saveKeys.map((key) => [key, localStorage.getItem(key)]));
-    setPayload(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data }, null, 2));
+    setPayload(JSON.stringify({ version: 3, exportedAt: new Date().toISOString(), data }, null, 2));
     addLog("저장 데이터 내보내기 완료.");
   };
 
@@ -53,7 +54,7 @@ export default function SaveLoadModal() {
         <button className="secondary-button" onClick={newGame}>새 게임</button>
       </div>
       <p className="text-sm text-slate-400">
-        모든 핵심 상태는 자동 저장됩니다. 세력 평판과 계약 진행도까지 함께 내보내기/가져오기에 포함됩니다.
+        모든 핵심 상태는 자동 저장됩니다. 세력, 계약, 스킬트리 진행도까지 함께 내보내기/가져오기에 포함됩니다.
       </p>
       <textarea
         className="min-h-48 rounded border border-slate-700 bg-slate-950 p-3 font-mono text-xs text-slate-200 outline-none focus:border-cyan-400"
