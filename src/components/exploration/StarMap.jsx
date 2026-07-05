@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
 import { formatGameDate } from "../../systems/gameClock";
@@ -11,6 +11,21 @@ const DANGER_TONES = {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
+}
+
+function useCoarsePointer() {
+  const [coarse, setCoarse] = useState(false);
+
+  useEffect(() => {
+    const query = window.matchMedia?.("(pointer: coarse)");
+    if (!query) return undefined;
+    const sync = () => setCoarse(query.matches);
+    sync();
+    query.addEventListener?.("change", sync);
+    return () => query.removeEventListener?.("change", sync);
+  }, []);
+
+  return coarse;
 }
 
 function dangerTone(danger) {
@@ -147,6 +162,7 @@ export default function StarMap({
   exploredCount,
   totalCount,
 }) {
+  const isMobileTouch = useCoarsePointer();
   const current = zones.find((zone) => zone.id === currentZoneId);
   const travelFrom = activeTravel ? zones.find((zone) => zone.id === activeTravel.fromZoneId) : null;
   const travelTo = activeTravel ? zones.find((zone) => zone.id === activeTravel.toZoneId) : null;
@@ -159,7 +175,12 @@ export default function StarMap({
 
   return (
     <div className="starmap-bg relative h-[22rem] w-full overflow-hidden rounded border border-slate-700/70 sm:h-[26rem] xl:h-[30rem]">
-      <Canvas dpr={[1, 2]} camera={{ position: [0, 5.4, 7.8], fov: 48 }} gl={{ antialias: true }}>
+      <Canvas
+        dpr={[1, 2]}
+        camera={{ position: [0, 5.4, 7.8], fov: 48 }}
+        gl={{ antialias: true }}
+        style={{ touchAction: isMobileTouch ? "pan-y" : "none" }}
+      >
         <ambientLight intensity={0.35} />
         <pointLight position={[4, 6, 4]} intensity={1.35} />
         <Stars radius={70} depth={35} count={1200} factor={2.2} fade speed={0.4} />
@@ -183,7 +204,15 @@ export default function StarMap({
             onSelect={onSelect}
           />
         ))}
-        <OrbitControls enablePan={false} minDistance={5.5} maxDistance={11} maxPolarAngle={Math.PI / 2.05} />
+        <OrbitControls
+          enabled={!isMobileTouch}
+          enablePan={false}
+          enableZoom={!isMobileTouch}
+          enableRotate={!isMobileTouch}
+          minDistance={5.5}
+          maxDistance={11}
+          maxPolarAngle={Math.PI / 2.05}
+        />
       </Canvas>
 
       <div className="pointer-events-none absolute left-3 top-3 rounded border border-slate-700/70 bg-slate-950/70 p-3 backdrop-blur">
@@ -194,6 +223,13 @@ export default function StarMap({
         </div>
         <div className="mt-1 text-[0.65rem] text-slate-400">{exploredCount}/{totalCount} discovered</div>
       </div>
+
+      {isMobileTouch && (
+        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[11rem] rounded border border-slate-700/70 bg-slate-950/75 px-3 py-2 backdrop-blur">
+          <div className="hud-label">모바일 스크롤 우선</div>
+          <div className="text-[0.65rem] text-slate-400">성계 선택은 라벨 탭, 회전은 PC에서 사용</div>
+        </div>
+      )}
 
       {activeTravel && (
         <div className="pointer-events-none absolute bottom-3 right-3 rounded border border-amber-300/40 bg-slate-950/80 px-3 py-2 text-right backdrop-blur">
