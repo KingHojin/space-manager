@@ -1,7 +1,7 @@
 import { AlertTriangle, Crosshair, Shield, Skull, Swords, Target, Zap } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import BattleScene from "../common/BattleScene";
-import { ActionCard, FeedList, GaugeBar, StatTile } from "../ui/VisualPrimitives";
+import { ActionCard, FeedList, StatTile } from "../ui/VisualPrimitives";
 import {
   COMBAT_TARGETS,
   calculateCombatPower,
@@ -11,12 +11,15 @@ import {
   resolveCombatRound,
 } from "../../systems/combatEngine";
 import { getAllZones } from "../../data/sectors";
+import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
+
+const DEFAULT_FEED = ["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."];
 
 const directives = [
   ["attack", "공격 집중", "⌖", "화력 우선"],
@@ -73,10 +76,8 @@ function TargetCard({ target, active, disabled, onSelect }) {
 }
 
 export default function Combat() {
-  const [feed, setFeed] = useState(["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."]);
-  const [combat, setCombat] = useState(null);
-  const [targetId, setTargetId] = useState("hull");
   const installedModules = useShipStore((state) => state.getInstalledModules());
+  const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
@@ -93,6 +94,14 @@ export default function Combat() {
   const cards = useInventoryStore((state) => state.cards);
   const activeCardIds = useInventoryStore((state) => state.activeCardIds);
   const addItem = useInventoryStore((state) => state.addItem);
+  const combat = useCombatStore((state) => state.combatByVesselId[activeVesselId] ?? null);
+  const feed = useCombatStore((state) => state.feedByVesselId[activeVesselId] ?? DEFAULT_FEED);
+  const targetId = useCombatStore((state) => state.targetByVesselId[activeVesselId] ?? "hull");
+  const startCombatRecord = useCombatStore((state) => state.startCombat);
+  const updateCombatRecord = useCombatStore((state) => state.updateCombat);
+  const resetCombatRecord = useCombatStore((state) => state.resetCombat);
+  const setTargetRecord = useCombatStore((state) => state.setTarget);
+  const addCombatFeed = useCombatStore((state) => state.addFeed);
   const activeCrew = crew.filter((member) => member.alive !== false);
   const fallenCrew = crew.filter((member) => member.alive === false);
   const activeCards = useMemo(() => cards.filter((card) => activeCardIds.includes(card.instanceId)), [cards, activeCardIds]);
@@ -104,7 +113,7 @@ export default function Combat() {
   const selectedTarget = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
 
   const pushFeed = (lines) => {
-    setFeed((current) => [...lines, ...current].slice(0, 14));
+    addCombatFeed({ vesselId: activeVesselId, lines });
     lines.forEach((line) => addLog(`전투: ${line}`));
   };
 
@@ -114,21 +123,21 @@ export default function Combat() {
     const danger = pendingCombatEncounter?.danger ?? maxDanger;
     const enemy = pickEnemyFleet(danger);
     const next = createCombatState(enemy);
-    setCombat(next);
-    setTargetId("hull");
+    startCombatRecord({ vesselId: activeVesselId, combat: next, targetId: "hull" });
     if (pendingCombatEncounter) {
       clearPendingCombatEncounter();
       pushFeed([`긴급 항해 교전 대응: ${pendingCombatEncounter.title}`, `${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "타겟 서브시스템과 전술 지시를 함께 선택하세요."]);
     } else {
       pushFeed([`${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "타겟 서브시스템과 전술 지시를 함께 선택하세요."]);
     }
+    return null;
   };
 
   const issueDirective = (directive) => {
     if (!combat || combat.status !== "engaged") return pushFeed([getCombatDirectiveResult(directive), travelLocked ? "항해 중이라 훈련 교전도 제한됩니다." : "교전이 없어 훈련 중계만 기록됩니다."]);
     if (activeCrew.length === 0) return pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
     const result = resolveCombatRound({ directive, combat, power, targetId });
-    setCombat(result.combat);
+    updateCombatRecord({ vesselId: activeVesselId, combat: result.combat });
     addResources(result.resourceChanges);
     if (result.loot) addItem(result.loot.itemId, result.loot.qty);
     const lead = activeCrew[Math.floor(Math.random() * activeCrew.length)];
@@ -145,13 +154,15 @@ export default function Combat() {
     }
     if (result.combat.status === "lost" && activeTravel) casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
     pushFeed([...result.logs, ...casualtyLogs]);
+    return null;
   };
 
   const resetCombat = () => {
-    setCombat(null);
-    setTargetId("hull");
+    resetCombatRecord({ vesselId: activeVesselId });
     pushFeed(["전투 브리핑을 초기화했습니다."]);
   };
+
+  const selectTarget = (nextTargetId) => setTargetRecord({ vesselId: activeVesselId, targetId: nextTargetId });
 
   const enemy = combat?.enemy;
   const enemyHull = enemy ? Math.round((enemy.hullNow / enemy.hull) * 100) : 0;
@@ -167,12 +178,12 @@ export default function Combat() {
         <div className="mt-4 grid gap-3 sm:grid-cols-[0.95fr_1.05fr]"><ThreatPoster enemy={enemy} pendingCombatEncounter={pendingCombatEncounter} combat={combat} travelLocked={travelLocked} /><div className="grid grid-cols-3 gap-2"><StatTile icon={Shield} label="선체" value={`${Math.round(resources.hull)}%`} /><StatTile icon={Zap} label="연료" value={`${Math.round(resources.fuel)}%`} /><StatTile icon={Skull} label="생존/전사" value={`${activeCrew.length}/${fallenCrew.length}`} /></div></div>
         {activeTravel && <div className={`mt-4 rounded-2xl border p-3 text-sm ${pendingCombatEncounter || combatEngaged ? "border-red-400/40 bg-red-400/10 text-red-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}><div className="flex items-center gap-2 font-bold"><AlertTriangle size={16} />{pendingCombatEncounter || combatEngaged ? "항해 중 긴급 교전" : "항해 작전 진행 중"}</div></div>}
         <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
-          <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combat?.status === "engaged" || pendingCombatEncounter ? "hud-chip-warn" : ""}`}>{combat?.status ?? (pendingCombatEncounter ? "urgent" : travelLocked ? "locked" : "standby")}</span></div>
-          {enemy && <div className="mt-4 space-y-3"><GaugeBar label="적 방어막" value={enemyShield} /><GaugeBar label="적 선체" value={enemyHull} /><div className="flex flex-wrap gap-1.5 text-xs"><span className="mission-reward-icon">₢ {enemy.reward}</span><span className="mission-reward-icon">PWR {enemy.power}</span><span className="mission-reward-icon">전리품 {enemy.lootItemId ?? "-"}</span><span className="mission-reward-icon">타겟 {selectedTarget.label}</span></div></div>}
+          <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combatEngaged ? "hud-chip-warn" : ""}`}>{combat?.status ?? "대기"}</span></div>
+          {enemy && <div className="mt-3 grid grid-cols-2 gap-2"><StatTile icon={Shield} label="적 선체" value={`${enemyHull}%`} /><StatTile icon={Zap} label="적 방어막" value={`${enemyShield}%`} /></div>}
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
           {combat && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
-        <section className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-3"><div className="section-title"><Target size={16} />타겟 서브시스템</div><div className="mt-3 grid grid-cols-2 gap-2">{Object.values(COMBAT_TARGETS).map((target) => <TargetCard key={target.id} target={target} active={target.id === targetId} disabled={!combatEngaged} onSelect={setTargetId} />)}</div></section>
+        <section className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-3"><div className="section-title"><Target size={16} />타겟 서브시스템</div><div className="mt-3 grid grid-cols-2 gap-2">{Object.values(COMBAT_TARGETS).map((target) => <TargetCard key={target.id} target={target} active={target.id === targetId} disabled={!combatEngaged} onSelect={selectTarget} />)}</div></section>
         <div className="mt-4 grid grid-cols-2 gap-2">{directives.map(([id, label, icon, desc]) => <ActionCard key={id} icon={icon} title={label} desc={`${desc} · ${selectedTarget.label} 조준`} disabled={!canIssueDirective} onClick={() => issueDirective(id)} />)}</div>
       </section>
       <section>
