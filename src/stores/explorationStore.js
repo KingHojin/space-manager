@@ -21,6 +21,10 @@ export const useExplorationStore = create(
           selectedZoneId: plan.toZoneId,
           travelLog: [`항로 설정: ${plan.distanceLy} LY · ${plan.duration}분 소요`],
         }),
+      registerTravelFuelTick: (currentMinute) =>
+        set((state) => ({
+          activeTravel: state.activeTravel ? { ...state.activeTravel, lastFuelAt: currentMinute } : null,
+        })),
       registerTravelRoll: (summary, currentMinute, happened = false) =>
         set((state) => ({
           activeTravel: state.activeTravel
