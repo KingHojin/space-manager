@@ -1,4 +1,4 @@
-import { AlertTriangle, Briefcase, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
+import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useGameStore } from "../../stores/gameStore";
@@ -6,6 +6,7 @@ import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
+import { applyMissionRewards } from "../../systems/missionRewards";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
 import StarMap from "../exploration/StarMap";
 
@@ -38,10 +39,11 @@ function EncounterCard({ encounter, onResolve }) {
   );
 }
 
-function ActiveMissionPanel({ mission, currentNodeId, travel, onPlan }) {
+function ActiveMissionPanel({ mission, currentNodeId, travel, pendingEncounter, onPlan, onComplete }) {
   if (!mission) return null;
   const arrived = currentNodeId === mission.destinationNodeId;
   const travelingThisMission = travel?.missionId === mission.id;
+  const canComplete = arrived && !travel && !pendingEncounter;
   return (
     <section className="rounded border border-cyan-300/35 bg-cyan-300/10 p-4">
       <div className="flex items-start justify-between gap-3">
@@ -50,13 +52,15 @@ function ActiveMissionPanel({ mission, currentNodeId, travel, onPlan }) {
           <h3 className="mt-3 text-lg font-black text-slate-50">{mission.title}</h3>
           <p className="mt-2 text-sm leading-6 text-slate-300">{mission.summary}</p>
         </div>
-        <span className="hud-chip hud-chip-accent">{arrived ? "목적지" : travelingThisMission ? "항해 중" : "대기"}</span>
+        <span className="hud-chip hud-chip-accent">{canComplete ? "완료 가능" : arrived ? "조우 처리" : travelingThisMission ? "항해 중" : "대기"}</span>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
         <Info label="목적지" value={mission.destinationName} />
         <Info label="위험" value={mission.riskLabel} />
       </div>
-      {arrived ? <p className="mt-3 text-sm leading-6 text-cyan-100">목적지에 도착했습니다. PR D에서 조우 처리 후 완료/보상 지급을 연결합니다.</p> : <button className="primary-button mt-4 w-full" disabled={Boolean(travel)} onClick={() => onPlan(mission)}><MapPin size={16} />임무 목적지 항로 결재</button>}
+      {canComplete && <button className="primary-button mt-4 w-full" onClick={() => onComplete(mission)}><CheckCircle2 size={16} />임무 완료하고 보상 수령</button>}
+      {arrived && pendingEncounter && <p className="mt-3 text-sm leading-6 text-amber-100">목적지 조우를 먼저 결재해야 임무를 완료할 수 있습니다.</p>}
+      {!arrived && <button className="primary-button mt-4 w-full" disabled={Boolean(travel)} onClick={() => onPlan(mission)}><MapPin size={16} />임무 목적지 항로 결재</button>}
     </section>
   );
 }
@@ -81,6 +85,7 @@ export default function Exploration() {
   const refuel = useNavStore((state) => state.refuel);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
+  const completeMission = useMissionStore((state) => state.completeMission);
 
   const nodes = sector.nodes ?? [];
   const zones = nodes.map(nodeToZone);
@@ -117,6 +122,17 @@ export default function Exploration() {
     return addLog(`임무 항로 결재: ${mission.title}. 목적지 ${mission.destinationName}, 예상 ${formatMinutes(result.travel.duration)}.`);
   };
 
+  const handleCompleteMission = (mission) => {
+    if (currentNodeId !== mission.destinationNodeId) return addLog("임무 완료 실패: 목적지에 도착하지 않았습니다.");
+    if (pendingEncounter) return addLog("임무 완료 실패: 목적지 조우를 먼저 결재해야 합니다.");
+    const result = completeMission({ vesselId: activeVesselId, currentMinute });
+    if (!result.ok) return addLog(`임무 완료 실패: ${result.reason}`);
+    const payout = applyMissionRewards(result.reward);
+    addLog(`임무 완료: ${result.mission.title}.`);
+    payout.logs.forEach((message) => addLog(`임무 보상: ${message}`));
+    return null;
+  };
+
   const handleResolve = (optionId) => {
     applyNavigationEncounter(optionId, currentMinute);
   };
@@ -149,7 +165,7 @@ export default function Exploration() {
 
       <aside className="space-y-4">
         <EncounterCard encounter={pendingEncounter} onResolve={handleResolve} />
-        <ActiveMissionPanel mission={activeMission} currentNodeId={currentNodeId} travel={travel} onPlan={handlePlanMission} />
+        <ActiveMissionPanel mission={activeMission} currentNodeId={currentNodeId} travel={travel} pendingEncounter={pendingEncounter} onPlan={handlePlanMission} onComplete={handleCompleteMission} />
 
         {travel && (
           <section>
