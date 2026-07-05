@@ -21,16 +21,6 @@ export const formatGameDate = (totalMinutes) => {
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
 
-function applyCrewRisk(risk) {
-  if (!risk) return;
-  const crew = useCrewStore.getState().crew.filter((member) => member.alive);
-  if (crew.length === 0) return;
-  const target = crew[Math.floor(Math.random() * crew.length)];
-  const injury = risk === "major" ? "중상" : "경상";
-  useCrewStore.getState().applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
-  useGameStore.getState().addLog(`승무원 피해: ${target.name} ${injury}.`);
-}
-
 function consumeTravelFuel(activeTravel, currentMinute) {
   const lastFuelAt = activeTravel.lastFuelAt ?? activeTravel.startedAt;
   const elapsed = Math.max(0, currentMinute - lastFuelAt);
@@ -61,38 +51,23 @@ function processTravel(currentMinute) {
     let happened = false;
 
     if (Math.random() <= chance) {
-      const outcome = rollTravelEncounter(activeTravel, currentMinute);
-      if (outcome.resources) useGameStore.getState().addResources(outcome.resources);
-      if (outcome.dust) useInventoryStore.getState().addDust(outcome.dust);
-      if (outcome.item) useInventoryStore.getState().addItem(outcome.item.id, outcome.item.qty ?? 1);
-      if (outcome.reveal) useExplorationStore.getState().revealRandomZone();
-      if (outcome.crewRisk) applyCrewRisk(outcome.crewRisk);
-      summary = `항해 인카운터: ${outcome.title} — ${outcome.message}`;
-
-      if (outcome.combatHint) {
-        const destination = getZoneById(activeTravel.toZoneId);
-        useExplorationStore.getState().setPendingCombatEncounter({
-          id: `travel-combat-${currentMinute}`,
-          createdAt: currentMinute,
-          title: outcome.title,
-          message: outcome.message,
-          danger: destination?.danger ?? 2,
-          originZoneId: activeTravel.fromZoneId,
-          targetZoneId: activeTravel.toZoneId,
-        });
-        useGameStore.getState().setPaused(true);
-        summary += " 긴급 교전 상황입니다. 전투 탭에서 대응 지시가 필요합니다.";
+      if (exploration.pendingTravelEvent) {
+        summary = `미해결 항해 이벤트 지속: ${exploration.pendingTravelEvent.title}. 항해는 계속 진행 중입니다.`;
+      } else {
+        const eventCard = rollTravelEncounter(activeTravel, currentMinute);
+        useExplorationStore.getState().setPendingTravelEvent(eventCard);
+        summary = `항해 이벤트 카드: ${eventCard.title} — ${eventCard.message}`;
+        useGameStore.getState().addLog(summary);
+        happened = true;
       }
-
-      useGameStore.getState().addLog(summary);
-      happened = true;
     }
 
     useExplorationStore.getState().registerTravelRoll(summary, currentMinute, happened);
   }
 
-  if (currentMinute >= activeTravel.completeAt) {
-    const destination = getZoneById(activeTravel.toZoneId);
+  const latestTravel = useExplorationStore.getState().activeTravel;
+  if (latestTravel && currentMinute >= latestTravel.completeAt) {
+    const destination = getZoneById(latestTravel.toZoneId);
     useExplorationStore.getState().completeTravel();
     useGameStore.getState().addLog(`${destination?.name ?? "목적지"} 도착. 항해 완료.`);
   }
