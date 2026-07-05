@@ -112,8 +112,6 @@ Behavior:
 - failing or abandoning a mission clears its pending encounter
 - mission summary now includes pending encounter count
 
-PR C still does not apply reward/resource outputs. It only stores the resolved result so later PRs can apply it through existing systems.
-
 ## PR D implemented
 
 Updated `src/components/panels/Exploration.jsx` to connect the Phase 15 card flow.
@@ -127,23 +125,36 @@ Behavior:
 - active mission completion is blocked while a mission card is pending
 - route planning panel is hidden while a mission card is pending
 
-PR D still does not apply option outputs. Resource deltas, reward previews, linked tactical states, and crew-risk outputs are logged as recorded but are not applied yet.
+## PR E implemented
+
+Updated `src/components/panels/Exploration.jsx` so mission card option outputs now apply through existing systems.
+
+Applied outputs:
+
+- `resourceDelta` uses `gameStore.addResources`
+- `reward` uses existing `applyMissionRewards`
+- `log` outputs are added to the game log
+- `crewRisk` rolls its configured chance and uses existing `crewStore.applyCombatCasualty`
+
+Not connected yet:
+
+- linked tactical/combat outputs are still logged only
 
 ## Scope
 
-Current Phase 15 work is foundation, UI, state, and Exploration display flow.
+Current Phase 15 work is foundation, UI, state, Exploration display flow, and non-combat option output application.
 
-- Mission card output application is not connected yet.
-- Payout from card options is not applied yet.
+- Linked tactical outcomes are not connected yet.
 - Existing formulas are not changed.
+- Card option outputs reuse existing resource, reward, and crew injury systems.
 
 ## Next PRs
 
 Recommended sequence:
 
-1. PR E: apply option outputs through existing reward/resource/log systems.
-2. PR F: connect linked tactical outcomes where appropriate.
-3. PR G: optionally trigger enRoute mission cards during travel.
+1. PR F: connect linked tactical outcomes where appropriate.
+2. PR G: optionally trigger enRoute mission cards during travel.
+3. PR H: add more mission card templates for content density.
 
 ## Local check
 
@@ -163,4 +174,7 @@ Manual checks:
 4. Confirm mission completion is blocked while the card is pending.
 5. Select a card option.
 6. Confirm the card disappears and the mission can be completed.
-7. Confirm option outputs are only logged/recorded and not applied yet.
+7. Confirm resource changes are applied.
+8. Confirm option rewards are paid through the existing mission reward system.
+9. Confirm crew-risk options can injure a living crew member or log a risk dodge.
+10. Confirm tactical/combat outputs are logged only for now.

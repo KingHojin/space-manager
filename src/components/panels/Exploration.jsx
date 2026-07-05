@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
+import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
@@ -21,6 +22,21 @@ function dangerChipClass(danger) {
 
 function Info({ label, value, tone = "" }) {
   return <div className="rounded border border-slate-700/70 bg-slate-950/70 px-3 py-2"><div className="hud-label">{label}</div><div className={`hud-value mt-1 ${tone}`}>{value}</div></div>;
+}
+
+function hasEntries(record = {}) {
+  return Object.keys(record ?? {}).length > 0;
+}
+
+function formatSigned(value) {
+  if (typeof value !== "number") return value;
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
+function injuryFromCrewRisk(crewRisk) {
+  if (!crewRisk) return "경상";
+  if (crewRisk.severity === "critical" || crewRisk.severity === "serious") return "중상";
+  return "경상";
 }
 
 function EncounterCard({ encounter, onResolve }) {
@@ -69,7 +85,10 @@ function ActiveMissionPanel({ mission, currentNodeId, travel, pendingEncounter, 
 export default function Exploration() {
   const currentMinute = useGameStore((state) => state.currentMinute);
   const setPaused = useGameStore((state) => state.setPaused);
+  const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
+  const crew = useCrewStore((state) => state.crew);
+  const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const sector = useNavStore((state) => state.sector);
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
@@ -145,14 +164,34 @@ export default function Exploration() {
     return null;
   };
 
+  const applyCrewRisk = (crewRisk) => {
+    if (!crewRisk) return;
+    const chance = Math.max(0, Math.min(1, crewRisk.chance ?? 0));
+    if (chance <= 0) return;
+    const livingCrew = crew.filter((member) => member.alive !== false);
+    if (livingCrew.length === 0) return addLog("임무 조우 승무원 위험: 적용 가능한 승무원이 없습니다.");
+    if (Math.random() >= chance) return addLog(`임무 조우 승무원 위험 회피: 위험률 ${Math.round(chance * 100)}%.`);
+    const target = livingCrew[Math.floor(Math.random() * livingCrew.length)];
+    const injury = injuryFromCrewRisk(crewRisk);
+    applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
+    return addLog(`임무 조우 승무원 피해: ${target.name} ${injury}. 위험률 ${Math.round(chance * 100)}%.`);
+  };
+
   const handleResolve = (optionId) => applyNavigationEncounter(optionId, currentMinute);
   const handleResolveMissionEncounter = (optionId) => {
     const result = resolveMissionEncounter({ vesselId: activeVesselId, optionId, currentMinute });
     if (!result.ok) return addLog(`임무 조우 선택 실패: ${result.reason}`);
     addLog(`임무 조우 선택: ${result.encounter.title} / ${result.option.label}.`);
     result.logs.forEach((message) => addLog(`임무 조우: ${message}`));
-    if (Object.keys(result.resourceDelta ?? {}).length > 0) addLog("임무 조우 결과가 기록되었습니다. 실제 자원 반영은 다음 단계에서 처리됩니다.");
-    if (Object.keys(result.reward ?? {}).length > 0) addLog("임무 조우 보상 후보가 기록되었습니다. 실제 지급은 다음 단계에서 처리됩니다.");
+    if (hasEntries(result.resourceDelta)) {
+      addResources(result.resourceDelta);
+      Object.entries(result.resourceDelta).forEach(([key, value]) => addLog(`임무 조우 자원 변화: ${key} ${formatSigned(value)}.`));
+    }
+    if (hasEntries(result.reward)) {
+      const payout = applyMissionRewards(result.reward);
+      payout.logs.forEach((message) => addLog(`임무 조우 보상: ${message}`));
+    }
+    applyCrewRisk(result.crewRisk);
     if (result.combat) addLog("임무 조우에서 추가 전술 상황이 기록되었습니다. 실제 전투 연결은 다음 단계에서 처리됩니다.");
     return null;
   };
