@@ -5,6 +5,13 @@ const moraleScore = {
   최상: 8,
 };
 
+export const COMBAT_TARGETS = Object.freeze({
+  hull: { id: "hull", label: "선체", icon: "◆", desc: "격침을 노리는 표준 화력 집중", damage: 1.08, shieldRatio: 0.55, pressure: 1.08 },
+  shield: { id: "shield", label: "방어막", icon: "◈", desc: "실드를 먼저 벗겨 다음 타격을 준비", damage: 0.96, shieldRatio: 0.82, pressure: 0.98 },
+  weapons: { id: "weapons", label: "무장", icon: "⌖", desc: "적 반격 화력을 낮추는 교란 사격", damage: 0.88, shieldRatio: 0.62, pressure: 0.78 },
+  engine: { id: "engine", label: "엔진", icon: "↯", desc: "도주·추격 우위를 노리는 기동 저지", damage: 0.92, shieldRatio: 0.58, pressure: 0.86 },
+});
+
 export const ENEMY_FLEETS = [
   { id: "scrap-raider", name: "폐품 약탈선", hull: 44, shield: 22, power: 40, reward: 140, risk: 1, lootItemId: "machine-fang", lootItemQty: 1 },
   { id: "raider-wing", name: "약탈자 편대", hull: 62, shield: 34, power: 58, reward: 260, risk: 2, lootItemId: "pirate-beacon", lootItemQty: 1 },
@@ -57,6 +64,7 @@ export function createCombatState(enemyTemplate) {
     enemy: { ...enemyTemplate, hullNow: enemyTemplate.hull, shieldNow: enemyTemplate.shield },
     status: "engaged",
     lastDirective: "standby",
+    lastTarget: "hull",
     lastDamage: 0,
     lastTaken: 0,
   };
@@ -66,10 +74,11 @@ function roll(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
-export function resolveCombatRound({ directive, combat, power }) {
+export function resolveCombatRound({ directive, combat, power, targetId = "hull" }) {
   if (!combat || combat.status !== "engaged") return { combat, logs: ["교전 대상이 없습니다."], resourceChanges: {}, loot: null };
 
-  const next = { ...combat, enemy: { ...combat.enemy }, lastDirective: directive };
+  const target = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
+  const next = { ...combat, enemy: { ...combat.enemy }, lastDirective: directive, lastTarget: target.id };
   const directiveBonus = {
     attack: { damage: 1.35, taken: 1.12, label: "공격 집중" },
     evade: { damage: 0.78, taken: 0.58, label: "회피 기동" },
@@ -78,14 +87,15 @@ export function resolveCombatRound({ directive, combat, power }) {
     skill: { damage: 1.12, taken: 0.8, label: "카드 발동" },
   }[directive] ?? { damage: 1, taken: 1, label: "표준 교전" };
 
-  const baseDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage));
-  const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * 0.65));
+  const baseDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage * target.damage));
+  const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * target.shieldRatio));
   const hullDamage = Math.max(0, baseDamage - shieldDamage);
   next.enemy.shieldNow = Math.max(0, next.enemy.shieldNow - shieldDamage);
   next.enemy.hullNow = Math.max(0, next.enemy.hullNow - hullDamage);
   next.lastDamage = shieldDamage + hullDamage;
 
-  const enemyPressure = Math.max(2, Math.round((next.enemy.power / 12 + roll(2, 10)) * directiveBonus.taken));
+  const targetPressure = target.pressure ?? 1;
+  const enemyPressure = Math.max(2, Math.round((next.enemy.power / 12 + roll(2, 10)) * directiveBonus.taken * targetPressure));
   const resourceChanges = {
     hull: -Math.max(0, Math.round(enemyPressure * 0.55)),
     oxygen: directive === "shield" ? -2 : 0,
@@ -94,9 +104,14 @@ export function resolveCombatRound({ directive, combat, power }) {
   next.lastTaken = Math.abs(resourceChanges.hull);
 
   const logs = [
-    `R${combat.round} ${directiveBonus.label}: 적 방어막 ${shieldDamage}, 선체 ${hullDamage} 피해.`,
+    `R${combat.round} ${directiveBonus.label} / ${target.label} 조준: 적 방어막 ${shieldDamage}, 선체 ${hullDamage} 피해.`,
     `적 반격으로 선체 ${Math.abs(resourceChanges.hull)}%, 연료 ${Math.abs(resourceChanges.fuel)} 소모.`,
   ];
+
+  if (target.id === "weapons") logs.push("무장 교란 사격으로 이번 교전 반격 압력을 낮췄습니다.");
+  if (target.id === "engine") logs.push("엔진 교란으로 적의 추격 각도를 흐트러뜨렸습니다.");
+  if (target.id === "shield") logs.push("방어막 집중 타격으로 실드 소모를 우선했습니다.");
+  if (target.id === "hull") logs.push("선체 타격으로 격침 속도를 우선했습니다.");
 
   let loot = null;
   if (next.enemy.hullNow <= 0) {
@@ -107,9 +122,9 @@ export function resolveCombatRound({ directive, combat, power }) {
       loot = { itemId: next.enemy.lootItemId, qty: next.enemy.lootItemQty ?? 1 };
       logs.push(`전리품 확보: ${next.enemy.lootItemId} x${next.enemy.lootItemQty ?? 1}.`);
     }
-  } else if (directive === "retreat" && Math.random() > 0.35) {
+  } else if (directive === "retreat" && Math.random() > (target.id === "engine" ? 0.22 : 0.35)) {
     next.status = "retreated";
-    logs.unshift("도주 항로 확보. 교전을 이탈했습니다.");
+    logs.unshift(target.id === "engine" ? "엔진 교란 후 도주 항로 확보. 교전을 이탈했습니다." : "도주 항로 확보. 교전을 이탈했습니다.");
   } else {
     next.round += 1;
   }
