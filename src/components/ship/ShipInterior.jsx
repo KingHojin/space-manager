@@ -20,6 +20,14 @@ const ANIM_STATE_META = {
   down: { label: "쓰러짐", symbol: "×", chipTone: "hud-chip-danger" },
 };
 
+const IDLE_ACTION_META = {
+  stand: { label: "대기", symbol: "·" },
+  look: { label: "두리번", symbol: "?" },
+  stretch: { label: "기지개", symbol: "↕" },
+  coffee: { label: "커피", symbol: "☕" },
+  chat: { label: "잡담", symbol: "…" },
+};
+
 function markerTone(priority) {
   if (priority === "emergency") return "border-red-300 bg-red-300 text-red-950";
   if (priority === "high") return "border-amber-200 bg-amber-200 text-amber-950";
@@ -27,7 +35,8 @@ function markerTone(priority) {
   return "border-cyan-200 bg-cyan-200 text-cyan-950";
 }
 
-function animMeta(animState) {
+function animMeta(animState, idleAction = "stand") {
+  if (animState === "idle") return { ...ANIM_STATE_META.idle, ...(IDLE_ACTION_META[idleAction] ?? IDLE_ACTION_META.stand) };
   return ANIM_STATE_META[animState] ?? ANIM_STATE_META.idle;
 }
 
@@ -82,6 +91,28 @@ function useShipMapSize() {
   return [ref, size];
 }
 
+function useElementInView(ref) {
+  const [inView, setInView] = useState(true);
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || typeof IntersectionObserver === "undefined") return undefined;
+    const observer = new IntersectionObserver(([entry]) => setInView(Boolean(entry?.isIntersecting)), { threshold: 0.05 });
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [ref]);
+  return inView;
+}
+
+function usePageVisible() {
+  const [visible, setVisible] = useState(() => (typeof document === "undefined" ? true : document.visibilityState !== "hidden"));
+  useEffect(() => {
+    const update = () => setVisible(document.visibilityState !== "hidden");
+    document.addEventListener("visibilitychange", update);
+    return () => document.removeEventListener("visibilitychange", update);
+  }, []);
+  return visible;
+}
+
 function useCrewMotionFrame(isPaused) {
   const tick = useCrewMotionStore((state) => state.tick);
   useEffect(() => {
@@ -91,7 +122,7 @@ function useCrewMotionFrame(isPaused) {
     const frame = (now) => {
       const deltaMs = Math.min(80, now - last);
       last = now;
-      tick(deltaMs);
+      tick(deltaMs, now);
       frameId = requestAnimationFrame(frame);
     };
     frameId = requestAnimationFrame(frame);
@@ -119,7 +150,9 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
   const motionByCrewId = useCrewMotionStore((state) => state.motionByCrewId);
   const syncTargets = useCrewMotionStore((state) => state.syncTargets);
   const [mapRef, mapSize] = useShipMapSize();
-  useCrewMotionFrame(isPaused);
+  const mapInView = useElementInView(mapRef);
+  const pageVisible = usePageVisible();
+  useCrewMotionFrame(isPaused || !mapInView || !pageVisible);
 
   const activityByMember = useMemo(() => new Map(activities.map((activity) => [activity.memberId, activity])), [activities]);
   const crisisById = useMemo(() => new Map(activeCrises.map((crisis) => [crisis.id, crisis])), [activeCrises]);
@@ -141,7 +174,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
     <section className="overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew B</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew C</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
       <div ref={mapRef} className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
         <div className="absolute inset-x-[8%] top-[6%] h-[90%] rounded-[42%] border border-cyan-300/20 bg-gradient-to-b from-slate-900/80 to-slate-950/90" />
@@ -177,11 +210,12 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const isJobOwner = jobOwnerIds.has(member.id) && activity?.intent === "room-job";
           const isCrisisResponder = activity?.intent === "crisis-response";
           const animState = motion?.animState ?? deriveTargetAnimState(activity, member);
-          const meta = animMeta(animState);
+          const idleAction = motion?.idleAction ?? "stand";
+          const meta = animMeta(animState, idleAction);
           const moving = animState === "walk";
           return (
             <button key={member.id} className="absolute left-0 top-0 z-20" style={{ transform: crewMarkerTransform(point), willChange: moving ? "transform" : "auto" }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"} · ${meta.label}`}>
-              <span className={`crew-marker-core crew-marker-${animState} relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>
+              <span className={`crew-marker-core crew-marker-${animState} crew-idle-${idleAction} relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>
                 <span className={`crew-marker-avatar ${motion?.facing === "left" ? "crew-marker-facing-left" : ""}`}>{member.name.slice(0, 1)}</span>
                 <span className={`crew-marker-state-badge crew-marker-state-${animState}`}>{meta.symbol}</span>
                 <span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-slate-950 ${activity?.priority === "emergency" ? "animate-pulse bg-red-400" : activity?.priority === "high" ? "bg-amber-300" : "bg-emerald-300"}`} />
@@ -191,7 +225,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           );
         })}
       </div>
-      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); const motion = motionByCrewId[member.id]; const animState = motion?.animState ?? deriveTargetAnimState(activity, member); const meta = animMeta(animState); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${chipToneForAnim(animState, priority)}`}>{meta.label}</span></button>; })}</div>}
+      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); const motion = motionByCrewId[member.id]; const animState = motion?.animState ?? deriveTargetAnimState(activity, member); const idleAction = motion?.idleAction ?? "stand"; const meta = animMeta(animState, idleAction); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${chipToneForAnim(animState, priority)}`}>{meta.label}</span></button>; })}</div>}
     </section>
   );
 }
