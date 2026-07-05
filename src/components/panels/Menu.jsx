@@ -153,7 +153,12 @@ export default function Menu({ onNavigate, onOpenModal }) {
             const Icon = menu.icon;
             const badge = menu.id === "inventory" ? itemCount : menu.id === "cards" ? cards.length : menu.id === "log" ? logs.length : null;
             return (
-              <button key={menu.id} className="dock-button h-14 justify-between px-3" onClick={() => onOpenModal?.(menu.id)}>
+              <button
+                key={menu.id}
+                className="dock-button justify-between px-3"
+                style={{ height: "3.5rem" }}
+                onClick={() => onOpenModal?.(menu.id)}
+              >
                 <span className="flex min-w-0 items-center gap-2">
                   <Icon size={16} />
                   <span className="truncate">{menu.label}</span>
