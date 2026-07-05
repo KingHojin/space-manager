@@ -56,19 +56,26 @@ Implemented:
 
 Next refinements:
 - Let AI consume unassigned ship jobs directly
-- Add room positions once Phase 4 ship interior exists
 - Add policy overrides in Phase 5
 
 ## Phase 4 — Ship Interior
+Status: base implementation complete
+
 Goal: represent the ship as a small operating space with rooms and crew locations.
 
-Target systems:
-- Bridge
-- Engine room
-- Medbay
-- Living quarters
-- Lab
-- Cargo bay
+Implemented:
+- 2D top-down ship interior view
+- Bridge, operations room, medbay, living quarters, engine room, and cargo room
+- Animated crew markers that move between rooms when AI activity changes
+- Room highlighting when crew members are active inside
+- Priority-colored crew markers
+- Crew panel integration
+
+Next refinements:
+- Add actual room-based job slots
+- Add travel paths and corridor routing
+- Add room damage / fire / maintenance overlays
+- Add compact command-center version
 
 ## Phase 5 — Policy System
 Goal: the player commands by policy, not by clicking every small action.
