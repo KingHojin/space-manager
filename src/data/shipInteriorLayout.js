@@ -1,4 +1,4 @@
-import { ROOMS, ROUTES } from "./shipRooms";
+import { DISPLAY_ROOMS, ROOMS, ROUTES } from "./shipRooms";
 
 export const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
 
@@ -35,6 +35,11 @@ export function roomForCrewActivity(member, activity) {
 
 export function roomCenter(roomId) {
   const room = ROOMS.find((entry) => entry.id === roomId) ?? ROOMS[0];
+  return { x: room.left + room.width / 2, y: room.top + room.height / 2 };
+}
+
+export function displayRoomCenter(roomId) {
+  const room = DISPLAY_ROOMS.find((entry) => entry.id === roomId) ?? ROOMS[0];
   return { x: room.left + room.width / 2, y: room.top + room.height / 2 };
 }
 
