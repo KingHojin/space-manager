@@ -1,5 +1,5 @@
 import { Crosshair } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { getCombatDirectiveResult, calculateCombatPower } from "../../systems/combatEngine";
 import { useCrewStore } from "../../stores/crewStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -17,7 +17,12 @@ export default function Combat() {
   const [feed, setFeed] = useState(["현재 교전 없음. 훈련 시뮬레이션으로 지시 체계를 점검할 수 있습니다."]);
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const crew = useCrewStore((state) => state.crew);
-  const activeCards = useInventoryStore((state) => state.cards.filter((card) => state.activeCardIds.includes(card.instanceId)));
+  const cards = useInventoryStore((state) => state.cards);
+  const activeCardIds = useInventoryStore((state) => state.activeCardIds);
+  const activeCards = useMemo(
+    () => cards.filter((card) => activeCardIds.includes(card.instanceId)),
+    [cards, activeCardIds],
+  );
   const power = calculateCombatPower({ modules: installedModules, crew, activeCards });
 
   const issueDirective = (directive) => {

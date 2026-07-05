@@ -22,8 +22,8 @@ export default function StatsModal() {
         <div className="mt-3 space-y-2">
           {Object.entries(totals).map(([key, value]) => (
             <div key={key} className="flex justify-between border-b border-slate-800 pb-2 text-sm">
-              <span className="text-slate-400">{statLabel[key]}</span>
-              <span className="font-mono text-slate-100">{value}</span>
+              <span className="hud-label">{statLabel[key]}</span>
+              <span className="hud-value font-mono">{value}</span>
             </div>
           ))}
         </div>

@@ -6,9 +6,11 @@ export const useExplorationStore = create(
   persist(
     (set) => ({
       currentZoneId: "anchor-station",
+      selectedZoneId: null,
       discoveredZoneIds: ["anchor-station", "blue-drift"],
       scannedZoneIds: ["anchor-station"],
       route: ["anchor-station"],
+      selectZone: (zoneId) => set({ selectedZoneId: zoneId }),
       moveToZone: (zoneId) =>
         set((state) => ({
           currentZoneId: zoneId,

@@ -49,22 +49,24 @@ export default function App() {
   const ModalContent = modal?.component;
 
   return (
-    <div className="flex min-h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
       <Header />
-      <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] lg:grid-cols-[14rem_minmax(0,1fr)] lg:grid-rows-1">
-        <Sidebar activePanel={activePanel} onChange={setActivePanel} />
-        <main className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
+        <div className="hidden lg:block">
+          <Sidebar activePanel={activePanel} onChange={setActivePanel} onOpenModal={setActiveModal} />
+        </div>
+        <main className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
           <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
             <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
             <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
           </div>
           <div className="min-h-0 overflow-auto p-3 sm:p-4">
-            <Panel />
+            <Panel onNavigate={setActivePanel} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
         </main>
       </div>
-      <BottomDock onOpen={setActiveModal} />
+      <BottomDock activePanel={activePanel} onChangePanel={setActivePanel} onOpenModal={setActiveModal} />
       {modal && (
         <OverlayModal title={modal.title} onClose={() => setActiveModal(null)}>
           <ModalContent />

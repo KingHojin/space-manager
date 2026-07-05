@@ -21,11 +21,17 @@ export default function Hunting() {
         <tbody>
           {creatures.map((creature) => (
             <tr key={creature.id}>
-              <td>{creature.name}</td>
-              <td>{creature.danger}</td>
+              <td className="font-semibold text-slate-100">{creature.name}</td>
+              <td>
+                <span className={`hud-chip ${creature.danger >= 5 ? "hud-chip-danger" : creature.danger >= 3 ? "hud-chip-warn" : ""}`}>
+                  위험 {creature.danger}
+                </span>
+              </td>
               <td>{creature.weakness}</td>
               <td>{creature.reward}</td>
-              <td>정찰 필요</td>
+              <td>
+                <span className="hud-chip">정찰 필요</span>
+              </td>
             </tr>
           ))}
         </tbody>
