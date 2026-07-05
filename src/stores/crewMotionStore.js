@@ -24,6 +24,30 @@ const ROOM_IDLE_ACTIONS = {
   cargo: ["stand", "look", "stretch"],
 };
 
+const ROOM_JOB_ANIMATION_INTENT = {
+  bridge: "operate_console",
+  ops: "operate_console",
+  medbay: "medical_treat",
+  living: "tidy_living",
+  engineering: "repair_engine",
+  cargo: "sort_cargo",
+};
+
+const INTENT_ANIMATION = {
+  combat: "combat_gunnery",
+  security: "security_watch",
+  engineering: "operate_engineering",
+  repair: "repair_hull",
+  navigation: "operate_console",
+  training: "training_drill",
+  medical: "medical_treat",
+  "medical-care": "medical_treat",
+  rest: "rest_sleep",
+  idle: "idle_life",
+  inactive: "down_inactive",
+  "crisis-response": "crisis_response",
+};
+
 const PERIODIC_BARK_CHANCE = {
   [BARK_TRIGGERS.onIdle]: 0.16,
   [BARK_TRIGGERS.onChat]: 0.42,
@@ -148,8 +172,26 @@ function deriveTargetAnimState(activity, member) {
   return "idle";
 }
 
+function deriveAnimationIntent(activity, member, animState = deriveTargetAnimState(activity, member)) {
+  if (animState === "down") return member?.alive === false ? "down_dead" : "down_injured";
+  if (animState === "walk") return "walk";
+  if (animState === "rest") return "rest_sleep";
+  if (animState === "treat") return "medical_treat";
+  if (animState === "panic") return activity?.intent === "crisis-response" ? "crisis_response" : "combat_alert";
+  if (activity?.intent === "room-job") return ROOM_JOB_ANIMATION_INTENT[activity.roomId] ?? "room_work";
+  if (activity?.intent === "idle") {
+    if (/식사/.test(activity?.action ?? "")) return "idle_eat";
+    if (/대화/.test(activity?.action ?? "")) return "idle_chat";
+    if (/정리|점검|순찰/.test(activity?.action ?? "")) return "idle_chores";
+    return "idle_life";
+  }
+  return INTENT_ANIMATION[activity?.intent] ?? animState;
+}
+
 function createMotionFromTarget(target) {
   const nowMs = performance.now();
+  const targetAnimState = target.animState ?? "idle";
+  const targetAnimationIntent = target.animationIntent ?? targetAnimState;
   return {
     crewId: target.crewId,
     x: target.targetX,
@@ -159,9 +201,11 @@ function createMotionFromTarget(target) {
     currentRoomId: target.roomId,
     targetRoomId: target.roomId,
     facing: "right",
-    animState: target.animState ?? "idle",
-    targetAnimState: target.animState ?? "idle",
-    idleAction: target.animState === "idle" ? "stand" : null,
+    animState: targetAnimState,
+    targetAnimState,
+    animationIntent: targetAnimationIntent,
+    targetAnimationIntent,
+    idleAction: targetAnimState === "idle" ? "stand" : null,
     nextIdleRollAt: nextIdleRollAt(nowMs),
     nextBarkRollAt: nextBarkRollAt(nowMs),
     barkCooldownUntil: nowMs + Math.random() * 3000,
@@ -186,22 +230,26 @@ export const useCrewMotionStore = create((set, get) => ({
       const next = {};
       targets.forEach((target) => {
         const existing = state.motionByCrewId[target.crewId];
+        const targetAnimationIntent = target.animationIntent ?? target.animState ?? "idle";
         if (!existing) {
-          next[target.crewId] = createMotionFromTarget(target);
+          next[target.crewId] = createMotionFromTarget({ ...target, animationIntent: targetAnimationIntent });
           return;
         }
         const cleaned = expireBark(existing, nowMs);
         if (sameTarget(cleaned, target)) {
           const animState = cleaned.waypoints?.length > 0 ? "walk" : target.animState;
+          const animationIntent = animState === "walk" ? "walk" : targetAnimationIntent;
           let nextMotion = {
             ...cleaned,
             targetAnimState: target.animState,
+            targetAnimationIntent,
             animState,
+            animationIntent,
             idleAction: animState === "idle" ? cleaned.idleAction ?? "stand" : null,
             barkTrigger: target.barkTrigger ?? null,
             updatedAt: target.updatedAt ?? cleaned.updatedAt,
           };
-          const targetChanged = cleaned.targetAnimState !== target.animState || cleaned.barkTrigger !== (target.barkTrigger ?? null) || cleaned.updatedAt !== (target.updatedAt ?? cleaned.updatedAt);
+          const targetChanged = cleaned.targetAnimState !== target.animState || cleaned.targetAnimationIntent !== targetAnimationIntent || cleaned.barkTrigger !== (target.barkTrigger ?? null) || cleaned.updatedAt !== (target.updatedAt ?? cleaned.updatedAt);
           const entryTrigger = target.barkTrigger ?? (targetChanged ? triggerForAnimState(target.animState, nextMotion.idleAction) : null);
           if (targetChanged && animState !== "walk") nextMotion = maybeAttachStateEntryBark(nextMotion, state.motionByCrewId, nowMs, entryTrigger);
           next[target.crewId] = nextMotion;
@@ -216,7 +264,9 @@ export const useCrewMotionStore = create((set, get) => ({
           targetY: target.targetY,
           targetRoomId: target.roomId,
           targetAnimState: target.animState,
+          targetAnimationIntent,
           animState: "walk",
+          animationIntent: "walk",
           idleAction: null,
           barkTrigger: target.barkTrigger ?? null,
           facing: facingFrom(cleaned.x, waypoints[0]?.x ?? target.targetX, cleaned.facing),
@@ -261,6 +311,7 @@ export const useCrewMotionStore = create((set, get) => ({
         let waypointIndex = motion.waypointIndex ?? 0;
         let waypoints = remainingWaypoints;
         let animState = "walk";
+        let animationIntent = "walk";
         let currentRoomId = motion.currentRoomId;
         let idleAction = null;
         let idleRollAt = motion.nextIdleRollAt ?? nextIdleRollAt(nowMs);
@@ -271,6 +322,7 @@ export const useCrewMotionStore = create((set, get) => ({
             waypoints = [];
             waypointIndex = 0;
             animState = motion.targetAnimState ?? "idle";
+            animationIntent = motion.targetAnimationIntent ?? animState;
             currentRoomId = motion.targetRoomId;
             idleAction = animState === "idle" ? "stand" : null;
             idleRollAt = nextIdleRollAt(nowMs);
@@ -284,6 +336,7 @@ export const useCrewMotionStore = create((set, get) => ({
           currentRoomId,
           facing: facingFrom(motion.x, stepped.x, motion.facing),
           animState,
+          animationIntent,
           idleAction,
           nextIdleRollAt: idleRollAt,
           barkTrigger,
@@ -302,4 +355,4 @@ export const useCrewMotionStore = create((set, get) => ({
   getMotion: (crewId) => get().motionByCrewId[crewId] ?? null,
 }));
 
-export { deriveTargetAnimState };
+export { deriveAnimationIntent, deriveTargetAnimState };
