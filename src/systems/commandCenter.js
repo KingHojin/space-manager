@@ -1,4 +1,5 @@
 import { ROOMS } from "../data/shipRooms";
+import { getCrisisConfig } from "./crisisSystem";
 
 const CREW_IDLE_ACTIONS = ["식사 중", "휴식 중", "생활구역 정리", "동료와 대화", "개인 장비 점검"];
 const ROOM_LABELS = Object.fromEntries(ROOMS.map((room) => [room.id, room.label]));
@@ -90,7 +91,8 @@ export function getFrontierSignals({ currentMinute, discoveredCount = 0, dangerC
   });
 }
 
-export function getShipStatus({ resources, activeTravel, pendingTravelEvent, pendingCombatEncounter }) {
+export function getShipStatus({ resources, activeTravel, pendingTravelEvent, pendingCombatEncounter, activeCrises = [] }) {
+  if (activeCrises.length > 0) return { label: "함내 위기", tone: "hud-chip-danger", desc: `${activeCrises.length}개 구역에서 급성 위기 대응 중` };
   if (pendingCombatEncounter) return { label: "긴급 교전", tone: "hud-chip-danger", desc: "전투 탭에서 즉시 대응 필요" };
   if (pendingTravelEvent) return { label: "항해 이벤트", tone: "hud-chip-warn", desc: "메뉴 또는 탐사 화면에서 선택 지시 필요" };
   if ((resources.hull ?? 100) < 25) return { label: "선체 위험", tone: "hud-chip-danger", desc: "수리와 회피 기동 우선" };
@@ -114,6 +116,7 @@ export function getSituationCards({
   travelProgress = 0,
   currentMinute = 0,
   rooms = [],
+  activeCrises = [],
 }) {
   const cards = [];
   const aliveCrew = crew.filter((member) => member.alive);
@@ -121,8 +124,24 @@ export function getSituationCards({
   const exhaustedCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 80);
   const tiredCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 65);
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
-  const criticalRooms = rooms.filter((room) => room.status === "위험");
+  const criticalRooms = rooms.filter((room) => room.status === "위험" || room.status === "위기");
   const maintenanceRooms = rooms.filter((room) => room.status === "점검 필요");
+
+  activeCrises.forEach((crisis) => {
+    const config = getCrisisConfig(crisis.type);
+    const roomLabel = ROOM_LABELS[crisis.roomId] ?? crisis.roomId;
+    const responding = Boolean(crisis.assignedCrewId);
+    cards.push(situation({
+      id: `crisis-${crisis.id}`,
+      priority: !responding || crisis.severity >= 2 ? "critical" : "high",
+      icon: config.icon,
+      title: `${roomLabel} ${config.label}`,
+      desc: `${responding ? "대응 중" : "미대응"} · severity ${crisis.severity} · 진행 ${Math.round(crisis.progress ?? 0)}%`,
+      action: config.actionLabel,
+      targetPanel: "crew",
+      meta: responding ? `${Math.round(crisis.progress ?? 0)}%` : "미대응",
+    }));
+  });
 
   if (pendingCombatEncounter) {
     cards.push(situation({
@@ -168,7 +187,7 @@ export function getSituationCards({
     cards.push(situation({ id: "fuel-warning", priority: "high", icon: "⛽", title: "연료 보급 권장", desc: `연료 ${Math.round(resources.fuel)}%. 항해 이벤트 대응 여력이 낮습니다.`, action: "보급", targetPanel: "market", meta: "주의" }));
   }
 
-  if (criticalRooms.length > 0) {
+  if (criticalRooms.length > 0 && activeCrises.length === 0) {
     const names = criticalRooms.map((room) => ROOM_LABELS[room.id] ?? room.id).join(", ");
     cards.push(situation({
       id: "rooms-critical",
