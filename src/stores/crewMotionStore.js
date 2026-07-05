@@ -4,10 +4,6 @@ import { buildCrewWaypoints } from "../data/shipInteriorLayout";
 const WALK_SPEED_PER_SECOND = 22;
 const ARRIVAL_EPSILON = 0.45;
 
-function distance(a, b) {
-  return Math.hypot((b.x ?? 0) - (a.x ?? 0), (b.y ?? 0) - (a.y ?? 0));
-}
-
 function stepToward(current, target, maxStep) {
   const dx = target.x - current.x;
   const dy = target.y - current.y;
@@ -77,7 +73,7 @@ export const useCrewMotionStore = create((set, get) => ({
           return;
         }
         const finalPoint = { x: target.targetX, y: target.targetY };
-        const fromRoomId = existing.targetRoomId ?? existing.currentRoomId ?? target.roomId;
+        const fromRoomId = existing.currentRoomId ?? existing.targetRoomId ?? target.roomId;
         const waypoints = buildCrewWaypoints(fromRoomId, target.roomId, finalPoint);
         next[target.crewId] = {
           ...existing,
