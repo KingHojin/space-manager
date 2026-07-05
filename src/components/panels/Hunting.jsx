@@ -27,18 +27,23 @@ export default function Hunting() {
   const addItem = useInventoryStore((state) => state.addItem);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
+  const activeCrew = crew.filter((member) => member.alive !== false);
 
-  const getScout = () => crew.reduce((best, member) => ((member.stats.scouting ?? 0) > (best?.stats.scouting ?? 0) ? member : best), crew[0]);
+  const getScout = () => activeCrew.reduce((best, member) => ((member.stats.scouting ?? 0) > (best?.stats.scouting ?? 0) ? member : best), activeCrew[0]);
 
   const estimate = (creature) => {
     const scout = getScout();
     const score = (scout?.stats.scouting ?? 8) + (scout?.stats.gunnery ?? 8) + Math.round(resources.hull / 10);
     const target = 16 + creature.danger * 5;
-    const chance = Math.max(8, Math.min(92, Math.round(((score + 6) / target) * 62)));
+    const chance = activeCrew.length === 0 ? 0 : Math.max(8, Math.min(92, Math.round(((score + 6) / target) * 62)));
     return { scout, score, target, chance };
   };
 
   const attemptHunt = (creature) => {
+    if (activeCrew.length === 0) {
+      addLog("사냥 실패: 생존 승무원이 없어 추적조를 편성할 수 없습니다.");
+      return;
+    }
     const { scout, score, target, chance } = estimate(creature);
     const roll = Math.floor(Math.random() * 12);
     const success = score + roll >= target;
@@ -97,7 +102,7 @@ export default function Hunting() {
                   <Info label="판정" value={`${score}/${target}`} />
                   <Info label="선체" value={`${Math.round(resources.hull)}%`} />
                 </div>
-                <button className="primary-button mt-4 w-full" onClick={() => attemptHunt(creature)}>
+                <button className="primary-button mt-4 w-full" disabled={activeCrew.length === 0} onClick={() => attemptHunt(creature)}>
                   추적 시작
                 </button>
               </div>
@@ -136,7 +141,7 @@ export default function Hunting() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Metric icon={Radar} label="추적 대상" value={featuredCreature?.name ?? "없음"} />
             <Metric icon={Skull} label="위험도" value={featuredCreature?.danger ?? "-"} />
-            <Metric icon={Shield} label="최근 결과" value={lastHunt ? (lastHunt.success ? "성공" : "실패") : "대기"} />
+            <Metric icon={Shield} label="최근 결과" value={lastHunt ? (lastHunt.success ? "성공" : "실패") : activeCrew.length === 0 ? "승무원 없음" : "대기"} />
           </div>
         </div>
       </section>
