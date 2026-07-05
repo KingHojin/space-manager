@@ -3,7 +3,7 @@ import Badge from "../common/Badge";
 import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
 import { formatMinutes, getModuleRule, hasRequiredItems } from "../../data/moduleRecipes";
-import { formatGameDate } from "../../systems/gameClock";
+import { formatGameDate, processTimedJobs } from "../../systems/gameClock";
 import { useContractStore } from "../../stores/contractStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useFactionStore } from "../../stores/factionStore";
@@ -71,6 +71,7 @@ export default function Market() {
     }
     rule.items.forEach((requirement) => removeItem(requirement.id, requirement.qty));
     advanceMinutes(rule.craftMinutes);
+    processTimedJobs();
     unlockModule(module.id);
     addLog(`모듈 제작 완료: ${module.name}. 비용 ₢${rule.purchaseCredits}, 소요 ${formatMinutes(rule.craftMinutes)}, 완료 ${formatGameDate(currentMinute + rule.craftMinutes)}.`);
   };
