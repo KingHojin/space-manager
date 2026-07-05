@@ -1,0 +1,83 @@
+import { useCombatStore } from "../stores/combatStore";
+import { useCrewStore } from "../stores/crewStore";
+import { useGameStore } from "../stores/gameStore";
+import { useNavStore } from "../stores/navStore";
+import { useShipInteriorStore } from "../stores/shipInteriorStore";
+import { useShipStore } from "../stores/shipStore";
+
+function activeVesselIdFromShipStore() {
+  const ship = useShipStore.getState();
+  return ship.activeVesselId;
+}
+
+export function getActiveVesselScope() {
+  const vesselId = activeVesselIdFromShipStore();
+  const ship = useShipStore.getState();
+  const game = useGameStore.getState();
+  const nav = useNavStore.getState();
+  const interior = useShipInteriorStore.getState();
+  const crew = useCrewStore.getState();
+  const combat = useCombatStore.getState().getCombatState(vesselId);
+
+  return {
+    vesselId,
+    vessel: ship.vesselsById?.[vesselId] ?? null,
+    resources: game.resources,
+    shipName: game.shipName,
+    nav: {
+      currentNodeId: nav.currentNodeId,
+      selectedNodeId: nav.selectedNodeId,
+      travel: nav.travel,
+      fuel: nav.fuel,
+      pendingEncounter: nav.pendingEncounter,
+      driftState: nav.driftState,
+    },
+    interior: {
+      rooms: interior.rooms,
+      activeCrises: interior.activeCrises ?? [],
+    },
+    crew: {
+      members: crew.crew,
+      activities: crew.crewActivities ?? [],
+      trainingQueue: crew.trainingQueue ?? [],
+      treatmentQueue: crew.treatmentQueue ?? [],
+      roleCoverage: crew.getRoleCoverage(),
+    },
+    shipLoadout: {
+      installed: ship.installed,
+      modules: ship.modules,
+      installedModules: ship.getInstalledModules(),
+      installationQueue: ship.installationQueue ?? [],
+    },
+    combat,
+  };
+}
+
+export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.getState().currentMinute } = {}) {
+  const scope = getActiveVesselScope();
+  return {
+    vesselId: scope.vesselId,
+    vessel: scope.vessel,
+    currentMinute,
+    resources: scope.resources,
+    activeTravel: scope.nav.travel,
+    pendingTravelEvent: scope.nav.pendingEncounter,
+    pendingCombatEncounter: scope.combat.combat ?? null,
+    installationQueue: scope.shipLoadout.installationQueue,
+    rooms: scope.interior.rooms,
+    activeCrises: scope.interior.activeCrises,
+    roleCoverage: scope.crew.roleCoverage,
+  };
+}
+
+export function getActiveVesselResourceView() {
+  const scope = getActiveVesselScope();
+  return {
+    vesselId: scope.vesselId,
+    resources: scope.resources,
+    navFuel: scope.nav.fuel,
+    hull: scope.resources.hull,
+    oxygen: scope.resources.oxygen,
+    fuel: scope.resources.fuel,
+  };
+}
