@@ -575,3 +575,32 @@ section::before {
     transform: translateY(0);
   }
 }
+
+.starmap-bg {
+  background-color: #050a18;
+  background-image:
+    radial-gradient(circle at 15% 18%, rgb(56 189 248 / 0.1), transparent 45%),
+    radial-gradient(circle at 86% 32%, rgb(168 85 247 / 0.1), transparent 50%),
+    radial-gradient(circle at 46% 92%, rgb(59 130 246 / 0.06), transparent 55%),
+    radial-gradient(rgb(226 232 240 / 0.55) 1px, transparent 1px),
+    radial-gradient(rgb(226 232 240 / 0.32) 1px, transparent 1px);
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    90px 90px,
+    150px 150px;
+  background-position:
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    18px 40px;
+  background-repeat: no-repeat, no-repeat, no-repeat, repeat, repeat;
+}
+
+@keyframes starmap-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

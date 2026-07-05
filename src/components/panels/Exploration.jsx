@@ -1,25 +1,31 @@
-import { Anchor, Bug, Cloud, DoorOpen, Fuel, Landmark, Pickaxe, Radar, Route, ScanLine, Skull, Zap } from "lucide-react";
+import { Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
+import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
+import { useShipStore } from "../../stores/shipStore";
+import StarMap from "../exploration/StarMap";
 import PlanetCanvas from "../three/PlanetCanvas";
-
-const zoneIcons = {
-  station: Anchor,
-  nebula: Cloud,
-  ruin: Landmark,
-  anomaly: Zap,
-  creature: Bug,
-  mining: Pickaxe,
-  gate: DoorOpen,
-  wreck: Skull,
-};
 
 function dangerChipClass(danger) {
   if (danger >= 5) return "hud-chip-danger";
   if (danger >= 3) return "hud-chip-warn";
   return "";
 }
+
+function gaugeTone(value) {
+  if (value < RESOURCES.LOW_RESOURCE_WARNING) return "hud-gauge-danger";
+  if (value < 50) return "hud-gauge-warn";
+  return "hud-gauge-success";
+}
+
+const RARITY_BORDER_CLASS = {
+  common: "border-slate-500/50",
+  uncommon: "border-emerald-400/50",
+  rare: "border-sky-400/50",
+  epic: "border-violet-400/50",
+  legendary: "border-amber-300/60",
+};
 
 const FUEL_PER_DISTANCE = 1.4;
 
@@ -28,12 +34,14 @@ export default function Exploration() {
   const sector = sectors[0];
   const { currentZoneId, selectedZoneId, discoveredZoneIds, scannedZoneIds, route, selectZone, moveToZone, scanZone } =
     useExplorationStore();
-  const { resources, spendFuel, addLog } = useGameStore();
+  const { resources, spendFuel, addLog, shipName, shipGrade } = useGameStore();
+  const { modules, installed } = useShipStore();
   const current = getZoneById(currentZoneId);
   const focused = getZoneById(selectedZoneId) ?? current;
   const isViewingCurrent = focused.id === current.id;
   const fuelCost = Math.round(focused.distance * FUEL_PER_DISTANCE);
   const canAffordMove = resources.fuel >= fuelCost;
+  const grade = SHIP_GRADES[shipGrade];
 
   const handleSelect = (zone) => {
     if (!discoveredZoneIds.includes(zone.id)) return;
@@ -59,46 +67,20 @@ export default function Exploration() {
           <Radar size={18} />
           {sector.name} 성계 지도
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="hud-chip">
-            탐사율 {discoveredZoneIds.length}/{zones.length}
-          </span>
-          <span className="hud-chip">스캔 {scannedZoneIds.length}</span>
-          <span className="hud-chip hud-chip-accent">현재: {current.name}</span>
+        <div className="mt-3">
+          <StarMap
+            zones={zones}
+            currentZoneId={currentZoneId}
+            selectedZoneId={selectedZoneId}
+            discoveredZoneIds={discoveredZoneIds}
+            route={route}
+            onSelect={handleSelect}
+            sectorName={sector.name}
+            exploredCount={discoveredZoneIds.length}
+            totalCount={zones.length}
+          />
         </div>
-        <div className="map-grid mt-4">
-          {zones.map((zone) => {
-            const discovered = discoveredZoneIds.includes(zone.id);
-            const active = currentZoneId === zone.id;
-            const selected = selectedZoneId === zone.id && !active;
-            const Icon = zoneIcons[zone.type];
-            return (
-              <button
-                key={zone.id}
-                className={`zone-node ${active ? "zone-node-active" : ""} ${selected ? "zone-node-selected" : ""} ${!discovered ? "zone-node-hidden" : ""}`}
-                onClick={() => handleSelect(zone)}
-              >
-                {discovered ? (
-                  <>
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="font-semibold">{zone.name}</span>
-                      {Icon && <Icon size={15} className="shrink-0 text-cyan-300" />}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {active && <span className="hud-chip hud-chip-accent">현재 위치</span>}
-                      <span className={`hud-chip ${dangerChipClass(zone.danger)}`}>위험 {zone.danger}</span>
-                    </div>
-                  </>
-                ) : (
-                  <>
-                    <span className="font-semibold">미확인 구역</span>
-                    <span className="text-xs text-slate-400">스캔 필요</span>
-                  </>
-                )}
-              </button>
-            );
-          })}
-        </div>
+        <div className="hud-label mt-2">스캔 {scannedZoneIds.length}</div>
       </section>
       <aside className="space-y-4">
         <section>
@@ -106,37 +88,88 @@ export default function Exploration() {
             <ScanLine size={18} />
             구역 정보
           </div>
-          <div className="mt-4 h-52 w-full overflow-hidden rounded border border-slate-700/70 bg-slate-950/60 sm:h-64">
-            <PlanetCanvas zone={focused} interactive />
-          </div>
-          <div className="mt-4 space-y-3 text-sm">
-            <Info label="구역명" value={focused.name} />
-            <Info label="구역 타입" value={focused.type} />
-            <Info label="위험도" value={`${focused.danger}성`} />
-            <Info label="자원 풍부도" value={`${focused.richness}`} />
-            {!isViewingCurrent && <Info label="이동 거리" value={`${focused.distance}`} />}
+          <div className="mt-4 flex flex-col gap-4 sm:flex-row">
+            <div className="h-40 w-40 shrink-0 overflow-hidden rounded border border-slate-700/70 bg-slate-950/60 sm:h-44 sm:w-44">
+              <PlanetCanvas zone={focused} interactive />
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate text-2xl font-bold text-cyan-100">{focused.name}</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <span className="hud-chip">{focused.type}</span>
+                  <span className={`hud-chip ${dangerChipClass(focused.danger)}`}>위험 {focused.danger}</span>
+                  <span className="hud-chip hud-chip-success">자원 {focused.richness}</span>
+                </div>
+              </div>
+              <div className="space-y-2 text-sm">
+                {isViewingCurrent ? (
+                  <Info label="스캔 상태" value={scannedZoneIds.includes(current.id) ? "완료" : "미완료"} />
+                ) : (
+                  <>
+                    <Info label="이동 거리" value={`${focused.distance}`} />
+                    <Info label="예상 연료" value={`-${fuelCost}`} />
+                  </>
+                )}
+              </div>
+            </div>
           </div>
           {isViewingCurrent ? (
             <button className="primary-button mt-4 w-full" onClick={handleScan}>
               현재 구역 스캔
             </button>
           ) : (
-            <button className="primary-button mt-4 flex w-full items-center justify-center gap-2" onClick={handleSetCourse} disabled={!canAffordMove}>
+            <button
+              className="primary-button mt-4 flex w-full items-center justify-center gap-2"
+              onClick={handleSetCourse}
+              disabled={!canAffordMove}
+            >
               <Fuel size={16} />
               항로 설정 (연료 -{fuelCost}){!canAffordMove && " · 연료 부족"}
             </button>
           )}
         </section>
+
+        <section>
+          <div className="section-title">
+            <Rocket size={18} />
+            함선 개요
+          </div>
+          <div className="mt-4 flex items-center justify-between gap-2">
+            <div className="min-w-0 truncate text-lg font-bold text-slate-50">{shipName}</div>
+            <span className="hud-chip hud-chip-accent shrink-0">
+              {grade.icon} · {grade.label}
+            </span>
+          </div>
+          <div className="mt-3 space-y-3">
+            <GaugeRow label="선체" value={resources.hull} />
+            <GaugeRow label="연료" value={resources.fuel} />
+            <GaugeRow label="산소" value={resources.oxygen} />
+          </div>
+          <div className="hud-label mt-4">장착 모듈</div>
+          <div className="mt-2 grid grid-cols-3 gap-2">
+            {MODULE_SLOTS.map((slot) => {
+              const module = modules.find((entry) => entry.id === installed[slot]);
+              const borderClass = RARITY_BORDER_CLASS[module?.rarity] ?? RARITY_BORDER_CLASS.common;
+              return (
+                <div key={slot} className={`min-w-0 rounded border ${borderClass} bg-slate-950/60 p-2`}>
+                  <div className="hud-label truncate">{slot}</div>
+                  <div className="truncate text-xs font-semibold text-slate-100">{module?.name ?? "-"}</div>
+                </div>
+              );
+            })}
+          </div>
+        </section>
+
         <section>
           <div className="section-title">
             <Route size={18} />
             최근 이동 경로
           </div>
-          <div className="mt-4 space-y-2">
-            {route.map((zoneId) => (
-              <div key={zoneId} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
+          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
+            {route.map((zoneId, index) => (
+              <span key={`${zoneId}-${index}`} className="hud-chip shrink-0">
                 {getZoneById(zoneId)?.name}
-              </div>
+              </span>
             ))}
           </div>
           <p className="mt-3 text-xs text-slate-500">스캔 완료 구역: {scannedZoneIds.length}</p>
@@ -149,8 +182,22 @@ export default function Exploration() {
 function Info({ label, value }) {
   return (
     <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-      <span className="text-slate-500">{label}</span>
-      <span className="font-semibold text-slate-100">{value}</span>
+      <span className="hud-label">{label}</span>
+      <span className="hud-value">{value}</span>
+    </div>
+  );
+}
+
+function GaugeRow({ label, value }) {
+  return (
+    <div>
+      <div className="flex items-center justify-between text-xs">
+        <span className="hud-label">{label}</span>
+        <span className="hud-value">{Math.round(value)}%</span>
+      </div>
+      <div className={`hud-gauge mt-1 ${gaugeTone(value)}`}>
+        <span className="hud-gauge-fill" style={{ width: `${value}%` }} />
+      </div>
     </div>
   );
 }
