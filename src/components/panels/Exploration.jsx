@@ -3,7 +3,9 @@ import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
+import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
+import { resolveScanEvent } from "../../systems/explorationEvents";
 import StarMap from "../exploration/StarMap";
 import PlanetCanvas from "../three/PlanetCanvas";
 
@@ -32,9 +34,20 @@ const FUEL_PER_DISTANCE = 1.4;
 export default function Exploration() {
   const zones = getAllZones();
   const sector = sectors[0];
-  const { currentZoneId, selectedZoneId, discoveredZoneIds, scannedZoneIds, route, selectZone, moveToZone, scanZone } =
-    useExplorationStore();
-  const { resources, spendFuel, addLog, shipName, shipGrade } = useGameStore();
+  const {
+    currentZoneId,
+    selectedZoneId,
+    discoveredZoneIds,
+    scannedZoneIds,
+    route,
+    selectZone,
+    moveToZone,
+    scanZone,
+    revealRandomZone,
+  } = useExplorationStore();
+  const { resources, spendFuel, addLog, addResources, shipName, shipGrade } = useGameStore();
+  const addDust = useInventoryStore((state) => state.addDust);
+  const addItem = useInventoryStore((state) => state.addItem);
   const { modules, installed } = useShipStore();
   const current = getZoneById(currentZoneId);
   const focused = getZoneById(selectedZoneId) ?? current;
@@ -56,8 +69,27 @@ export default function Exploration() {
   };
 
   const handleScan = () => {
+    if (!current) return;
+    const scannedBefore = scannedZoneIds.includes(current.id);
+    const outcome = resolveScanEvent({ zone: current, scannedBefore });
+    const resourceChanges = { ...(outcome.resources ?? {}) };
+
+    if (outcome.credits) resourceChanges.credits = outcome.credits;
+    if (Object.keys(resourceChanges).length > 0) addResources(resourceChanges);
+    if (outcome.dust) addDust(outcome.dust);
+    if (outcome.itemId) addItem(outcome.itemId, outcome.itemQty ?? 1);
+    Array.from({ length: outcome.revealCount ?? 0 }).forEach(() => revealRandomZone());
+
     scanZone(current.id);
-    addLog(`${current.name} 스캔 완료. 구역 정보가 갱신되었습니다.`);
+
+    const rewards = [];
+    if (outcome.credits) rewards.push(`크레딧 ${outcome.credits > 0 ? "+" : ""}${outcome.credits}`);
+    if (outcome.dust) rewards.push(`우주 먼지 +${outcome.dust}`);
+    if (outcome.itemId) rewards.push(`아이템 ${outcome.itemId} x${outcome.itemQty ?? 1}`);
+    if (outcome.revealCount) rewards.push(`구역 공개 +${outcome.revealCount}`);
+    Object.entries(outcome.resources ?? {}).forEach(([key, value]) => rewards.push(`${key} ${value > 0 ? "+" : ""}${value}`));
+
+    addLog(`${current.name} 스캔: ${outcome.title} — ${outcome.message}${rewards.length ? ` (${rewards.join(", ")})` : ""}`);
   };
 
   return (
@@ -115,7 +147,7 @@ export default function Exploration() {
           </div>
           {isViewingCurrent ? (
             <button className="primary-button mt-4 w-full" onClick={handleScan}>
-              현재 구역 스캔
+              현재 구역 스캔 & 이벤트 판정
             </button>
           ) : (
             <button

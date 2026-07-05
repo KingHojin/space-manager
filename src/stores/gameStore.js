@@ -2,6 +2,14 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { GAME_TIME, RESOURCES } from "../data/constants";
 
+const PERCENT_RESOURCES = new Set(["fuel", "oxygen", "hull"]);
+
+function clampResource(key, value) {
+  if (key === "credits") return Math.max(0, Math.round(value));
+  if (PERCENT_RESOURCES.has(key)) return Math.min(100, Math.max(0, value));
+  return value;
+}
+
 export const useGameStore = create(
   persist(
     (set, get) => ({
@@ -26,6 +34,29 @@ export const useGameStore = create(
           logs: [message, ...state.logs].slice(0, 80),
           news: [message, ...state.news].slice(0, 8),
         })),
+      addResource: (key, amount) =>
+        set((state) => ({
+          resources: {
+            ...state.resources,
+            [key]: clampResource(key, (state.resources[key] ?? 0) + amount),
+          },
+        })),
+      addResources: (changes) =>
+        set((state) => {
+          const next = { ...state.resources };
+          Object.entries(changes ?? {}).forEach(([key, amount]) => {
+            next[key] = clampResource(key, (next[key] ?? 0) + amount);
+          });
+          return { resources: next };
+        }),
+      spendCredits: (amount) => {
+        const credits = get().resources.credits;
+        if (credits < amount) return false;
+        set((state) => ({
+          resources: { ...state.resources, credits: state.resources.credits - amount },
+        }));
+        return true;
+      },
       spendFuel: (amount) =>
         set((state) => ({
           resources: { ...state.resources, fuel: Math.max(0, state.resources.fuel - amount) },
