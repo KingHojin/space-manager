@@ -62,6 +62,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
   const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
   const rooms = useShipInteriorStore((state) => state.rooms);
+  const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);
@@ -73,10 +74,9 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const cargoUsed = items.reduce((sum, item) => sum + Math.max(0, item.qty ?? 0), 0) * 8 + cards.length * 2;
   const topItems = items.filter((item) => item.qty > 0).slice(0, 5);
   const travelProgress = getTravelProgress(activeTravel, currentMinute);
-  const shipStatus = getShipStatus({ resources, activeTravel, pendingTravelEvent, pendingCombatEncounter });
+  const shipStatus = getShipStatus({ resources, activeTravel, pendingTravelEvent, pendingCombatEncounter, activeCrises });
   const signals = getFrontierSignals({ currentMinute, discoveredCount: discoveredZoneIds.length, dangerCount: dangerZoneCount, activeContracts: activeContracts.length });
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
-  const injuredCrewCount = crew.filter((member) => member.alive && member.injury && member.injury !== "정상").length;
   const tiredCrewCount = crew.filter((member) => member.alive && (member.fatigue ?? 0) >= 70).length;
   const crewAiSummary = summarizeCrewAI(crewActivities);
   const situations = getSituationCards({
@@ -94,6 +94,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
     travelProgress,
     currentMinute,
     rooms: Object.values(rooms),
+    activeCrises,
   });
   const situationSummary = summarizeSituations(situations);
   const topSituation = situations[0];
@@ -101,7 +102,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const commandCards = [
     { id: "exploration", icon: Compass, title: "항로 설정", desc: activeTravel ? "항해 중 이벤트 대응" : "새 목적지 지정", badge: activeTravel ? `${Math.round(travelProgress)}%` : `${discoveredRatio}%` },
     { id: "crew", icon: Users, title: "승무원 운영", desc: `AI 활동 ${crewAiSummary.total} · 피로 ${tiredCrewCount}`, badge: `${crew.filter((member) => member.alive).length}명` },
-    { id: "ship", icon: Wrench, title: "함선 정비", desc: `작업 큐 ${queuedWorkCount}건`, badge: `${Math.round(resources.hull)}%` },
+    { id: "ship", icon: Wrench, title: "함선 정비", desc: activeCrises.length ? `함내 위기 ${activeCrises.length}건 대응 중` : `작업 큐 ${queuedWorkCount}건`, badge: `${Math.round(resources.hull)}%` },
     { id: "market", icon: Briefcase, title: "계약/보급", desc: activeContracts.length ? "진행 중 의뢰 확인" : "새 의뢰 수락", badge: activeContracts.length ? `${activeContracts.length}건` : `신규 ${nextContracts.length}` },
   ];
 
@@ -187,7 +188,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
             <StatusTile label="선체" value={`${Math.round(resources.hull)}%`} tone={gaugeTone(resources.hull)} gauge={resources.hull} />
             <StatusTile label="결재 큐" value={`${situationSummary.total}건`} />
             <StatusTile label="긴급" value={`${situationSummary.critical}건`} />
-            <StatusTile label="작업 큐" value={`${queuedWorkCount}건`} />
+            <StatusTile label="함내 위기" value={`${activeCrises.length}건`} />
             <StatusTile label="승무원 AI" value={`${crewAiSummary.high + crewAiSummary.emergency}/${crewAiSummary.total}`} />
           </div>
         </div>
@@ -237,7 +238,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="grid gap-3">
-          <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} compact onCrewClick={() => onNavigate?.("crew")} />
+          <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} compact onCrewClick={() => onNavigate?.("crew")} />
           <section>
             <div className="flex items-center justify-between gap-3">
               <div className="section-title"><Users size={18} />승무원 AI 행동</div>
