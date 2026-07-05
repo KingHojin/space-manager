@@ -12,6 +12,7 @@ import Crew from "./components/panels/Crew";
 import Collector from "./components/panels/Collector";
 import Market from "./components/panels/Market";
 import SkillTree from "./components/panels/SkillTree";
+import MenuPanel from "./components/panels/Menu";
 import OverlayModal from "./components/modals/OverlayModal";
 import StatsModal from "./components/modals/StatsModal";
 import InventoryModal from "./components/modals/InventoryModal";
@@ -27,6 +28,7 @@ const panels = {
   combat: { title: "전투", component: Combat },
   hunting: { title: "사냥", component: Hunting },
   ship: { title: "함선", component: Ship },
+  menu: { title: "메뉴", component: MenuPanel },
   crew: { title: "승무원", component: Crew },
   collector: { title: "컬렉션", component: Collector },
   market: { title: "시장", component: Market },
