@@ -15,12 +15,12 @@ Implemented first:
 - motion state
 - smooth room-to-room movement
 - facing
-- animation-state placeholders
+- animation-state placeholders and visual states
 - future idle and bark hooks
 
 ### Layer B — Inner Life
 
-Gameplay-affecting state. Not implemented in PR A.
+Gameplay-affecting state. Not implemented in PR A or PR B.
 
 Planned later:
 
@@ -51,13 +51,40 @@ Planned later:
 - Markers are positioned with CSS transform against measured ship-map dimensions.
 - No Phase 5/6/7 gameplay formulas are changed.
 
-## What PR A intentionally does not do
+## PR B implemented
+
+### Files
+
+- `src/stores/crewMotionStore.js`
+- `src/components/ship/ShipInterior.jsx`
+- `src/crewMotion.css`
+- `src/main.jsx`
+
+### Behavior
+
+- `animState` now selects clearer visible states:
+  - `walk`
+  - `work`
+  - `rest`
+  - `treat`
+  - `panic`
+  - `down`
+  - `idle`
+- Serious-or-worse injuries render as `down` unless the target activity is medical/treatment.
+- Emergency/crisis-response activity renders as `panic` visually.
+- Marker body has state-specific CSS animation only.
+- Facing is applied to the marker avatar, not the whole marker body, so state badges remain readable.
+- Status badges show a concise state glyph.
+- Crew list chips show the visible anim-state label.
+- `prefers-reduced-motion` disables crew marker animations.
+
+## What PR A/B intentionally do not do
 
 - No idle action rolling yet.
 - No bark speech bubbles yet.
 - No personality, mood, or social relations yet.
 - No job speed modifiers.
-- No panic or problem behavior.
+- No panic/problem behavior.
 - No save migration.
 
 ## Local check
@@ -75,14 +102,15 @@ Manual checks:
 2. Start time.
 3. Wait for crew AI to assign different room activities.
 4. Confirm crew markers move smoothly instead of teleporting.
-5. Pause the game and confirm motion stops.
-6. Resume and confirm motion continues.
-7. Trigger a crisis and confirm responders move along room routes.
-8. Confirm no gameplay values change from motion alone.
+5. Confirm walk/work/rest/treat/panic/down have distinct visual expressions.
+6. Pause the game and confirm motion stops.
+7. Resume and confirm motion continues.
+8. Trigger a crisis and confirm responders show emergency/panic style.
+9. Injure a crew member and confirm serious-or-worse visual down/treat state appears.
+10. Confirm no gameplay values change from motion/visuals alone.
 
 ## Next PRs
 
-- PR B: animState visual expression for walk/work/rest/treat/panic/down.
 - PR C: idle action rolling and performance/culling refinements.
 - PR D: bark bubbles and trigger data.
 - PR E onward: Layer B personality/mood/social.
