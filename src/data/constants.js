@@ -55,6 +55,7 @@ export const MENU_ITEMS = [
   { id: "ship", label: "함선", sub: "모듈 & 업그레이드" },
   { id: "skilltree", label: "스킬트리", sub: "성장 빌드" },
   { id: "crew", label: "승무원", sub: "대원 관리" },
+  { id: "recruit", label: "영입", sub: "승무원 가챠" },
   { id: "collector", label: "컬렉션", sub: "유물 & 카드" },
   { id: "market", label: "시장", sub: "거래 & 계약" },
 ];
