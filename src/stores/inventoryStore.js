@@ -4,6 +4,13 @@ import { DUST } from "../data/constants";
 import { items as baseItems } from "../data/items";
 import { drawCards } from "../systems/gachaEngine";
 
+function mergeItems(savedItems = []) {
+  const savedById = new Map(savedItems.map((item) => [item.id, item]));
+  const mergedBase = baseItems.map((item) => ({ ...item, ...(savedById.get(item.id) ?? {}) }));
+  const extraSaved = savedItems.filter((item) => !baseItems.some((base) => base.id === item.id));
+  return [...mergedBase, ...extraSaved];
+}
+
 export const useInventoryStore = create(
   persist(
     (set, get) => ({
@@ -61,6 +68,13 @@ export const useInventoryStore = create(
           };
         }),
     }),
-    { name: "space-manager-inventory" },
+    {
+      name: "space-manager-inventory",
+      merge: (persistedState, currentState) => ({
+        ...currentState,
+        ...(persistedState ?? {}),
+        items: mergeItems(persistedState?.items),
+      }),
+    },
   ),
 );
