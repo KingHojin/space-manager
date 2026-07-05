@@ -11,10 +11,10 @@ import { statLabel } from "../../utils/format";
 import ShipInterior from "../ship/ShipInterior";
 
 const ROLE_ICONS = {
-  함교: { icon: Compass, color: "text-cyan-400" },
-  포탑: { icon: Crosshair, color: "text-red-400" },
-  기관실: { icon: Wrench, color: "text-amber-400" },
-  의무실: { icon: Cross, color: "text-emerald-400" },
+  함교: { icon: Compass, color: "text-cyan-300", mark: "🧭" },
+  포탑: { icon: Crosshair, color: "text-red-300", mark: "🎯" },
+  기관실: { icon: Wrench, color: "text-amber-300", mark: "🛠" },
+  의무실: { icon: Cross, color: "text-emerald-300", mark: "✚" },
 };
 const TRAINING_COST = 180;
 const TRAINING_MINUTES = 360;
@@ -71,36 +71,43 @@ function injuryTone(injury, alive = true) {
 function Progress({ task, currentMinute, label }) {
   const progress = Math.max(0, Math.min(100, Math.round(((currentMinute - task.startedAt) / Math.max(1, task.duration)) * 100)));
   const priority = getPriorityConfig(task.priority);
-  return <div className="mt-3 rounded border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">완료 {formatGameDate(task.completeAt)}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span></div></div>;
+  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">완료 {formatGameDate(task.completeAt)}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span></div></div>;
 }
 
 function InjuryProgress({ injury }) {
   const normalized = normalizeInjury(injury);
   if (normalized.state === "healthy") return null;
   const label = INJURY_CATALOG[normalized.state]?.label ?? "부상";
-  return <div className="mt-3 rounded border border-red-400/25 bg-red-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label} 회복률</span><span className="hud-value">{Math.round(normalized.recoveryProgress ?? 0)}%</span></div><div className="hud-gauge hud-gauge-warn"><span className="hud-gauge-fill" style={{ width: `${normalized.recoveryProgress ?? 0}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs">{normalized.treatedBy && <span className="hud-chip hud-chip-accent">치료 중</span>}{(normalized.untreatedMinutes ?? 0) > 0 && <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>}</div></div>;
+  return <div className="mt-3 rounded-xl border border-red-400/25 bg-red-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label} 회복률</span><span className="hud-value">{Math.round(normalized.recoveryProgress ?? 0)}%</span></div><div className="hud-gauge hud-gauge-warn"><span className="hud-gauge-fill" style={{ width: `${normalized.recoveryProgress ?? 0}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs">{normalized.treatedBy && <span className="hud-chip hud-chip-accent">치료 중</span>}{(normalized.untreatedMinutes ?? 0) > 0 && <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>}</div></div>;
 }
 
 function Info({ label, value, tone = "" }) {
-  return <div className="rounded border border-slate-700/70 bg-slate-900/70 px-3 py-2"><div className="hud-label">{label}</div><div className={`hud-value mt-1 ${tone}`}>{value}</div></div>;
+  return <div className="rounded-xl border border-slate-700/70 bg-slate-900/70 px-3 py-2"><div className="hud-label">{label}</div><div className={`hud-value mt-1 ${tone}`}>{value}</div></div>;
 }
 
 function NeedGrid({ member }) {
   const needs = { ...defaultNeeds, ...(member.needs ?? {}) };
-  const entries = [
-    ["hunger", "배고픔", needs.hunger],
-    ["mood", "기분", needs.mood],
-    ["stress", "스트레스", needs.stress],
-    ["sleepDebt", "수면부채", needs.sleepDebt],
-    ["hygiene", "위생", needs.hygiene],
-  ];
-  return <div className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-5">{entries.map(([key, label, value]) => <Info key={key} label={label} value={`${Math.round(value)}`} tone={needTone(key, value)} />)}</div>;
+  const entries = [["hunger", "배고픔", needs.hunger], ["mood", "기분", needs.mood], ["stress", "스트레스", needs.stress], ["sleepDebt", "수면", needs.sleepDebt], ["hygiene", "위생", needs.hygiene]];
+  return <div className="mt-3 grid grid-cols-5 gap-1.5 text-xs">{entries.map(([key, label, value]) => <div key={key} className={`rounded-xl border border-slate-700/70 bg-slate-950/55 p-2 text-center ${needTone(key, value)}`}><div className="font-black tabular-nums">{Math.round(value)}</div><div className="mt-0.5 truncate text-[10px] text-slate-400">{label}</div></div>)}</div>;
 }
 
 function ActivityCard({ activity }) {
-  if (!activity) return null;
+  if (!activity) return <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/55 p-3 text-sm text-slate-400">AI 대기 중</div>;
   const priority = getPriorityConfig(activity.priority);
-  return <div className="mt-3 rounded border border-sky-400/30 bg-sky-400/10 p-3 text-sm"><div className="flex items-start justify-between gap-2"><div><div className="hud-label">AI CURRENT ORDER</div><div className="mt-1 font-semibold text-slate-100">{activity.station} · {activity.action}</div><div className="mt-1 text-xs text-slate-400">{activity.detail}</div></div><span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span></div></div>;
+  return <div className="mt-3 rounded-xl border border-sky-400/30 bg-sky-400/10 p-3 text-sm"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="hud-label">AI ORDER</div><div className="mt-1 truncate font-semibold text-slate-100">{activity.station} · {activity.action}</div></div><span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span></div></div>;
+}
+
+function CrewPortrait({ member }) {
+  const config = ROLE_ICONS[member.role] ?? { mark: "👤" };
+  const fatigue = Math.round(member.fatigue ?? 0);
+  const condition = Math.max(0, 100 - fatigue);
+  return (
+    <div className="relative grid h-28 place-items-center overflow-hidden rounded-2xl border border-cyan-300/20 bg-cyan-300/10">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(125,211,252,0.22),transparent_56%)]" />
+      <div className="relative grid h-16 w-16 place-items-center rounded-2xl border border-slate-500/35 bg-slate-950/65 text-3xl">{config.mark}</div>
+      <span className="absolute right-2 top-2 hud-chip bg-slate-950/70">{condition}%</span>
+    </div>
+  );
 }
 
 export default function Crew() {
@@ -143,13 +150,11 @@ export default function Crew() {
   };
 
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+    <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
       <section>
-        <div className="section-title"><Users size={18} />승무원 스쿼드</div>
-        <div className="mt-4 grid grid-cols-4 gap-2 text-sm"><Info label="AI 활동" value={`${aiSummary.total}명`} /><Info label="긴급" value={`${aiSummary.emergency}명`} tone={aiSummary.emergency > 0 ? "text-red-300" : ""} /><Info label="역할 공백" value={`${coverage.missingRoles.length}개`} tone={coverage.missingRoles.length > 0 ? "text-amber-300" : ""} /><Info label="부상" value={`${crew.filter((member) => member.alive && isInjured(member.injury)).length}명`} /></div>
-        {coverage.missingRoles.length > 0 && <div className="mt-3 rounded border border-amber-300/35 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">역할 공백: {coverage.missingRoles.join(", ")} · 해당 역할 승무원이 중상 이상이면 함선 페널티가 발생합니다.</div>}
-        <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm leading-6 text-slate-300">승무원은 함선 내부에서 AI 명령에 따라 이동합니다. 이제 피로·배고픔·기분·스트레스·수면부채·위생이 시간과 표류 상황에 따라 변합니다.</div>
-        <div className="mt-4 grid gap-3">
+        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Users size={18} />승무원 스쿼드</div><p className="mt-2 text-sm text-slate-400">승무원 상태를 카드/컨디션 중심으로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">AI {aiSummary.total}</span><span className="hud-chip">긴급 {aiSummary.emergency}</span><span className="hud-chip">부상 {crew.filter((member) => member.alive && isInjured(member.injury)).length}</span></div></div>
+        {coverage.missingRoles.length > 0 && <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">역할 공백: {coverage.missingRoles.join(", ")}</div>}
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
           {crew.map((member) => {
             const mainStat = trainingByRole[member.role] ?? "scouting";
             const trainingTask = trainingQueue.find((task) => task.memberId === member.id);
@@ -159,31 +164,27 @@ export default function Crew() {
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
             return (
-              <div key={member.id} className={`rounded border p-4 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
-                <div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><RoleIcon role={member.role} size={16} /><div className="font-semibold text-slate-100">{member.name}</div></div><div className="mt-1 text-xs text-slate-500">{member.role} · {member.trait ?? "일반 대원"}</div></div><span className={`hud-chip ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span></div>
+              <article key={member.id} className={`mission-contract-card rounded-2xl border p-3 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
+                <CrewPortrait member={member} />
+                <div className="mt-3 flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><RoleIcon role={member.role} size={16} /><div className="truncate font-black text-slate-100">{member.name}</div></div><div className="mt-1 truncate text-xs text-slate-500">{member.role} · {member.trait ?? "일반 대원"}</div></div><span className={`hud-chip shrink-0 ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span></div>
                 <ActivityCard activity={activity} />
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><Info label="사기" value={member.morale} /><Info label="피로" value={`${Math.round(member.fatigue ?? 0)}`} tone={fatigueTone(member.fatigue ?? 0)} /><Info label="경험" value={`${member.experience ?? 0}`} /></div>
                 <NeedGrid member={member} />
                 <InjuryProgress injury={member.injury} />
-                {trainingTask && <Progress task={trainingTask} currentMinute={currentMinute} label="훈련 진행 중" />}
-                {treatmentTask && <Progress task={treatmentTask} currentMinute={currentMinute} label="치료 예약 진행" />}
+                {trainingTask && <Progress task={trainingTask} currentMinute={currentMinute} label="훈련 진행" />}
+                {treatmentTask && <Progress task={treatmentTask} currentMinute={currentMinute} label="치료 진행" />}
                 {injury.permanentTraits.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{injury.permanentTraits.map((trait) => <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>)}</div>}
-                <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(member.stats).map(([key, value]) => <span key={key} className={`hud-chip ${key === mainStat ? "hud-chip-accent" : ""}`}>{statLabel[key]} {value}</span>)}</div>
-                <div className="mt-4 grid grid-cols-3 gap-2"><button className="secondary-button" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : `훈련 ₢${TRAINING_COST}`}</button><button className="secondary-button" disabled={!member.alive || isBusy} onClick={() => rest(member)}>휴식</button><button className="secondary-button" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : !isInjured(member.injury) ? "정상" : `치료 ₢${rule.cost}`}</button></div>
-              </div>
+                <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(member.stats).map(([key, value]) => <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>{statLabel[key]} {value}</span>)}</div>
+                <div className="mt-4 grid grid-cols-3 gap-2"><button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : `훈련`}</button><button className="secondary-button justify-center" disabled={!member.alive || isBusy} onClick={() => rest(member)}>휴식</button><button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : !isInjured(member.injury) ? "정상" : `치료`}</button></div>
+              </article>
             );
           })}
         </div>
       </section>
       <div className="grid gap-4">
         <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} />
-        <section>
-          <div className="section-title">스쿼드 종합표</div>
-          <div className="mt-4 overflow-auto rounded border border-slate-700/70">
-            <table className="data-table"><thead><tr><th>이름</th><th>역할</th><th>현재 AI 행동</th>{Object.values(statLabel).map((label) => <th key={label}>{label}</th>)}<th>피로</th><th>배고픔</th><th>기분</th><th>스트레스</th><th>상태</th></tr></thead><tbody>{crew.map((member) => { const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id); const needs = { ...defaultNeeds, ...(member.needs ?? {}) }; return <tr key={member.id} className={!member.alive ? "opacity-60" : ""}><td className="font-semibold text-slate-100">{member.name}</td><td><span className="inline-flex items-center gap-1.5"><RoleIcon role={member.role} />{member.role}</span></td><td>{activity ? `${activity.station} · ${activity.action}` : "대기"}</td>{Object.keys(statLabel).map((key) => <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>)}<td><span className={`hud-chip ${fatigueTone(member.fatigue ?? 0)}`}>{Math.round(member.fatigue ?? 0)}</span></td><td><span className={`hud-chip ${needTone("hunger", needs.hunger)}`}>{Math.round(needs.hunger)}</span></td><td><span className={`hud-chip ${needTone("mood", needs.mood)}`}>{Math.round(needs.mood)}</span></td><td><span className={`hud-chip ${needTone("stress", needs.stress)}`}>{Math.round(needs.stress)}</span></td><td><span className={`hud-chip ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span></td></tr>; })}</tbody></table>
-          </div>
-        </section>
-        <section className="rounded border border-slate-700/70 bg-slate-950/60 p-4"><div className="section-title">최근 AI 배정 기록</div><div className="mt-3 grid gap-2">{(crewActivityLog ?? []).slice(0, 8).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}{(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}</div></section>
+        <section><div className="section-title">역할 커버리지</div><div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">{Object.entries(coverage.counts ?? {}).map(([role, value]) => <Info key={role} label={role} value={`${value}명`} />)}</div></section>
+        <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4"><div className="section-title">최근 AI 배정</div><div className="mt-3 grid gap-2">{(crewActivityLog ?? []).slice(0, 6).map((entry, index) => <div key={`${entry}-${index}`} className="rounded-xl border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}{(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}</div></section>
       </div>
     </div>
   );
