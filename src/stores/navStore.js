@@ -117,15 +117,14 @@ export const useNavStore = create(
           const fuel = clamp(state.fuel - fuelBurn, 0, 100);
           if (fuel <= 0 && progress < 100) {
             set({ fuel: 0 });
-            const drift = get().enterDrift(currentMinute, "fuel_depleted_mid_route");
-            return { effects: [{ kind: "fuel", delta: -fuelBurn }, ...(drift.effects ?? [])], logs: drift.logs ?? [] };
+            return get().enterDrift(currentMinute, "fuel_depleted_mid_route");
           }
           if (progress < 100) {
             set({ travel: { ...state.travel, progress, lastFuelAt: currentMinute }, fuel });
-            return { effects: [{ kind: "fuel", delta: -fuelBurn }], logs: [] };
+            return { effects: [], logs: [] };
           }
           const arrival = get().arriveNode(state.travel.toId, currentMinute, fuel);
-          return { effects: [{ kind: "fuel", delta: -fuelBurn }, ...(arrival.effects ?? [])], logs: arrival.logs ?? [] };
+          return { effects: [...(arrival.effects ?? [])], logs: arrival.logs ?? [] };
         },
         tickDrift: (deltaMinutes = 0, currentMinute = 0) => {
           const state = get();
@@ -134,11 +133,7 @@ export const useNavStore = create(
           const severity = driftSeverity(minutesDrifting);
           const hours = deltaMinutes / 60;
           const pressure = clamp((state.driftState.pressure ?? 0) + hours * severity * 4, 0, 100);
-          const effects = [
-            { kind: "driftPressure", severity, deltaMinutes, minutesDrifting },
-            { kind: "crewNeeds", mode: "drift", severity, deltaMinutes },
-            { kind: "resource", delta: { oxygen: -DRIFT.OXYGEN_LOSS_PER_HOUR * hours * severity, hull: -DRIFT.HULL_LOSS_PER_HOUR * hours * severity } },
-          ];
+          const effects = [{ kind: "driftPressure", severity, deltaMinutes, minutesDrifting }, { kind: "crewNeeds", mode: "drift", severity, deltaMinutes }, { kind: "resource", delta: { oxygen: -DRIFT.OXYGEN_LOSS_PER_HOUR * hours * severity, hull: -DRIFT.HULL_LOSS_PER_HOUR * hours * severity } }];
           const logs = [];
           if (severity !== state.driftState.severity) logs.push(`표류 단계 상승: severity ${severity}. 승무원 스트레스와 고립감이 증가합니다.`);
           if (Math.random() < DRIFT.CRISIS_ROLL_PER_HOUR * hours * severity) effects.push({ kind: "spawnCrisis", roomId: "engineering", type: "power_loss", severity: Math.min(3, severity) });
