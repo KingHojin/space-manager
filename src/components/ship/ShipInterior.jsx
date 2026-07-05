@@ -1,41 +1,14 @@
 import { Activity, AlertTriangle, Flame, ShieldAlert, Thermometer, ZapOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ROOMS, ROUTES } from "../../data/shipRooms";
+import { roomAnchorPoint, roomCenter, roomForCrewActivity } from "../../data/shipInteriorLayout";
 import { calculateRoomModifiers } from "../../data/roomModules";
 import { CRISIS_CATALOG } from "../../systems/crisisSystem";
 import { getPriorityConfig } from "../../systems/priorities";
+import { useGameStore } from "../../stores/gameStore";
+import { deriveTargetAnimState, useCrewMotionStore } from "../../stores/crewMotionStore";
 
-const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
-const OFFSETS = [[0, 0], [-5, -3], [5, 3], [-4, 5], [4, -5], [0, 7], [7, 0], [-7, 0]];
 const CRISIS_ICONS = { overheat: Thermometer, fire: Flame, power_loss: ZapOff, hull_breach: ShieldAlert, intruder: AlertTriangle };
-
-function stableIndex(text, length) {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  return hash % length;
-}
-
-function roomFor(member, activity) {
-  if (activity?.roomId) return activity.roomId;
-  const text = `${activity?.station ?? ""} ${activity?.action ?? ""}`;
-  if (/브릿지|함교|항로|지휘/.test(text)) return "bridge";
-  if (/관제|포탑|표적|센서|감시/.test(text)) return "ops";
-  if (/의무|치료|응급|산소|피로/.test(text)) return "medbay";
-  if (/기관|엔진|추진|수리|연료|선체|출력|냉각|전력/.test(text)) return "engineering";
-  if (/창고|화물|보급|적재|장비/.test(text)) return "cargo";
-  if (/생활|휴식|식사|대화|훈련/.test(text)) return "living";
-  return ROLE_ROOM[member.role] ?? "living";
-}
-
-function roomCenter(roomId) {
-  const room = ROOMS.find((entry) => entry.id === roomId) ?? ROOMS[0];
-  return { x: room.left + room.width / 2, y: room.top + room.height / 2 };
-}
-
-function roomPoint(roomId, memberId) {
-  const [offsetX, offsetY] = OFFSETS[stableIndex(memberId, OFFSETS.length)];
-  const center = roomCenter(roomId);
-  return { x: center.x + offsetX, y: center.y + offsetY };
-}
 
 function markerTone(priority) {
   if (priority === "emergency") return "border-red-300 bg-red-300 text-red-950";
@@ -72,21 +45,87 @@ function RouteLine({ from, to, active }) {
   return <span className={`absolute h-[2px] origin-center rounded-full ${active ? "bg-cyan-200/50" : "bg-cyan-300/12"}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
 }
 
+function useShipMapSize() {
+  const ref = useRef(null);
+  const [size, setSize] = useState({ width: 1, height: 1 });
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return undefined;
+    const update = () => setSize({ width: Math.max(1, node.clientWidth), height: Math.max(1, node.clientHeight) });
+    update();
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", update);
+      return () => window.removeEventListener("resize", update);
+    }
+    const observer = new ResizeObserver(update);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, size];
+}
+
+function useCrewMotionFrame(isPaused) {
+  const tick = useCrewMotionStore((state) => state.tick);
+  useEffect(() => {
+    if (isPaused) return undefined;
+    let frameId = null;
+    let last = performance.now();
+    const frame = (now) => {
+      const deltaMs = Math.min(80, now - last);
+      last = now;
+      tick(deltaMs);
+      frameId = requestAnimationFrame(frame);
+    };
+    frameId = requestAnimationFrame(frame);
+    return () => {
+      if (frameId) cancelAnimationFrame(frameId);
+    };
+  }, [isPaused, tick]);
+}
+
+function slotAssignments(assignments) {
+  const counts = new Map();
+  return assignments.map((assignment) => {
+    const count = counts.get(assignment.roomId) ?? 0;
+    counts.set(assignment.roomId, count + 1);
+    return { ...assignment, slotIndex: count };
+  });
+}
+
+function crewMarkerTransform(point) {
+  return `translate(calc(${point.x} * var(--ship-map-w) / 100), calc(${point.y} * var(--ship-map-h) / 100)) translate(-50%, -50%)`;
+}
+
 export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], compact = false, onCrewClick }) {
-  const activityByMember = new Map(activities.map((activity) => [activity.memberId, activity]));
-  const crisisById = new Map(activeCrises.map((crisis) => [crisis.id, crisis]));
-  const aliveCrew = crew.filter((member) => member.alive);
-  const roomAssignments = aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomFor(member, activityByMember.get(member.id)) }));
+  const isPaused = useGameStore((state) => state.isPaused);
+  const motionByCrewId = useCrewMotionStore((state) => state.motionByCrewId);
+  const syncTargets = useCrewMotionStore((state) => state.syncTargets);
+  const [mapRef, mapSize] = useShipMapSize();
+  useCrewMotionFrame(isPaused);
+
+  const activityByMember = useMemo(() => new Map(activities.map((activity) => [activity.memberId, activity])), [activities]);
+  const crisisById = useMemo(() => new Map(activeCrises.map((crisis) => [crisis.id, crisis])), [activeCrises]);
+  const aliveCrew = useMemo(() => crew.filter((member) => member.alive), [crew]);
+  const roomAssignments = useMemo(() => slotAssignments(aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomForCrewActivity(member, activityByMember.get(member.id)) }))), [aliveCrew, activityByMember]);
   const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
   const jobOwnerIds = new Set(Object.values(rooms).flatMap((room) => room.assignedMemberIds ?? (room.assignedMemberId ? [room.assignedMemberId] : [])).filter(Boolean));
+
+  const motionTargets = useMemo(() => roomAssignments.map(({ member, activity, roomId, slotIndex }) => {
+    const point = roomAnchorPoint(roomId, member.id, slotIndex);
+    return { crewId: member.id, roomId, targetX: point.x, targetY: point.y, animState: deriveTargetAnimState(activity, member), updatedAt: activity?.updatedAt ?? 0 };
+  }), [roomAssignments]);
+
+  useEffect(() => {
+    syncTargets(motionTargets);
+  }, [motionTargets, syncTargets]);
 
   return (
     <section className="overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">실시간 이동</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew A</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
-      <div className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`}>
+      <div ref={mapRef} className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
         <div className="absolute inset-x-[8%] top-[6%] h-[90%] rounded-[42%] border border-cyan-300/20 bg-gradient-to-b from-slate-900/80 to-slate-950/90" />
         {ROUTES.map(([from, to]) => <RouteLine key={`${from}-${to}`} from={from} to={to} active={activeRooms.has(from) && activeRooms.has(to)} />)}
         <div className="absolute left-[49%] top-[18%] h-[58%] w-[2px] bg-cyan-300/10" />
@@ -113,19 +152,22 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           );
         })}
         {roomAssignments.map(({ member, activity, roomId }) => {
-          const point = roomPoint(roomId, member.id);
+          const fallbackPoint = roomAnchorPoint(roomId, member.id);
+          const motion = motionByCrewId[member.id];
+          const point = motion ? { x: motion.x, y: motion.y } : fallbackPoint;
           const priority = getPriorityConfig(activity?.priority ?? "normal");
           const isJobOwner = jobOwnerIds.has(member.id) && activity?.intent === "room-job";
           const isCrisisResponder = activity?.intent === "crisis-response";
+          const moving = motion?.animState === "walk";
           return (
-            <button key={member.id} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-all duration-700 ease-in-out" style={{ left: `${point.x}%`, top: `${point.y}%` }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"}`}>
-              <span className={`relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>{member.name.slice(0, 1)}<span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-slate-950 ${activity?.priority === "emergency" ? "animate-pulse bg-red-400" : activity?.priority === "high" ? "bg-amber-300" : "bg-emerald-300"}`} /></span>
-              {!compact && <span className="mt-1 block max-w-24 truncate rounded border border-slate-700/80 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-100">{member.name} · {priority.shortLabel}</span>}
+            <button key={member.id} className="absolute left-0 top-0 z-20" style={{ transform: crewMarkerTransform(point), willChange: moving ? "transform" : "auto" }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"}`}>
+              <span className={`relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${moving ? "scale-105" : ""} ${motion?.facing === "left" ? "-scale-x-100" : ""} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>{member.name.slice(0, 1)}<span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-slate-950 ${activity?.priority === "emergency" ? "animate-pulse bg-red-400" : activity?.priority === "high" ? "bg-amber-300" : "bg-emerald-300"}`} /></span>
+              {!compact && <span className="mt-1 block max-w-24 truncate rounded border border-slate-700/80 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-100">{member.name} · {moving ? "이동" : priority.shortLabel}</span>}
             </button>
           );
         })}
       </div>
-      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span></button>; })}</div>}
+      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); const motion = motionByCrewId[member.id]; return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${motion?.animState === "walk" ? "hud-chip-accent" : priority.tone}`}>{motion?.animState === "walk" ? "이동" : priority.shortLabel}</span></button>; })}</div>}
     </section>
   );
 }
