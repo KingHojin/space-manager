@@ -19,17 +19,16 @@ export const useExplorationStore = create(
           selectedZoneId: plan.toZoneId,
           travelLog: [`항로 설정: ${plan.distanceLy} LY · ${plan.duration}분 소요`],
         }),
-      resolveTravelEncounter: (checkpointId, summary) =>
+      registerTravelRoll: (summary, currentMinute, happened = false) =>
         set((state) => ({
           activeTravel: state.activeTravel
             ? {
                 ...state.activeTravel,
-                encounters: state.activeTravel.encounters.map((checkpoint) =>
-                  checkpoint.id === checkpointId ? { ...checkpoint, resolved: true } : checkpoint,
-                ),
+                lastEncounterAt: currentMinute,
+                encounterCount: (state.activeTravel.encounterCount ?? 0) + (happened ? 1 : 0),
               }
             : null,
-          travelLog: [summary, ...state.travelLog].slice(0, 6),
+          travelLog: summary ? [summary, ...state.travelLog].slice(0, 6) : state.travelLog,
         })),
       completeTravel: () =>
         set((state) => {
