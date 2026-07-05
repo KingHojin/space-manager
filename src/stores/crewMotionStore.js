@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { buildCrewWaypoints } from "../data/shipInteriorLayout";
+import { canWorkWithInjury, normalizeInjury } from "../systems/injurySystem";
 
 const WALK_SPEED_PER_SECOND = 22;
 const ARRIVAL_EPSILON = 0.45;
@@ -20,9 +21,12 @@ function facingFrom(currentX, nextX, fallback = "right") {
 
 function deriveTargetAnimState(activity, member) {
   if (!member?.alive) return "down";
+  const injury = normalizeInjury(member.injury);
+  const medicalIntent = ["medical", "medical-care"].includes(activity?.intent);
+  if (!canWorkWithInjury(injury)) return medicalIntent ? "treat" : "down";
   if (activity?.intent === "rest") return "rest";
-  if (["medical", "medical-care"].includes(activity?.intent)) return "treat";
-  if (activity?.intent === "crisis-response" || activity?.priority === "emergency") return "work";
+  if (medicalIntent) return "treat";
+  if (activity?.intent === "crisis-response" || activity?.priority === "emergency") return "panic";
   if (["room-job", "engineering", "repair", "navigation", "combat", "security", "training"].includes(activity?.intent)) return "work";
   return "idle";
 }
