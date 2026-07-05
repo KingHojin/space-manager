@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialCrew } from "../data/crew";
+import { normalizePriority } from "../systems/priorities";
 
 const moraleOrder = ["나쁨", "보통", "좋음", "최상"];
 
@@ -25,6 +26,10 @@ function normalizeCrew(member) {
     trait: member.trait ?? base.trait ?? "일반 대원",
     stats: { ...(base.stats ?? {}), ...(member.stats ?? {}) },
   };
+}
+
+function normalizeTask(task, fallbackPriority = "normal") {
+  return { ...task, priority: normalizePriority(task.priority ?? fallbackPriority) };
 }
 
 function mergeCrew(savedCrew = []) {
@@ -64,19 +69,27 @@ export const useCrewStore = create(
       crew: initialCrew.map((member) => ({ ...member, alive: true })),
       trainingQueue: [],
       treatmentQueue: [],
-      startTraining: ({ memberId, statKey, completeAt, cost, duration }) =>
+      startTraining: ({ memberId, statKey, completeAt, cost, duration, priority = "normal" }) =>
         set((state) => ({
           trainingQueue: [
             ...state.trainingQueue.filter((task) => task.memberId !== memberId),
-            { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
-      startTreatment: ({ memberId, injury, completeAt, cost, duration, fatiguePenalty }) =>
+      startTreatment: ({ memberId, injury, completeAt, cost, duration, fatiguePenalty, priority = "high" }) =>
         set((state) => ({
           treatmentQueue: [
             ...state.treatmentQueue.filter((task) => task.memberId !== memberId),
-            { id: crypto.randomUUID(), memberId, injury, completeAt, cost, duration, fatiguePenalty, startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), memberId, injury, completeAt, cost, duration, fatiguePenalty, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
+        })),
+      setTrainingPriority: (taskId, priority) =>
+        set((state) => ({
+          trainingQueue: state.trainingQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
+        })),
+      setTreatmentPriority: (taskId, priority) =>
+        set((state) => ({
+          treatmentQueue: state.treatmentQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
         })),
       completeReadyTraining: (currentMinute) => {
         const ready = get().trainingQueue.filter((task) => task.completeAt <= currentMinute);
@@ -155,8 +168,8 @@ export const useCrewStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         crew: mergeCrew(persistedState?.crew),
-        trainingQueue: persistedState?.trainingQueue ?? [],
-        treatmentQueue: persistedState?.treatmentQueue ?? [],
+        trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")),
+        treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" ? "emergency" : "high")),
       }),
     },
   ),
