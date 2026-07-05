@@ -1,4 +1,5 @@
 import { ROOM_IDS } from "../data/shipRooms";
+import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
 
 export const ROOM_CONDITION_DECAY_PER_HOUR = 0.5;
 export const ROOM_LOAD_GROWTH_PER_HOUR = 0.8;
@@ -39,13 +40,9 @@ export function deriveRoomStatus(room) {
   return "안정";
 }
 
-/**
- * Scores how well-suited a member is to pick up the given room's job this tick.
- * Returns null when the member cannot take the job at all.
- */
 export function scoreJobForMember(member, room, job, context = {}) {
   if (!job || !member?.alive) return null;
-  if (member.injury && member.injury !== "정상") return null;
+  if (!canWorkWithInjury(member.injury)) return null;
   if (room.activeCrisisId) return null;
 
   const roleMatch = ROLE_ROOM[member.role] === room.id;
@@ -57,15 +54,11 @@ export function scoreJobForMember(member, room, job, context = {}) {
 
   if (room.assignedMemberId === member.id) score += 15;
   if (context.activeTravel && ["bridge", "engineering"].includes(room.id)) score += 10;
+  score *= injuryWorkSpeedMultiplier(member.injury);
 
   return score;
 }
 
-/**
- * Picks the best available room job for each idle member, honoring one active
- * assignment per room within this tick. Members are processed in array order;
- * earlier claims block later members from taking the same room.
- */
 export function pickRoomJobsForIdleCrew({ idleMembers, rooms, currentMinute, context = {} }) {
   const claimedRoomIds = new Set();
   const assignments = new Map();
@@ -114,19 +107,12 @@ function jobCompletionEffect(job) {
   return {};
 }
 
-/**
- * Advances room progress/condition/load for one clock tick. Pure — the caller
- * is responsible for applying `nextRooms` and any resource/crew side effects
- * described in `completedJobs` to the relevant stores.
- *
- * `roomActivities` maps roomId -> { memberId, jobId } for members who claimed
- * (or continue to hold) that room's job this tick, as decided by crew AI.
- */
-export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0 }) {
+export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0, roleCoverage = null }) {
   const hours = deltaMinutes / 60;
   const nextRooms = {};
   const completedJobs = [];
   const logs = [];
+  const missingRoles = new Set(roleCoverage?.missingRoles ?? []);
 
   ROOM_IDS.forEach((roomId) => {
     const room = rooms[roomId] ?? createInitialRoomState()[roomId];
@@ -140,16 +126,20 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
     let assignedMemberId = room.assignedMemberId;
     const activeCrisisId = room.activeCrisisId ?? null;
 
+    const engineerMissingPenalty = missingRoles.has("기관실") && roomId === "engineering" ? 2.3 : 1;
+    const medicMissingPenalty = missingRoles.has("의무실") && roomId === "medbay" ? 1.4 : 1;
+    const decayMultiplier = Math.max(engineerMissingPenalty, medicMissingPenalty);
+
     if (activeCrisisId) {
       jobId = null;
       assignedMemberId = null;
       progress = 0;
-      condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours, 0, 100);
-      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * 1.35, 0, 100);
+      condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours * decayMultiplier, 0, 100);
+      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * 1.35 * decayMultiplier, 0, 100);
     } else if (claim && job) {
       assignedMemberId = claim.memberId;
       jobId = job.id;
-      progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100, 0, 100);
+      progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100 * (claim.speedMultiplier ?? 1), 0, 100);
 
       if (progress >= 100) {
         condition = clamp(condition + job.conditionRestore, 0, 100);
@@ -165,8 +155,8 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
       jobId = null;
       assignedMemberId = null;
       progress = 0;
-      condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours, 0, 100);
-      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours, 0, 100);
+      condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours * decayMultiplier, 0, 100);
+      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * decayMultiplier, 0, 100);
     }
 
     const draftRoom = { id: roomId, condition, load, jobId, assignedMemberId, progress, activeCrisisId };
