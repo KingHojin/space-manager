@@ -1,4 +1,5 @@
 import { ROOM_IDS } from "../data/shipRooms";
+import { calculateRoomModifiers } from "../data/roomModules";
 import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
 
 export const ROOM_CONDITION_DECAY_PER_HOUR = 0.5;
@@ -23,11 +24,27 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function normalizeAssignedIds(room) {
+  if (Array.isArray(room.assignedMemberIds)) return room.assignedMemberIds.filter(Boolean);
+  return room.assignedMemberId ? [room.assignedMemberId] : [];
+}
+
+function primaryAssignedId(ids) {
+  return ids[0] ?? null;
+}
+
+function claimsForRoom(roomActivities, roomId, jobId) {
+  const direct = roomActivities[roomId];
+  if (Array.isArray(direct)) return direct;
+  if (direct?.memberId) return [direct];
+  return Object.values(roomActivities).flatMap((entry) => Array.isArray(entry) ? entry : entry ? [entry] : []).filter((activity) => activity.roomId === roomId || activity.jobId === jobId);
+}
+
 export function createInitialRoomState() {
   return Object.fromEntries(
     ROOM_IDS.map((id) => [
       id,
-      { id, condition: 82, load: 18, jobId: null, assignedMemberId: null, progress: 0, activeCrisisId: null, status: "안정" },
+      { id, condition: 82, load: 18, jobId: null, assignedMemberId: null, assignedMemberIds: [], progress: 0, activeCrisisId: null, status: "안정", tier: 1, modules: [] },
     ]),
   );
 }
@@ -40,40 +57,41 @@ export function deriveRoomStatus(room) {
   return "안정";
 }
 
+export function getRoomSlots(room) {
+  return Math.max(1, Math.round(calculateRoomModifiers(room).slots ?? 1));
+}
+
 export function scoreJobForMember(member, room, job, context = {}) {
   if (!job || !member?.alive) return null;
   if (!canWorkWithInjury(member.injury)) return null;
   if (room.activeCrisisId) return null;
-
+  const assignedIds = normalizeAssignedIds(room);
+  if (assignedIds.length >= getRoomSlots(room) && !assignedIds.includes(member.id)) return null;
   const roleMatch = ROLE_ROOM[member.role] === room.id;
   let score = roleMatch ? 40 : 10;
-
   score += (100 - room.condition) * 0.3;
   score += room.load * 0.3;
   score -= (member.fatigue ?? 0) * 0.2;
-
-  if (room.assignedMemberId === member.id) score += 15;
+  if (assignedIds.includes(member.id)) score += 15;
   if (context.activeTravel && ["bridge", "engineering"].includes(room.id)) score += 10;
   score *= injuryWorkSpeedMultiplier(member.injury);
-
+  score *= calculateRoomModifiers(room).jobSpeedMul;
   return score;
 }
 
 export function pickRoomJobsForIdleCrew({ idleMembers, rooms, currentMinute, context = {} }) {
-  const claimedRoomIds = new Set();
+  const claimedByRoom = new Map();
   const assignments = new Map();
-
   idleMembers.forEach((member) => {
     let bestRoomId = null;
     let bestScore = -Infinity;
-
     ROOM_IDS.forEach((roomId) => {
-      if (claimedRoomIds.has(roomId)) return;
       const room = rooms[roomId];
-      if (!room) return;
-      if (room.activeCrisisId) return;
-      if (room.assignedMemberId && room.assignedMemberId !== member.id) return;
-
+      if (!room || room.activeCrisisId) return;
+      const alreadyClaimed = claimedByRoom.get(roomId) ?? 0;
+      const assignedIds = normalizeAssignedIds(room);
+      const slots = getRoomSlots(room);
+      if (assignedIds.length + alreadyClaimed >= slots && !assignedIds.includes(member.id)) return;
       const job = getRoomJob(roomId);
       const score = scoreJobForMember(member, room, job, context);
       if (score === null) return;
@@ -82,21 +100,12 @@ export function pickRoomJobsForIdleCrew({ idleMembers, rooms, currentMinute, con
         bestRoomId = roomId;
       }
     });
-
     if (bestRoomId) {
-      claimedRoomIds.add(bestRoomId);
+      claimedByRoom.set(bestRoomId, (claimedByRoom.get(bestRoomId) ?? 0) + 1);
       const job = getRoomJob(bestRoomId);
-      const room = rooms[bestRoomId];
-      assignments.set(member.id, {
-        roomId: bestRoomId,
-        jobId: job.id,
-        station: room ? `${room.id}` : bestRoomId,
-        action: job.label,
-        updatedAt: currentMinute,
-      });
+      assignments.set(member.id, { roomId: bestRoomId, jobId: job.id, station: bestRoomId, action: job.label, updatedAt: currentMinute });
     }
   });
-
   return assignments;
 }
 
@@ -113,55 +122,53 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
   const completedJobs = [];
   const logs = [];
   const missingRoles = new Set(roleCoverage?.missingRoles ?? []);
-
   ROOM_IDS.forEach((roomId) => {
     const room = rooms[roomId] ?? createInitialRoomState()[roomId];
-    const claim = roomActivities[roomId];
     const job = getRoomJob(roomId);
-
+    const claims = claimsForRoom(roomActivities, roomId, job?.id);
+    const modifiers = calculateRoomModifiers(room);
     let condition = room.condition;
     let load = room.load;
     let progress = room.progress;
     let jobId = room.jobId;
-    let assignedMemberId = room.assignedMemberId;
+    let assignedMemberIds = normalizeAssignedIds(room);
     const activeCrisisId = room.activeCrisisId ?? null;
-
     const engineerMissingPenalty = missingRoles.has("기관실") && roomId === "engineering" ? 2.3 : 1;
     const medicMissingPenalty = missingRoles.has("의무실") && roomId === "medbay" ? 1.4 : 1;
-    const decayMultiplier = Math.max(engineerMissingPenalty, medicMissingPenalty);
-
+    const rolePenalty = Math.max(engineerMissingPenalty, medicMissingPenalty);
+    const decayMultiplier = rolePenalty * modifiers.conditionDecayMul;
+    const loadGrowthMultiplier = rolePenalty / Math.max(0.4, modifiers.loadCapacityMul);
     if (activeCrisisId) {
       jobId = null;
-      assignedMemberId = null;
+      assignedMemberIds = [];
       progress = 0;
       condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours * decayMultiplier, 0, 100);
-      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * 1.35 * decayMultiplier, 0, 100);
-    } else if (claim && job) {
-      assignedMemberId = claim.memberId;
+      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * 1.35 * loadGrowthMultiplier, 0, 100);
+    } else if (claims.length > 0 && job) {
+      const slots = getRoomSlots(room);
+      assignedMemberIds = Array.from(new Set(claims.map((claim) => claim.memberId).filter(Boolean))).slice(0, slots);
       jobId = job.id;
-      progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100 * (claim.speedMultiplier ?? 1), 0, 100);
-
+      const speed = claims.slice(0, slots).reduce((sum, claim) => sum + (claim.speedMultiplier ?? 1), 0);
+      progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100 * Math.max(0.5, speed) * modifiers.jobSpeedMul, 0, 100);
       if (progress >= 100) {
         condition = clamp(condition + job.conditionRestore, 0, 100);
-        load = clamp(load - job.loadRelief, 0, 100);
+        load = clamp(load - job.loadRelief * modifiers.loadCapacityMul, 0, 100);
         progress = 0;
         const effect = jobCompletionEffect(job);
-        completedJobs.push({ roomId, jobId, memberId: assignedMemberId, effect });
-        logs.push(`${job.label} 완료 (${roomId}).`);
+        completedJobs.push({ roomId, jobId, memberId: primaryAssignedId(assignedMemberIds), memberIds: assignedMemberIds, effect });
+        logs.push(`${job.label} 완료 (${roomId}) · ${assignedMemberIds.length}명 작업.`);
         jobId = null;
-        assignedMemberId = null;
+        assignedMemberIds = [];
       }
     } else {
       jobId = null;
-      assignedMemberId = null;
+      assignedMemberIds = [];
       progress = 0;
       condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours * decayMultiplier, 0, 100);
-      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * decayMultiplier, 0, 100);
+      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * loadGrowthMultiplier, 0, 100);
     }
-
-    const draftRoom = { id: roomId, condition, load, jobId, assignedMemberId, progress, activeCrisisId };
+    const draftRoom = { ...room, id: roomId, condition, load, jobId, assignedMemberId: primaryAssignedId(assignedMemberIds), assignedMemberIds, progress, activeCrisisId };
     nextRooms[roomId] = { ...draftRoom, status: deriveRoomStatus(draftRoom), updatedAt: currentMinute };
   });
-
   return { nextRooms, completedJobs, logs };
 }
