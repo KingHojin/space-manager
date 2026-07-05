@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { rollEvent } from "./eventEngine";
+import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
@@ -18,6 +19,13 @@ export const formatGameDate = (totalMinutes) => {
   const minute = String(Math.floor(remDay % 60)).padStart(2, "0");
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
+
+function processTimedJobs() {
+  const currentMinute = useGameStore.getState().currentMinute;
+  const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
+  const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
+  [...crewLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
+}
 
 export const useGameClock = () => {
   const isPaused = useGameStore((state) => state.isPaused);
@@ -39,6 +47,7 @@ export const useGameClock = () => {
     const timer = window.setInterval(() => {
       const minutes = GAME_TIME.REAL_SECOND_TO_GAME_MINUTES * speed;
       useGameStore.getState().advanceMinutes(minutes);
+      processTimedJobs();
 
       const zone = getZoneById(useExplorationStore.getState().currentZoneId);
       const collector = useShipStore.getState().modules.find((module) => module.id === "dust-collector");
