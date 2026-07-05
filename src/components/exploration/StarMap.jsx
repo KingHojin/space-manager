@@ -163,6 +163,8 @@ export default function StarMap({
   totalCount,
 }) {
   const isMobileTouch = useCoarsePointer();
+  const [interactionMode, setInteractionMode] = useState(false);
+  const controlsEnabled = !isMobileTouch || interactionMode;
   const current = zones.find((zone) => zone.id === currentZoneId);
   const travelFrom = activeTravel ? zones.find((zone) => zone.id === activeTravel.fromZoneId) : null;
   const travelTo = activeTravel ? zones.find((zone) => zone.id === activeTravel.toZoneId) : null;
@@ -179,7 +181,7 @@ export default function StarMap({
         dpr={[1, 2]}
         camera={{ position: [0, 5.4, 7.8], fov: 48 }}
         gl={{ antialias: true }}
-        style={{ touchAction: isMobileTouch ? "pan-y" : "none" }}
+        style={{ touchAction: controlsEnabled ? "none" : "pan-y" }}
       >
         <ambientLight intensity={0.35} />
         <pointLight position={[4, 6, 4]} intensity={1.35} />
@@ -205,10 +207,10 @@ export default function StarMap({
           />
         ))}
         <OrbitControls
-          enabled={!isMobileTouch}
+          enabled={controlsEnabled}
           enablePan={false}
-          enableZoom={!isMobileTouch}
-          enableRotate={!isMobileTouch}
+          enableZoom={controlsEnabled}
+          enableRotate={controlsEnabled}
           minDistance={5.5}
           maxDistance={11}
           maxPolarAngle={Math.PI / 2.05}
@@ -225,10 +227,14 @@ export default function StarMap({
       </div>
 
       {isMobileTouch && (
-        <div className="pointer-events-none absolute bottom-3 left-3 max-w-[11rem] rounded border border-slate-700/70 bg-slate-950/75 px-3 py-2 backdrop-blur">
-          <div className="hud-label">모바일 스크롤 우선</div>
-          <div className="text-[0.65rem] text-slate-400">성계 선택은 라벨 탭, 회전은 PC에서 사용</div>
-        </div>
+        <button
+          type="button"
+          className={`absolute bottom-3 left-3 z-10 rounded border px-3 py-2 text-left text-[0.65rem] shadow-lg backdrop-blur ${interactionMode ? "border-amber-300/60 bg-amber-300/20 text-amber-100" : "border-slate-700/70 bg-slate-950/80 text-slate-300"}`}
+          onClick={() => setInteractionMode((enabled) => !enabled)}
+        >
+          <div className="font-semibold">{interactionMode ? "지도 조작 중" : "지도 회전 켜기"}</div>
+          <div className="mt-0.5 text-slate-400">{interactionMode ? "다시 누르면 스크롤 우선" : "기본은 세로 스크롤 우선"}</div>
+        </button>
       )}
 
       {activeTravel && (
