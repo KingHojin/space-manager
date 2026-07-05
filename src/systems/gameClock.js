@@ -3,6 +3,7 @@ import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { rollEvent } from "./eventEngine";
 import { getTravelEncounterChance, rollTravelEncounter, shouldRollTravelEncounter } from "./travelSystem";
+import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
@@ -120,11 +121,8 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
 }
 
 function processCrewAI(currentMinute) {
-  const exploration = useExplorationStore.getState();
-  const nav = useNavStore.getState();
-  const shipInterior = useShipInteriorStore.getState();
   const crewStore = useCrewStore.getState();
-  const logs = crewStore.runCrewAI({ currentMinute, resources: useGameStore.getState().resources, activeTravel: nav.travel ?? exploration.activeTravel, pendingTravelEvent: nav.pendingEncounter ?? exploration.pendingTravelEvent, pendingCombatEncounter: exploration.pendingCombatEncounter, installationQueue: useShipStore.getState().installationQueue ?? [], rooms: shipInterior.rooms, activeCrises: shipInterior.activeCrises ?? [], roleCoverage: crewStore.getRoleCoverage() });
+  const logs = crewStore.runCrewAI(getActiveVesselCrewAiSnapshot({ currentMinute }));
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
 
