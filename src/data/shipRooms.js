@@ -10,12 +10,12 @@ export const ROOMS = [
 ];
 
 export const AUX_ZONES = [
-  { id: "armory", label: "무기고", icon: Shield, left: 10, top: 51, width: 23, height: 9, tone: "border-red-300/28 bg-red-300/8", decorative: true, tag: "AUX" },
-  { id: "lab", label: "연구실", icon: FlaskConical, left: 39, top: 24, width: 22, height: 12, tone: "border-fuchsia-300/28 bg-fuchsia-300/8", decorative: true, tag: "AUX" },
-  { id: "observatory", label: "관측돔", icon: Eye, left: 67, top: 51, width: 23, height: 9, tone: "border-blue-300/28 bg-blue-300/8", decorative: true, tag: "AUX" },
-  { id: "hydroponics", label: "수경재배실", icon: Leaf, left: 10, top: 85, width: 23, height: 8, tone: "border-lime-300/28 bg-lime-300/8", decorative: true, tag: "LIFE" },
-  { id: "comms", label: "통신실", icon: Radio, left: 39, top: 38, width: 22, height: 12, tone: "border-cyan-200/24 bg-cyan-200/7", decorative: true, tag: "AUX" },
-  { id: "survey-bay", label: "탐사 베이", icon: Package, left: 67, top: 85, width: 23, height: 8, tone: "border-teal-300/24 bg-teal-300/7", decorative: true, tag: "BAY" },
+  { id: "armory", label: "무기고", icon: Shield, left: 10, top: 51, width: 23, height: 9, tone: "border-red-300/30 bg-red-300/10", decorative: true, tag: "AUX" },
+  { id: "lab", label: "연구실", icon: FlaskConical, left: 39, top: 24, width: 22, height: 12, tone: "border-fuchsia-300/30 bg-fuchsia-300/10", decorative: true, tag: "AUX" },
+  { id: "observatory", label: "관측돔", icon: Eye, left: 67, top: 51, width: 23, height: 9, tone: "border-blue-300/30 bg-blue-300/10", decorative: true, tag: "AUX" },
+  { id: "hydroponics", label: "수경재배실", icon: Leaf, left: 10, top: 85, width: 23, height: 8, tone: "border-lime-300/30 bg-lime-300/10", decorative: true, tag: "LIFE" },
+  { id: "comms", label: "통신실", icon: Radio, left: 39, top: 38, width: 22, height: 12, tone: "border-cyan-200/30 bg-cyan-200/10", decorative: true, tag: "AUX" },
+  { id: "survey-bay", label: "탐사 베이", icon: Package, left: 67, top: 85, width: 23, height: 8, tone: "border-teal-300/30 bg-teal-300/10", decorative: true, tag: "BAY" },
 ];
 
 export const DISPLAY_ROOMS = [...ROOMS, ...AUX_ZONES];
