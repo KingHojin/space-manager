@@ -1,8 +1,9 @@
-import { AlertTriangle, Crosshair, Shield, Skull, Swords, Zap } from "lucide-react";
+import { AlertTriangle, Crosshair, Shield, Skull, Swords, Target, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
 import BattleScene from "../common/BattleScene";
 import { ActionCard, FeedList, GaugeBar, StatTile } from "../ui/VisualPrimitives";
 import {
+  COMBAT_TARGETS,
   calculateCombatPower,
   createCombatState,
   getCombatDirectiveResult,
@@ -61,9 +62,20 @@ function ThreatPoster({ enemy, pendingCombatEncounter, combat, travelLocked }) {
   );
 }
 
+function TargetCard({ target, active, disabled, onSelect }) {
+  return (
+    <button className={`rounded-2xl border p-3 text-left transition ${active ? "border-cyan-300 bg-cyan-300/15 shadow-[0_0_20px_rgba(34,211,238,0.16)]" : "border-slate-700/70 bg-slate-950/65 hover:border-cyan-300/70"} disabled:opacity-45`} disabled={disabled} onClick={() => onSelect(target.id)}>
+      <div className="flex items-center justify-between gap-2"><span className="grid h-9 w-9 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-lg text-cyan-100">{target.icon}</span>{active && <span className="hud-chip hud-chip-accent">LOCK</span>}</div>
+      <div className="mt-2 font-black text-slate-50">{target.label}</div>
+      <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-400">{target.desc}</div>
+    </button>
+  );
+}
+
 export default function Combat() {
   const [feed, setFeed] = useState(["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."]);
   const [combat, setCombat] = useState(null);
+  const [targetId, setTargetId] = useState("hull");
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
@@ -89,6 +101,7 @@ export default function Combat() {
   const activeTravel = legacyTravel ?? navTravel;
   const combatEngaged = combat?.status === "engaged";
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter && !combatEngaged);
+  const selectedTarget = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
 
   const pushFeed = (lines) => {
     setFeed((current) => [...lines, ...current].slice(0, 14));
@@ -102,18 +115,19 @@ export default function Combat() {
     const enemy = pickEnemyFleet(danger);
     const next = createCombatState(enemy);
     setCombat(next);
+    setTargetId("hull");
     if (pendingCombatEncounter) {
       clearPendingCombatEncounter();
-      pushFeed([`긴급 항해 교전 대응: ${pendingCombatEncounter.title}`, `${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "전술 지시 후 교전이 종료되면 항해를 재개할 수 있습니다."]);
+      pushFeed([`긴급 항해 교전 대응: ${pendingCombatEncounter.title}`, `${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "타겟 서브시스템과 전술 지시를 함께 선택하세요."]);
     } else {
-      pushFeed([`${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "함교가 전술 지시를 기다립니다."]);
+      pushFeed([`${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`, "타겟 서브시스템과 전술 지시를 함께 선택하세요."]);
     }
   };
 
   const issueDirective = (directive) => {
     if (!combat || combat.status !== "engaged") return pushFeed([getCombatDirectiveResult(directive), travelLocked ? "항해 중이라 훈련 교전도 제한됩니다." : "교전이 없어 훈련 중계만 기록됩니다."]);
     if (activeCrew.length === 0) return pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
-    const result = resolveCombatRound({ directive, combat, power });
+    const result = resolveCombatRound({ directive, combat, power, targetId });
     setCombat(result.combat);
     addResources(result.resourceChanges);
     if (result.loot) addItem(result.loot.itemId, result.loot.qty);
@@ -135,6 +149,7 @@ export default function Combat() {
 
   const resetCombat = () => {
     setCombat(null);
+    setTargetId("hull");
     pushFeed(["전투 브리핑을 초기화했습니다."]);
   };
 
@@ -148,16 +163,17 @@ export default function Combat() {
   return (
     <div className="grid gap-4 lg:h-full lg:grid-cols-[0.9fr_1.1fr]">
       <section>
-        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">전투력, 적 상태, 지시 카드를 한 화면에서 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
+        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">타겟 서브시스템과 전술 지시를 조합해 교전을 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-[0.95fr_1.05fr]"><ThreatPoster enemy={enemy} pendingCombatEncounter={pendingCombatEncounter} combat={combat} travelLocked={travelLocked} /><div className="grid grid-cols-3 gap-2"><StatTile icon={Shield} label="선체" value={`${Math.round(resources.hull)}%`} /><StatTile icon={Zap} label="연료" value={`${Math.round(resources.fuel)}%`} /><StatTile icon={Skull} label="생존/전사" value={`${activeCrew.length}/${fallenCrew.length}`} /></div></div>
         {activeTravel && <div className={`mt-4 rounded-2xl border p-3 text-sm ${pendingCombatEncounter || combatEngaged ? "border-red-400/40 bg-red-400/10 text-red-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}><div className="flex items-center gap-2 font-bold"><AlertTriangle size={16} />{pendingCombatEncounter || combatEngaged ? "항해 중 긴급 교전" : "항해 작전 진행 중"}</div></div>}
         <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combat?.status === "engaged" || pendingCombatEncounter ? "hud-chip-warn" : ""}`}>{combat?.status ?? (pendingCombatEncounter ? "urgent" : travelLocked ? "locked" : "standby")}</span></div>
-          {enemy && <div className="mt-4 space-y-3"><GaugeBar label="적 방어막" value={enemyShield} /><GaugeBar label="적 선체" value={enemyHull} /><div className="flex flex-wrap gap-1.5 text-xs"><span className="mission-reward-icon">₢ {enemy.reward}</span><span className="mission-reward-icon">PWR {enemy.power}</span><span className="mission-reward-icon">전리품 {enemy.lootItemId ?? "-"}</span></div></div>}
+          {enemy && <div className="mt-4 space-y-3"><GaugeBar label="적 방어막" value={enemyShield} /><GaugeBar label="적 선체" value={enemyHull} /><div className="flex flex-wrap gap-1.5 text-xs"><span className="mission-reward-icon">₢ {enemy.reward}</span><span className="mission-reward-icon">PWR {enemy.power}</span><span className="mission-reward-icon">전리품 {enemy.lootItemId ?? "-"}</span><span className="mission-reward-icon">타겟 {selectedTarget.label}</span></div></div>}
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
           {combat && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
-        <div className="mt-4 grid grid-cols-2 gap-2">{directives.map(([id, label, icon, desc]) => <ActionCard key={id} icon={icon} title={label} desc={desc} disabled={!canIssueDirective} onClick={() => issueDirective(id)} />)}</div>
+        <section className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-3"><div className="section-title"><Target size={16} />타겟 서브시스템</div><div className="mt-3 grid grid-cols-2 gap-2">{Object.values(COMBAT_TARGETS).map((target) => <TargetCard key={target.id} target={target} active={target.id === targetId} disabled={!combatEngaged} onSelect={setTargetId} />)}</div></section>
+        <div className="mt-4 grid grid-cols-2 gap-2">{directives.map(([id, label, icon, desc]) => <ActionCard key={id} icon={icon} title={label} desc={`${desc} · ${selectedTarget.label} 조준`} disabled={!canIssueDirective} onClick={() => issueDirective(id)} />)}</div>
       </section>
       <section>
         <div className="grid gap-4 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)_auto]">
