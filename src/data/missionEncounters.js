@@ -24,9 +24,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.arrival,
     risk: "medium",
     options: [
-      { id: "drone-scan", label: "드론 먼저 투입", role: "기관실", risk: "low", rewardPreview: { scrap: 8 }, outcomes: [{ kind: "reward", reward: { scrap: 8 } }, { kind: "log", message: "드론 스캔으로 안전한 진입 경로를 확보했습니다." }] },
-      { id: "direct-entry", label: "직접 진입", role: "함교", risk: "medium", rewardPreview: { scrap: 16, blueprintChance: 0.04 }, outcomes: [{ kind: "resource", delta: { hull: -4 } }, { kind: "reward", reward: { scrap: 16, blueprintChance: 0.04 } }] },
-      { id: "wide-scan", label: "외곽부터 훑기", role: "함교", risk: "low", rewardPreview: { chartData: 1 }, outcomes: [{ kind: "reward", reward: { chartData: 1 } }] },
+      { id: "drone-scan", label: "드론 먼저 투입", role: "기관실", risk: "low", rewardPreview: { scrap: 8 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { scrap: 8 } }, { kind: "log", message: "드론 연료를 소모했지만 안전한 진입 경로를 확보했습니다." }] },
+      { id: "direct-entry", label: "직접 진입", role: "함교", risk: "medium", rewardPreview: { scrap: 18, blueprintChance: 0.04 }, outcomes: [{ kind: "resource", delta: { hull: -5 } }, { kind: "crewRisk", severity: "minor", chance: 0.08 }, { kind: "reward", reward: { scrap: 18, blueprintChance: 0.04 } }] },
+      { id: "wide-scan", label: "외곽부터 훑기", role: "함교", risk: "low", rewardPreview: { reputation: 1 }, outcomes: [{ kind: "resource", delta: { fuel: -2 } }, { kind: "reward", reward: { reputation: 1 } }, { kind: "log", message: "시간과 연료를 더 썼지만 안전한 회수 보고서를 남겼습니다." }] },
     ],
   },
   {
@@ -39,8 +39,8 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.objective,
     risk: "high",
     options: [
-      { id: "brace-corridor", label: "통로 보강", role: "기관실", risk: "medium", rewardPreview: { scrap: 10 }, outcomes: [{ kind: "resource", delta: { hull: -2 } }, { kind: "reward", reward: { scrap: 10 } }] },
-      { id: "fast-recover", label: "빠르게 회수", role: "함교", risk: "high", rewardPreview: { dust: 20, blueprintChance: 0.06 }, outcomes: [{ kind: "crewRisk", severity: "minor", chance: 0.12 }, { kind: "reward", reward: { dust: 20, blueprintChance: 0.06 } }] },
+      { id: "brace-corridor", label: "통로 보강", role: "기관실", risk: "medium", rewardPreview: { scrap: 14 }, outcomes: [{ kind: "resource", delta: { hull: -3, oxygen: -2 } }, { kind: "reward", reward: { scrap: 14 } }, { kind: "log", message: "임시 지지대를 세워 통로 붕괴를 늦췄습니다." }] },
+      { id: "fast-recover", label: "빠르게 회수", role: "함교", risk: "high", rewardPreview: { dust: 24, blueprintChance: 0.06 }, outcomes: [{ kind: "resource", delta: { oxygen: -4 } }, { kind: "crewRisk", severity: "minor", chance: 0.18 }, { kind: "reward", reward: { dust: 24, blueprintChance: 0.06 } }] },
       { id: "abort-section", label: "위험 구획 포기", role: "의무실", risk: "low", rewardPreview: { dust: 6 }, outcomes: [{ kind: "reward", reward: { dust: 6 } }, { kind: "log", message: "위험 구획을 포기하고 보조 데이터만 회수했습니다." }] },
     ],
   },
@@ -54,9 +54,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.arrival,
     risk: "medium",
     options: [
-      { id: "share-oxygen", label: "산소 셀 연결", role: "의무실", risk: "low", rewardPreview: { recruitChance: 0.08 }, outcomes: [{ kind: "resource", delta: { oxygen: -5 } }, { kind: "reward", reward: { recruitChance: 0.08 } }] },
-      { id: "rush-docking", label: "강제 도킹", role: "함교", risk: "high", rewardPreview: { recruitChance: 0.16 }, outcomes: [{ kind: "resource", delta: { hull: -5 } }, { kind: "crewRisk", severity: "minor", chance: 0.08 }, { kind: "reward", reward: { recruitChance: 0.16 } }] },
-      { id: "remote-stabilize", label: "원격 안정화", role: "기관실", risk: "medium", rewardPreview: { dust: 12 }, outcomes: [{ kind: "reward", reward: { dust: 12 } }] },
+      { id: "share-oxygen", label: "산소 셀 연결", role: "의무실", risk: "low", rewardPreview: { reputation: 1, recruitChance: 0.08 }, outcomes: [{ kind: "resource", delta: { oxygen: -6 } }, { kind: "reward", reward: { reputation: 1, recruitChance: 0.08 } }] },
+      { id: "rush-docking", label: "강제 도킹", role: "함교", risk: "high", rewardPreview: { reputation: 2, recruitChance: 0.16 }, outcomes: [{ kind: "resource", delta: { hull: -6, oxygen: -3 } }, { kind: "crewRisk", severity: "minor", chance: 0.12 }, { kind: "reward", reward: { reputation: 2, recruitChance: 0.16 } }] },
+      { id: "remote-stabilize", label: "원격 안정화", role: "기관실", risk: "medium", rewardPreview: { dust: 12 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { dust: 12 } }, { kind: "log", message: "원격 안정화로 구조 시간을 벌었습니다." }] },
     ],
   },
   {
@@ -69,9 +69,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.enRoute,
     risk: "medium",
     options: [
-      { id: "mask-cargo", label: "화물 신호 위장", role: "함교", risk: "medium", rewardPreview: { reputation: 1 }, outcomes: [{ kind: "reward", reward: { reputation: 1 } }] },
-      { id: "pay-decoy", label: "미끼 화물 투하", role: "기관실", risk: "low", rewardPreview: { dust: 4 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { dust: 4 } }, { kind: "log", message: "미끼 화물로 검문을 회피했습니다." }] },
-      { id: "challenge", label: "교전 각오", role: "포탑", risk: "high", rewardPreview: { scrap: 12 }, outcomes: [{ kind: "combat", dangerBonus: 1 }, { kind: "reward", reward: { scrap: 12 } }] },
+      { id: "mask-cargo", label: "화물 신호 위장", role: "함교", risk: "medium", rewardPreview: { reputation: 1 }, outcomes: [{ kind: "resource", delta: { fuel: -2 } }, { kind: "reward", reward: { reputation: 1 } }] },
+      { id: "pay-decoy", label: "미끼 화물 투하", role: "기관실", risk: "low", rewardPreview: { dust: 4 }, outcomes: [{ kind: "resource", delta: { fuel: -2 } }, { kind: "reward", reward: { dust: 4 } }, { kind: "log", message: "미끼 화물과 연료를 소모해 검문을 회피했습니다." }] },
+      { id: "challenge", label: "교전 각오", role: "포탑", risk: "high", rewardPreview: { scrap: 18 }, outcomes: [{ kind: "resource", delta: { hull: -3 } }, { kind: "combat", dangerBonus: 1 }, { kind: "reward", reward: { scrap: 18 } }] },
     ],
   },
   {
@@ -84,9 +84,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.objective,
     risk: "medium",
     options: [
-      { id: "calibrate", label: "센서 보정", role: "함교", risk: "low", rewardPreview: { chartData: 1 }, outcomes: [{ kind: "reward", reward: { chartData: 1 } }] },
-      { id: "overclock", label: "스캐너 과출력", role: "기관실", risk: "medium", rewardPreview: { researchData: 1, dust: 14 }, outcomes: [{ kind: "resource", delta: { oxygen: -2 } }, { kind: "reward", reward: { researchData: 1, dust: 14 } }] },
-      { id: "follow-signal", label: "희귀 신호 추적", role: "함교", risk: "high", rewardPreview: { artifactChance: 0.05 }, outcomes: [{ kind: "resource", delta: { fuel: -4 } }, { kind: "reward", reward: { artifactChance: 0.05 } }] },
+      { id: "calibrate", label: "센서 보정", role: "함교", risk: "low", rewardPreview: { reputation: 1 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { reputation: 1 } }] },
+      { id: "overclock", label: "스캐너 과출력", role: "기관실", risk: "medium", rewardPreview: { dust: 18 }, outcomes: [{ kind: "resource", delta: { oxygen: -3, hull: -2 } }, { kind: "reward", reward: { dust: 18 } }] },
+      { id: "follow-signal", label: "희귀 신호 추적", role: "함교", risk: "high", rewardPreview: { artifactChance: 0.06 }, outcomes: [{ kind: "resource", delta: { fuel: -5 } }, { kind: "crewRisk", severity: "minor", chance: 0.06 }, { kind: "reward", reward: { artifactChance: 0.06 } }] },
     ],
   },
   {
@@ -99,9 +99,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.arrival,
     risk: "high",
     options: [
-      { id: "preemptive-fire", label: "선제 포격", role: "포탑", risk: "high", rewardPreview: { scrap: 18 }, outcomes: [{ kind: "combat", dangerBonus: 1 }, { kind: "reward", reward: { scrap: 18 } }] },
-      { id: "jam-beacon", label: "비콘 교란", role: "기관실", risk: "medium", rewardPreview: { blueprintChance: 0.05 }, outcomes: [{ kind: "resource", delta: { hull: -3 } }, { kind: "reward", reward: { blueprintChance: 0.05 } }] },
-      { id: "defensive-formation", label: "방어 진형", role: "함교", risk: "low", rewardPreview: { dust: 10 }, outcomes: [{ kind: "reward", reward: { dust: 10 } }] },
+      { id: "preemptive-fire", label: "선제 포격", role: "포탑", risk: "high", rewardPreview: { scrap: 24 }, outcomes: [{ kind: "resource", delta: { fuel: -4, hull: -2 } }, { kind: "combat", dangerBonus: 1 }, { kind: "reward", reward: { scrap: 24 } }] },
+      { id: "jam-beacon", label: "비콘 교란", role: "기관실", risk: "medium", rewardPreview: { blueprintChance: 0.05 }, outcomes: [{ kind: "resource", delta: { hull: -4, oxygen: -2 } }, { kind: "reward", reward: { blueprintChance: 0.05 } }] },
+      { id: "defensive-formation", label: "방어 진형", role: "함교", risk: "low", rewardPreview: { dust: 10 }, outcomes: [{ kind: "resource", delta: { fuel: -2 } }, { kind: "reward", reward: { dust: 10 } }, { kind: "log", message: "방어 진형으로 함체를 지켰지만 추격 시간이 늘어났습니다." }] },
     ],
   },
   {
@@ -114,9 +114,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.arrival,
     risk: "medium",
     options: [
-      { id: "slow-maneuver", label: "저속 기동", role: "함교", risk: "low", rewardPreview: { oreSample: 1 }, outcomes: [{ kind: "reward", reward: { oreSample: 1 } }] },
-      { id: "harvest-rich-vein", label: "고농도 광맥 채취", role: "기관실", risk: "medium", rewardPreview: { scrap: 22, oreSample: 1 }, outcomes: [{ kind: "resource", delta: { hull: -3 } }, { kind: "reward", reward: { scrap: 22, oreSample: 1 } }] },
-      { id: "blast-path", label: "포탑으로 길 개척", role: "포탑", risk: "medium", rewardPreview: { scrap: 12 }, outcomes: [{ kind: "resource", delta: { fuel: -3 } }, { kind: "reward", reward: { scrap: 12 } }] },
+      { id: "slow-maneuver", label: "저속 기동", role: "함교", risk: "low", rewardPreview: { scrap: 8 }, outcomes: [{ kind: "resource", delta: { fuel: -2 } }, { kind: "reward", reward: { scrap: 8 } }] },
+      { id: "harvest-rich-vein", label: "고농도 광맥 채취", role: "기관실", risk: "medium", rewardPreview: { scrap: 26 }, outcomes: [{ kind: "resource", delta: { hull: -4, fuel: -2 } }, { kind: "reward", reward: { scrap: 26 } }] },
+      { id: "blast-path", label: "포탑으로 길 개척", role: "포탑", risk: "medium", rewardPreview: { scrap: 14 }, outcomes: [{ kind: "resource", delta: { fuel: -4, hull: -1 } }, { kind: "reward", reward: { scrap: 14 } }] },
     ],
   },
   {
@@ -129,9 +129,9 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     timing: MISSION_ENCOUNTER_TIMING.objective,
     risk: "high",
     options: [
-      { id: "translate-protocol", label: "프로토콜 해석", role: "함교", risk: "medium", rewardPreview: { researchData: 1, artifactChance: 0.04 }, outcomes: [{ kind: "reward", reward: { researchData: 1, artifactChance: 0.04 } }] },
-      { id: "force-reboot", label: "강제 재부팅", role: "기관실", risk: "high", rewardPreview: { blueprintChance: 0.08 }, outcomes: [{ kind: "resource", delta: { hull: -6 } }, { kind: "reward", reward: { blueprintChance: 0.08 } }] },
-      { id: "withdraw-scan", label: "외부 스캔만 수행", role: "의무실", risk: "low", rewardPreview: { dust: 18 }, outcomes: [{ kind: "reward", reward: { dust: 18 } }] },
+      { id: "translate-protocol", label: "프로토콜 해석", role: "함교", risk: "medium", rewardPreview: { reputation: 1, artifactChance: 0.04 }, outcomes: [{ kind: "resource", delta: { oxygen: -2 } }, { kind: "reward", reward: { reputation: 1, artifactChance: 0.04 } }] },
+      { id: "force-reboot", label: "강제 재부팅", role: "기관실", risk: "high", rewardPreview: { blueprintChance: 0.08 }, outcomes: [{ kind: "resource", delta: { hull: -7, oxygen: -4 } }, { kind: "crewRisk", severity: "serious", chance: 0.1 }, { kind: "reward", reward: { blueprintChance: 0.08 } }] },
+      { id: "withdraw-scan", label: "외부 스캔만 수행", role: "의무실", risk: "low", rewardPreview: { dust: 12 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { dust: 12 } }, { kind: "log", message: "유적 내부 진입을 포기하고 외부 신호만 기록했습니다." }] },
     ],
   },
 ]);
