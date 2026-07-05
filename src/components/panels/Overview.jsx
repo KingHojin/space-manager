@@ -14,6 +14,7 @@ import { useSkillStore } from "../../stores/skillStore";
 import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, summarizeSituations } from "../../systems/commandCenter";
 import { summarizeCrewAI } from "../../systems/crewAI";
 import { formatGameDate } from "../../systems/gameClock";
+import { isInjured } from "../../systems/injurySystem";
 import { getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
@@ -78,6 +79,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const signals = getFrontierSignals({ currentMinute, discoveredCount: discoveredZoneIds.length, dangerCount: dangerZoneCount, activeContracts: activeContracts.length });
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
   const tiredCrewCount = crew.filter((member) => member.alive && (member.fatigue ?? 0) >= 70).length;
+  const injuredCrewCount = crew.filter((member) => member.alive && isInjured(member.injury)).length;
   const crewAiSummary = summarizeCrewAI(crewActivities);
   const situations = getSituationCards({
     resources,
@@ -101,7 +103,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
   const commandCards = [
     { id: "exploration", icon: Compass, title: "항로 설정", desc: activeTravel ? "항해 중 이벤트 대응" : "새 목적지 지정", badge: activeTravel ? `${Math.round(travelProgress)}%` : `${discoveredRatio}%` },
-    { id: "crew", icon: Users, title: "승무원 운영", desc: `AI 활동 ${crewAiSummary.total} · 피로 ${tiredCrewCount}`, badge: `${crew.filter((member) => member.alive).length}명` },
+    { id: "crew", icon: Users, title: "승무원 운영", desc: `AI ${crewAiSummary.total} · 부상 ${injuredCrewCount} · 피로 ${tiredCrewCount}`, badge: `${crew.filter((member) => member.alive).length}명` },
     { id: "ship", icon: Wrench, title: "함선 정비", desc: activeCrises.length ? `함내 위기 ${activeCrises.length}건 대응 중` : `작업 큐 ${queuedWorkCount}건`, badge: `${Math.round(resources.hull)}%` },
     { id: "market", icon: Briefcase, title: "계약/보급", desc: activeContracts.length ? "진행 중 의뢰 확인" : "새 의뢰 수락", badge: activeContracts.length ? `${activeContracts.length}건` : `신규 ${nextContracts.length}` },
   ];
@@ -110,242 +112,26 @@ export default function Overview({ onNavigate, onOpenModal }) {
     <div className="grid gap-3 sm:gap-4">
       <section className="overflow-hidden p-0">
         <div className="relative">
-          <StarMap
-            zones={zones}
-            currentZoneId={currentZoneId}
-            selectedZoneId={selectedZoneId}
-            discoveredZoneIds={discoveredZoneIds}
-            route={route}
-            activeTravel={activeTravel}
-            currentMinute={currentMinute}
-            onSelect={(zone) => selectZone(zone.id === currentZoneId ? null : zone.id)}
-            sectorName={sector.name}
-            exploredCount={discoveredZoneIds.length}
-            totalCount={zones.length}
-          />
-          <div className="absolute left-3 top-3 rounded border border-cyan-400/20 bg-slate-950/85 p-3 backdrop-blur">
-            <div className="hud-label">COMMAND CENTER</div>
-            <div className="mt-1 max-w-48 truncate font-bold text-slate-100">{shipName}</div>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className={`hud-chip ${shipStatus.tone}`}>{shipStatus.label}</span>
-              <span className="hud-chip">탐사율 {discoveredRatio}%</span>
-            </div>
-          </div>
+          <StarMap zones={zones} currentZoneId={currentZoneId} selectedZoneId={selectedZoneId} discoveredZoneIds={discoveredZoneIds} route={route} activeTravel={activeTravel} currentMinute={currentMinute} onSelect={(zone) => selectZone(zone.id === currentZoneId ? null : zone.id)} sectorName={sector.name} exploredCount={discoveredZoneIds.length} totalCount={zones.length} />
+          <div className="absolute left-3 top-3 rounded border border-cyan-400/20 bg-slate-950/85 p-3 backdrop-blur"><div className="hud-label">COMMAND CENTER</div><div className="mt-1 max-w-48 truncate font-bold text-slate-100">{shipName}</div><div className="mt-2 flex flex-wrap gap-1.5"><span className={`hud-chip ${shipStatus.tone}`}>{shipStatus.label}</span><span className="hud-chip">탐사율 {discoveredRatio}%</span></div></div>
         </div>
       </section>
 
-      <section>
-        <div className="grid gap-4 lg:grid-cols-[1fr_1.35fr] lg:items-stretch">
-          <div>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="section-title"><Rocket size={18} />함장 상황센터</div>
-                <h2 className="mt-3 text-2xl font-black text-slate-50">{shipStatus.label}</h2>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{shipStatus.desc}</p>
-              </div>
-              <span className={`hud-chip shrink-0 ${shipStatus.tone}`}>실시간</span>
-            </div>
+      <section><div className="grid gap-4 lg:grid-cols-[1fr_1.35fr] lg:items-stretch"><div><div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함장 상황센터</div><h2 className="mt-3 text-2xl font-black text-slate-50">{shipStatus.label}</h2><p className="mt-2 text-sm leading-6 text-slate-400">{shipStatus.desc}</p></div><span className={`hud-chip shrink-0 ${shipStatus.tone}`}>실시간</span></div>{topSituation && <button className={`mt-4 w-full rounded border p-3 text-left ${topSituation.tone}`} onClick={() => onNavigate?.(topSituation.targetPanel)}><div className="flex items-start gap-3"><span className="text-2xl">{topSituation.icon}</span><div className="min-w-0 flex-1"><div className="flex items-center justify-between gap-2"><div className="truncate font-bold text-slate-50">최우선 결재 · {topSituation.title}</div><span className="hud-chip shrink-0 bg-slate-950/40">{topSituation.priorityLabel}</span></div><p className="mt-1 text-sm leading-5 text-slate-300">{topSituation.desc}</p><div className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-cyan-100">{topSituation.action} <ChevronRight size={14} /></div></div></div></button>}{activeTravel ? <div className="mt-3 rounded border border-amber-300/30 bg-amber-300/10 p-3"><div className="flex items-start justify-between gap-3"><div className="min-w-0"><div className="truncate font-bold text-amber-100">{originZone?.name} → {destinationZone?.name}</div><div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(activeTravel.completeAt)} · 남은 {formatMinutes(Math.max(0, Math.ceil(activeTravel.completeAt - currentMinute)))}</div></div><span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span></div><div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div></div> : <div className="mt-3 rounded border border-cyan-400/25 bg-cyan-400/10 p-3"><div className="font-bold text-cyan-100">대기 중인 항로 없음</div><p className="mt-1 text-sm text-slate-400">탐사 화면에서 다음 목적지를 지정하면 항해 이벤트와 작업 큐가 동시에 진행됩니다.</p></div>}</div><div className="grid grid-cols-2 gap-2 sm:grid-cols-4"><StatusTile label="크레딧" value={`₢ ${number(resources.credits)}`} /><StatusTile label="연료" value={`${Math.round(resources.fuel)}%`} tone={gaugeTone(resources.fuel)} gauge={resources.fuel} /><StatusTile label="산소" value={`${Math.round(resources.oxygen)}%`} tone={gaugeTone(resources.oxygen)} gauge={resources.oxygen} /><StatusTile label="선체" value={`${Math.round(resources.hull)}%`} tone={gaugeTone(resources.hull)} gauge={resources.hull} /><StatusTile label="결재 큐" value={`${situationSummary.total}건`} /><StatusTile label="긴급" value={`${situationSummary.critical}건`} /><StatusTile label="함내 위기" value={`${activeCrises.length}건`} /><StatusTile label="부상" value={`${injuredCrewCount}명`} /></div></div></section>
 
-            {topSituation && (
-              <button className={`mt-4 w-full rounded border p-3 text-left ${topSituation.tone}`} onClick={() => onNavigate?.(topSituation.targetPanel)}>
-                <div className="flex items-start gap-3">
-                  <span className="text-2xl">{topSituation.icon}</span>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="truncate font-bold text-slate-50">최우선 결재 · {topSituation.title}</div>
-                      <span className="hud-chip shrink-0 bg-slate-950/40">{topSituation.priorityLabel}</span>
-                    </div>
-                    <p className="mt-1 text-sm leading-5 text-slate-300">{topSituation.desc}</p>
-                    <div className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-cyan-100">{topSituation.action} <ChevronRight size={14} /></div>
-                  </div>
-                </div>
-              </button>
-            )}
+      <section><div className="flex items-center justify-between gap-3"><div className="section-title"><AlertTriangle size={18} />함장 결재 큐</div><div className="flex gap-1.5">{situationSummary.critical > 0 && <span className="hud-chip hud-chip-danger">긴급 {situationSummary.critical}</span>}{situationSummary.high > 0 && <span className="hud-chip hud-chip-warn">높음 {situationSummary.high}</span>}<button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("command")}>메뉴</button></div></div><div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">{situations.slice(0, 6).map((card) => <SituationCard key={card.id} card={card} onNavigate={onNavigate} />)}</div></section>
 
-            {activeTravel ? (
-              <div className="mt-3 rounded border border-amber-300/30 bg-amber-300/10 p-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="truncate font-bold text-amber-100">{originZone?.name} → {destinationZone?.name}</div>
-                    <div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(activeTravel.completeAt)} · 남은 {formatMinutes(Math.max(0, Math.ceil(activeTravel.completeAt - currentMinute)))}</div>
-                  </div>
-                  <span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span>
-                </div>
-                <div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div>
-              </div>
-            ) : (
-              <div className="mt-3 rounded border border-cyan-400/25 bg-cyan-400/10 p-3">
-                <div className="font-bold text-cyan-100">대기 중인 항로 없음</div>
-                <p className="mt-1 text-sm text-slate-400">탐사 화면에서 다음 목적지를 지정하면 항해 이벤트와 작업 큐가 동시에 진행됩니다.</p>
-              </div>
-            )}
-          </div>
+      <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Radar size={18} />프론티어 신호</div><span className="hud-chip hud-chip-accent">계속 갱신</span></div><p className="mt-2 text-sm leading-6 text-slate-400">우주는 정지하지 않습니다. 시간, 탐사율, 위험 구역, 계약 상태에 따라 새 신호와 소문이 계속 올라옵니다.</p><div className="mt-4 grid gap-2 md:grid-cols-2">{signals.map((signal) => <button key={signal.id} className={`rounded border p-3 text-left transition hover:-translate-y-0.5 ${signal.tone}`} onClick={() => onNavigate?.(signal.targetPanel)}><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="text-2xl">{signal.icon}</span><div className="min-w-0"><div className="truncate font-bold text-slate-50">{signal.title}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">{signal.desc}</p></div></div><span className="hud-chip shrink-0">{signal.urgency}</span></div><div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-400"><span>신호 유지 {signal.expiresIn}분</span><span className="inline-flex items-center gap-1 font-semibold text-cyan-100">확인 <ChevronRight size={14} /></span></div></button>)}</div></section>
 
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <StatusTile label="크레딧" value={`₢ ${number(resources.credits)}`} />
-            <StatusTile label="연료" value={`${Math.round(resources.fuel)}%`} tone={gaugeTone(resources.fuel)} gauge={resources.fuel} />
-            <StatusTile label="산소" value={`${Math.round(resources.oxygen)}%`} tone={gaugeTone(resources.oxygen)} gauge={resources.oxygen} />
-            <StatusTile label="선체" value={`${Math.round(resources.hull)}%`} tone={gaugeTone(resources.hull)} gauge={resources.hull} />
-            <StatusTile label="결재 큐" value={`${situationSummary.total}건`} />
-            <StatusTile label="긴급" value={`${situationSummary.critical}건`} />
-            <StatusTile label="함내 위기" value={`${activeCrises.length}건`} />
-            <StatusTile label="승무원 AI" value={`${crewAiSummary.high + crewAiSummary.emergency}/${crewAiSummary.total}`} />
-          </div>
-        </div>
-      </section>
+      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><div className="grid gap-3"><ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} compact onCrewClick={() => onNavigate?.("crew")} /><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Users size={18} />승무원 AI 행동</div><span className="hud-chip hud-chip-accent">자동 배정</span></div><div className="mt-3 grid gap-2">{crew.slice(0, 5).map((member, index) => { const activity = crewActivities.find((entry) => entry.memberId === member.id); const actionText = activity ? `${activity.station} · ${activity.action}` : getCrewActivity(member, currentMinute, index); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}><div className="flex min-w-0 items-center gap-2"><span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="truncate text-xs text-slate-400">{member.role} · {actionText}</div></div></div><span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span></button>; })}</div></section></div><TaskQueuePanel onNavigate={onNavigate} /></div>
 
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <div className="section-title"><AlertTriangle size={18} />함장 결재 큐</div>
-          <div className="flex gap-1.5">
-            {situationSummary.critical > 0 && <span className="hud-chip hud-chip-danger">긴급 {situationSummary.critical}</span>}
-            {situationSummary.high > 0 && <span className="hud-chip hud-chip-warn">높음 {situationSummary.high}</span>}
-            <button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("command")}>메뉴</button>
-          </div>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-          {situations.slice(0, 6).map((card) => <SituationCard key={card.id} card={card} onNavigate={onNavigate} />)}
-        </div>
-      </section>
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">{commandCards.map((card) => { const Icon = card.icon; return <button key={card.id} className="rounded border border-slate-700/70 bg-slate-950/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300" onClick={() => onNavigate?.(card.id)}><div className="flex items-start justify-between gap-2"><Icon size={24} className="text-cyan-200" /><span className="hud-chip">{card.badge}</span></div><div className="mt-3 font-bold text-slate-50">{card.title}</div><div className="mt-1 text-xs leading-5 text-slate-400">{card.desc}</div></button>; })}</div>
 
-      <section>
-        <div className="flex items-center justify-between gap-3">
-          <div className="section-title"><Radar size={18} />프론티어 신호</div>
-          <span className="hud-chip hud-chip-accent">계속 갱신</span>
-        </div>
-        <p className="mt-2 text-sm leading-6 text-slate-400">우주는 정지하지 않습니다. 시간, 탐사율, 위험 구역, 계약 상태에 따라 새 신호와 소문이 계속 올라옵니다.</p>
-        <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {signals.map((signal) => (
-            <button key={signal.id} className={`rounded border p-3 text-left transition hover:-translate-y-0.5 ${signal.tone}`} onClick={() => onNavigate?.(signal.targetPanel)}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
-                  <span className="text-2xl">{signal.icon}</span>
-                  <div className="min-w-0">
-                    <div className="truncate font-bold text-slate-50">{signal.title}</div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">{signal.desc}</p>
-                  </div>
-                </div>
-                <span className="hud-chip shrink-0">{signal.urgency}</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-400">
-                <span>신호 유지 {signal.expiresIn}분</span>
-                <span className="inline-flex items-center gap-1 font-semibold text-cyan-100">확인 <ChevronRight size={14} /></span>
-              </div>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
-        <div className="grid gap-3">
-          <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} compact onCrewClick={() => onNavigate?.("crew")} />
-          <section>
-            <div className="flex items-center justify-between gap-3">
-              <div className="section-title"><Users size={18} />승무원 AI 행동</div>
-              <span className="hud-chip hud-chip-accent">자동 배정</span>
-            </div>
-            <div className="mt-3 grid gap-2">
-              {crew.slice(0, 5).map((member, index) => {
-                const activity = crewActivities.find((entry) => entry.memberId === member.id);
-                const actionText = activity ? `${activity.station} · ${activity.action}` : getCrewActivity(member, currentMinute, index);
-                return (
-                  <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}>
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span>
-                      <div className="min-w-0">
-                        <div className="truncate font-semibold text-slate-100">{member.name}</div>
-                        <div className="truncate text-xs text-slate-400">{member.role} · {actionText}</div>
-                      </div>
-                    </div>
-                    <span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-        </div>
-
-        <TaskQueuePanel onNavigate={onNavigate} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        {commandCards.map((card) => {
-          const Icon = card.icon;
-          return (
-            <button key={card.id} className="rounded border border-slate-700/70 bg-slate-950/70 p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300" onClick={() => onNavigate?.(card.id)}>
-              <div className="flex items-start justify-between gap-2">
-                <Icon size={24} className="text-cyan-200" />
-                <span className="hud-chip">{card.badge}</span>
-              </div>
-              <div className="mt-3 font-bold text-slate-50">{card.title}</div>
-              <div className="mt-1 text-xs leading-5 text-slate-400">{card.desc}</div>
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="grid gap-3 lg:grid-cols-[1fr_1fr]">
-        <section>
-          <div className="flex items-center justify-between gap-3"><div className="section-title"><Package size={18} />자원 & 적재</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("inventory")}>인벤토리</button></div>
-          <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
-            <ResourceCard label="크레딧" value={`₢ ${number(resources.credits)}`} />
-            <ResourceCard label="우주 먼지" value={number(dust, 1)} />
-            {topItems.map((item) => <ResourceCard key={item.id} label={item.name} value={item.qty >= 1000 ? `${(item.qty / 1000).toFixed(1)}k` : item.qty} />)}
-          </div>
-          <div className="mt-3 flex items-center justify-between text-xs"><span className="hud-label">적재량</span><span className="hud-value">{Math.min(1000, cargoUsed)} / 1000t</span></div>
-          <div className="hud-gauge mt-2 hud-gauge-success"><span className="hud-gauge-fill" style={{ width: `${Math.min(100, cargoUsed / 10)}%` }} /></div>
-        </section>
-
-        <section>
-          <div className="flex items-center justify-between gap-3"><div className="section-title"><Briefcase size={18} />미션 & 보고</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onNavigate?.("market")}>시장</button></div>
-          <div className="mt-3 rounded border border-slate-700/70 bg-slate-950/60 p-3">
-            <div className="font-bold text-slate-50">{primaryContract?.title ?? "계약 없음"}</div>
-            <p className="mt-1 text-sm leading-6 text-slate-400">{primaryContract?.desc ?? "시장 메뉴에서 새 계약을 수락하세요."}</p>
-            <div className="mt-2 flex flex-wrap gap-1.5">
-              <span className="hud-chip hud-chip-accent">진행 {activeContracts.length}</span>
-              <span className="hud-chip">후보 {nextContracts.length}</span>
-            </div>
-          </div>
-          <div className="mt-3 grid gap-2">
-            {[...travelLog, ...logs].slice(0, 3).map((log, index) => <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-300">{log}</div>)}
-          </div>
-        </section>
-      </div>
+      <div className="grid gap-3 lg:grid-cols-[1fr_1fr]"><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Package size={18} />자원 & 적재</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("inventory")}>인벤토리</button></div><div className="mt-4 flex gap-3 overflow-x-auto pb-1"><ResourceCard label="크레딧" value={`₢ ${number(resources.credits)}`} /><ResourceCard label="우주 먼지" value={number(dust, 1)} />{topItems.map((item) => <ResourceCard key={item.id} label={item.name} value={item.qty >= 1000 ? `${(item.qty / 1000).toFixed(1)}k` : item.qty} />)}</div><div className="mt-3 flex items-center justify-between text-xs"><span className="hud-label">적재량</span><span className="hud-value">{Math.min(1000, cargoUsed)} / 1000t</span></div><div className="hud-gauge mt-2 hud-gauge-success"><span className="hud-gauge-fill" style={{ width: `${Math.min(100, cargoUsed / 10)}%` }} /></div></section><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Briefcase size={18} />미션 & 보고</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onNavigate?.("market")}>시장</button></div><div className="mt-3 rounded border border-slate-700/70 bg-slate-950/60 p-3"><div className="font-bold text-slate-50">{primaryContract?.title ?? "계약 없음"}</div><p className="mt-1 text-sm leading-6 text-slate-400">{primaryContract?.desc ?? "시장 메뉴에서 새 계약을 수락하세요."}</p><div className="mt-2 flex flex-wrap gap-1.5"><span className="hud-chip hud-chip-accent">진행 {activeContracts.length}</span><span className="hud-chip">후보 {nextContracts.length}</span></div></div><div className="mt-3 grid gap-2">{[...travelLog, ...logs].slice(0, 3).map((log, index) => <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-300">{log}</div>)}</div></section></div>
     </div>
   );
 }
 
-function SituationCard({ card, onNavigate }) {
-  return (
-    <button className={`rounded border p-3 text-left transition hover:-translate-y-0.5 ${card.tone}`} onClick={() => onNavigate?.(card.targetPanel)}>
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="text-2xl">{card.icon}</span>
-          <div className="min-w-0">
-            <div className="truncate font-bold text-slate-50">{card.title}</div>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">{card.desc}</p>
-          </div>
-        </div>
-        <span className="hud-chip shrink-0 bg-slate-950/40">{card.meta ?? card.priorityLabel}</span>
-      </div>
-      <div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-300">
-        <span>{card.priorityLabel}</span>
-        <span className="inline-flex items-center gap-1 font-semibold text-cyan-100">{card.action} <ChevronRight size={14} /></span>
-      </div>
-    </button>
-  );
-}
-
-function StatusTile({ label, value, tone, gauge }) {
-  return (
-    <div className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">
-      <div className="hud-label">{label}</div>
-      <div className="hud-value mt-1 truncate">{value}</div>
-      {gauge !== undefined && <div className={`hud-gauge mt-2 ${tone}`}><span className="hud-gauge-fill" style={{ width: `${gauge}%` }} /></div>}
-    </div>
-  );
-}
-
-function ResourceCard({ label, value }) {
-  return <div className="grid min-w-24 place-items-center rounded border border-slate-700/70 bg-slate-950/60 px-3 py-3 text-center"><Archive size={18} className="text-cyan-200" /><div className="mt-2 font-bold text-slate-50">{value}</div><div className="mt-1 max-w-20 truncate text-xs text-slate-500">{label}</div></div>;
-}
+function SituationCard({ card, onNavigate }) { return <button className={`rounded border p-3 text-left transition hover:-translate-y-0.5 ${card.tone}`} onClick={() => onNavigate?.(card.targetPanel)}><div className="flex items-start justify-between gap-3"><div className="flex min-w-0 items-start gap-3"><span className="text-2xl">{card.icon}</span><div className="min-w-0"><div className="truncate font-bold text-slate-50">{card.title}</div><p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-300">{card.desc}</p></div></div><span className="hud-chip shrink-0 bg-slate-950/40">{card.meta ?? card.priorityLabel}</span></div><div className="mt-3 flex items-center justify-between gap-2 text-xs text-slate-300"><span>{card.priorityLabel}</span><span className="inline-flex items-center gap-1 font-semibold text-cyan-100">{card.action} <ChevronRight size={14} /></span></div></button>; }
+function StatusTile({ label, value, tone, gauge }) { return <div className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2"><div className="hud-label">{label}</div><div className="hud-value mt-1 truncate">{value}</div>{gauge !== undefined && <div className={`hud-gauge mt-2 ${tone}`}><span className="hud-gauge-fill" style={{ width: `${gauge}%` }} /></div>}</div>; }
+function ResourceCard({ label, value }) { return <div className="grid min-w-24 place-items-center rounded border border-slate-700/70 bg-slate-950/60 px-3 py-3 text-center"><Archive size={18} className="text-cyan-200" /><div className="mt-2 font-bold text-slate-50">{value}</div><div className="mt-1 max-w-20 truncate text-xs text-slate-500">{label}</div></div>; }

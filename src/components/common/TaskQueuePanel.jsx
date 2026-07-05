@@ -1,6 +1,7 @@
 import { Clock3, Cross, Cpu, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { injuryLabel } from "../../systems/injurySystem";
 import { comparePriorityTasks, getNextPriority, getPriorityConfig, normalizePriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -101,7 +102,7 @@ export default function TaskQueuePanel({ onNavigate }) {
         queueType: "treatment",
         kind: "치료 중",
         title: member?.name ?? "의무실 치료",
-        subtitle: `${task.injury ?? member?.injury ?? "부상"} 치료 · 비용 ₢${task.cost ?? 0}`,
+        subtitle: `${task.injury ?? injuryLabel(member?.injury)} 치료 · 비용 ₢${task.cost ?? 0}`,
         icon: Cross,
         tone: "border-emerald-400/30 bg-emerald-400/10 text-emerald-100",
         targetPanel: "crew",

@@ -77,7 +77,8 @@ function processTravel(currentMinute) {
 function processCrewAI(currentMinute) {
   const exploration = useExplorationStore.getState();
   const shipInterior = useShipInteriorStore.getState();
-  const logs = useCrewStore.getState().runCrewAI({
+  const crewStore = useCrewStore.getState();
+  const logs = crewStore.runCrewAI({
     currentMinute,
     resources: useGameStore.getState().resources,
     activeTravel: exploration.activeTravel,
@@ -86,6 +87,7 @@ function processCrewAI(currentMinute) {
     installationQueue: useShipStore.getState().installationQueue ?? [],
     rooms: shipInterior.rooms,
     activeCrises: shipInterior.activeCrises ?? [],
+    roleCoverage: crewStore.getRoleCoverage(),
   });
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
@@ -103,15 +105,21 @@ function applyRoomJobEffect(effect, roomId) {
 }
 
 function processRoomJobs(currentMinute, deltaMinutes) {
-  const activities = useCrewStore.getState().crewActivities ?? [];
+  const crewStore = useCrewStore.getState();
+  const activities = crewStore.crewActivities ?? [];
   const roomActivities = {};
   activities.forEach((activity) => {
     if (activity.intent === "room-job" && activity.roomId) {
-      roomActivities[activity.roomId] = { memberId: activity.memberId, jobId: activity.jobId };
+      roomActivities[activity.roomId] = { memberId: activity.memberId, jobId: activity.jobId, speedMultiplier: activity.speedMultiplier ?? 1 };
     }
   });
 
-  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities });
+  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({
+    currentMinute,
+    deltaMinutes,
+    roomActivities,
+    roleCoverage: crewStore.getRoleCoverage(),
+  });
   completedJobs.forEach((job) => applyRoomJobEffect(job.effect, job.roomId));
   logs.forEach((message) => useGameStore.getState().addLog(`함선: ${message}`));
 }
@@ -127,7 +135,8 @@ function applyCrisisEffect(effect) {
 }
 
 function processCrises(currentMinute, deltaMinutes) {
-  const activities = useCrewStore.getState().crewActivities ?? [];
+  const crewStore = useCrewStore.getState();
+  const activities = crewStore.crewActivities ?? [];
   const crisisActivities = {};
   activities.forEach((activity) => {
     if (activity.intent === "crisis-response" && activity.crisisId) {
@@ -139,10 +148,16 @@ function processCrises(currentMinute, deltaMinutes) {
     currentMinute,
     deltaMinutes,
     crisisActivities,
-    crew: useCrewStore.getState().crew,
+    crew: crewStore.crew,
+    roleCoverage: crewStore.getRoleCoverage(),
   });
   effects.forEach(applyCrisisEffect);
   logs.forEach((message) => useGameStore.getState().addLog(`함선 위기: ${message}`));
+}
+
+function processCrewHealth(currentMinute, deltaMinutes) {
+  const logs = useCrewStore.getState().tickCrewHealth({ currentMinute, deltaMinutes });
+  logs.forEach((message) => useGameStore.getState().addLog(`의무실: ${message}`));
 }
 
 export function processTimedJobs(deltaMinutes = 0) {
@@ -155,6 +170,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processCrewAI(currentMinute);
   processRoomJobs(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
+  processCrewHealth(currentMinute, deltaMinutes);
 }
 
 export const useGameClock = () => {

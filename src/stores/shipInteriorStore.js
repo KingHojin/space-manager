@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { ROOM_IDS } from "../data/shipRooms";
+import { canWorkWithInjury } from "../systems/injurySystem";
 import {
   CRISIS_CATALOG,
   createCrisisRecord,
@@ -102,7 +103,7 @@ function maybeInjureResponder({ effects, crisis, responder, chanceMultiplier = 1
 
 function isCrewUsable(member) {
   if (!member?.alive) return false;
-  if (member.injury && member.injury !== "정상") return false;
+  if (!canWorkWithInjury(member.injury)) return false;
   if ((member.fatigue ?? 0) >= 85) return false;
   return true;
 }
@@ -112,15 +113,13 @@ export const useShipInteriorStore = create(
     (set, get) => ({
       rooms: createInitialRoomState(),
       activeCrises: [],
-      // Pure tick — mutates only this store's own `rooms` state. Any cross-store
-      // effects (crew fatigue, hull, etc.) are returned in `completedJobs` for
-      // the caller (gameClock) to apply, so this store never imports another store.
-      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {} }) => {
+      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {}, roleCoverage = null }) => {
         const { nextRooms, completedJobs, logs } = applyRoomTick({
           rooms: get().rooms,
           roomActivities,
           deltaMinutes,
           currentMinute,
+          roleCoverage,
         });
         set({ rooms: nextRooms });
         return { completedJobs, logs };
@@ -178,13 +177,14 @@ export const useShipInteriorStore = create(
         });
         return resolved;
       },
-      tickCrises: ({ currentMinute = 0, deltaMinutes = 0, crisisActivities = {}, crew = [] }) => {
+      tickCrises: ({ currentMinute = 0, deltaMinutes = 0, crisisActivities = {}, crew = [], roleCoverage = null }) => {
         if (deltaMinutes <= 0) return { effects: [], logs: [] };
 
         const effects = [];
         const logs = [];
         const crewById = new Map(crew.map((member) => [member.id, member]));
         const responderByCrisisId = new Map(Object.entries(crisisActivities).map(([crisisId, activity]) => [crisisId, activity.memberId]));
+        const missingRoles = new Set(roleCoverage?.missingRoles ?? []);
 
         set((state) => {
           const rooms = { ...state.rooms };
@@ -215,12 +215,13 @@ export const useShipInteriorStore = create(
                 maybeInjureResponder({ effects, crisis: next, responder, chanceMultiplier: deltaMinutes / 90 });
               } else {
                 const hours = deltaMinutes / 60;
-                const conditionLoss = config.unattendedConditionLossPerHour * hours * next.severity;
+                const rolePenalty = missingRoles.has("기관실") ? 1.35 : 1;
+                const conditionLoss = config.unattendedConditionLossPerHour * hours * next.severity * rolePenalty;
                 rooms[next.roomId] = withRoomStatus(
                   {
                     ...rooms[next.roomId],
                     condition: clamp((rooms[next.roomId].condition ?? 0) - conditionLoss, 0, 100),
-                    load: clamp((rooms[next.roomId].load ?? 0) + hours * next.severity, 0, 100),
+                    load: clamp((rooms[next.roomId].load ?? 0) + hours * next.severity * rolePenalty, 0, 100),
                     jobId: null,
                     assignedMemberId: null,
                     progress: 0,

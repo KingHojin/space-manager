@@ -52,9 +52,9 @@ export function comparePriorityTasks(a, b) {
 }
 
 export function inferTreatmentPriority(injury) {
-  if (injury === "전사") return "emergency";
-  if (injury === "중상") return "emergency";
-  if (injury === "경상") return "high";
+  const state = typeof injury === "object" ? injury.state : injury;
+  if (["전사", "중상", "위독", "전투불능", "serious", "critical", "incapacitated"].includes(state)) return "emergency";
+  if (["경상", "minor"].includes(state)) return "high";
   return "normal";
 }
 
