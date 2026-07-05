@@ -23,26 +23,8 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
 
 ### Behavior
 
-- Added 12 mission templates across multiple categories:
-  - salvage
-  - survey
-  - courier
-  - escort
-  - rescue
-  - bounty
-  - mining
-  - research
-- Added mission metadata:
-  - title
-  - client
-  - summary
-  - category
-  - risk
-  - distance
-  - preferred node types
-  - reward preview
-  - tags
-  - encounter tags
+- Added 12 mission templates across salvage, survey, courier, escort, rescue, bounty, mining, and research.
+- Added mission metadata: title, client, summary, category, risk, distance, preferred node types, reward preview, tags, encounter tags.
 - Added pure mission generation helpers:
   - deterministic seeded board generation
   - destination-aware template weighting
@@ -56,10 +38,6 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
   - `missionLog`
 - `acceptMission` requires a `vesselId` and stores active missions by vessel id.
 - The store can support multiple boards via `scopeId`, such as station/node/sector boards later.
-- No UI was wired in PR A.
-- No navigation is started by accepting a mission yet.
-- No rewards are actually paid out yet.
-- No combat, encounter, resource, ship, crew, job, or crisis numbers are changed.
 
 ## PR B implemented — Mission Board UI
 
@@ -86,9 +64,6 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
 - Accepting a mission calls `missionStore.acceptMission` and logs the result.
 - If the active vessel already has an active mission, the board shows the active mission card and disables accepting another mission.
 - Added an abandon button for the active mission.
-- PR B still does not start navigation automatically.
-- PR B still does not pay rewards.
-- PR B still does not modify combat, encounter, resource, crew, crisis, room job, or navigation formulas.
 
 ## PR C implemented — Mission -> Navigation bridge
 
@@ -99,6 +74,7 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
 - `src/components/panels/Exploration.jsx`
 - `src/data/constants.js`
 - `docs/PHASE_14_CONTRACT_MISSIONS.md`
+- `docs/CLOCK_SPEED.md`
 
 ### Behavior
 
@@ -107,19 +83,12 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
   - `missionId`
   - `missionTitle`
   - `missionDestinationName`
-- Mission acceptance now:
-  1. validates the destination route,
-  2. accepts the mission,
-  3. creates a navigation travel plan with mission metadata,
-  4. unpauses the clock,
-  5. opens the Exploration panel.
+- Mission acceptance now validates route, accepts the mission, creates a mission-tagged travel plan, unpauses the clock, and opens Exploration.
 - If route planning fails after accept, the mission is abandoned immediately to avoid a stuck active mission.
-- Exploration now shows an active mission panel with destination and risk.
+- Exploration shows an active mission panel with destination and risk.
 - Navigation status shows `임무 항해` when current travel belongs to a mission.
 - Travel cards show the mission title when mission metadata is present.
 - Arrival logs distinguish mission destination arrival from ordinary node arrival.
-- PR C still does not complete missions.
-- PR C still does not pay rewards.
 
 ### Clock speed adjustment
 
@@ -129,6 +98,40 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
   - 1x = 3 game minutes / real second
   - 2x = 6 game minutes / real second
   - 4x = 12 game minutes / real second
+
+## PR D implemented — Mission completion and payout
+
+### Files
+
+- `src/systems/missionRewards.js`
+- `src/data/items.js`
+- `src/components/panels/Exploration.jsx`
+- `docs/PHASE_14_CONTRACT_MISSIONS.md`
+
+### Behavior
+
+- Added `applyMissionRewards(reward)`.
+- Mission completion now requires:
+  - active mission exists for the active vessel,
+  - current node matches `mission.destinationNodeId`,
+  - no travel is currently running,
+  - no destination encounter is pending.
+- Exploration active mission panel now shows `임무 완료하고 보상 수령` when completion is valid.
+- Completing a mission calls `missionStore.completeMission` and then applies reward payout.
+- Reward payout supports:
+  - `credits` -> game resources
+  - `dust` -> inventory dust
+  - `scrap` -> `salvage-scrap`
+  - `chartData` -> `chart-data`
+  - `oreSample` -> `ore-sample`
+  - `researchData` -> `research-data`
+  - `tradeVoucher` -> `trade-voucher`
+  - `reputation` -> `reputation-token`
+  - `blueprintChance` -> chance to add `blueprint-fragment`
+  - `artifactChance` -> chance to add `artifact-cache`
+  - `recruitChance` -> chance to add `recruit-signal` and a recruit candidate
+- Added mission reward inventory items to `src/data/items.js`.
+- Reward logs are written through the game log so the player can see exactly what was paid out.
 
 ## Fleet-safety rule
 
@@ -151,16 +154,15 @@ offered -> active -> completed
                   -> abandoned
 ```
 
-Completion currently returns the reward preview object but does not apply it to inventory/resources. Actual payout should be implemented in a later PR where UI and mission travel rules are connected.
+## Next targets
 
-## PR D target — Mission completion and payout
+Recommended follow-up work:
 
-Recommended after navigation bridge:
-
-- Complete mission when destination objective is resolved.
-- Apply Dust/item/blueprint/recruit/reputation rewards through existing stores.
-- Add failure cases for abandoned route, critical ship state, or unresolved objective.
-- Decide whether mission completion should require resolving the destination encounter first.
+- Add richer mission objective variants before completion.
+- Add failure conditions for severe drift, destroyed ship, or abandoned objective.
+- Add mission-specific encounter pools using `encounterTags`.
+- Add blueprint crafting use for `blueprint-fragment`.
+- Add market use for `trade-voucher` and reputation effects.
 
 ## Local check
 
@@ -172,41 +174,17 @@ npm run build
 npm run dev
 ```
 
-Manual checks for PR A:
+Manual checks for PR D:
 
-1. Import `useMissionStore` from `src/stores/missionStore.js` in a dev console/test harness.
-2. Call `refreshBoard` with a `scopeId`, current sector, and current node id.
-3. Confirm exactly 3 mission records are generated by default.
-4. Confirm missions include destination/risk/distance/reward metadata.
-5. Call `acceptMission` with `scopeId`, `missionId`, and a test `vesselId`.
-6. Confirm accepted mission moves into `activeByVesselId[vesselId]`.
-7. Confirm accepting another mission for the same vessel returns `vesselBusy`.
-8. Call `completeMission` and confirm it returns the reward preview without applying rewards.
-9. Confirm no navigation, resource, crew, crisis, or room job values change from PR A alone.
-
-Manual checks for PR B:
-
-1. Open the command menu and click `임무`.
-2. Confirm the mission board modal opens.
-3. Confirm 3 offered missions appear for the current node.
-4. Confirm each mission shows risk, distance, destination, client, tags, and reward preview.
-5. Click refresh and confirm the board updates without changing resources.
-6. Accept one mission and confirm it moves into the active mission card.
-7. Confirm accepting another mission for the same active vessel is blocked/disabled.
-8. Abandon the mission and confirm the board can accept a mission again.
-9. Confirm no rewards are paid after accepting/abandoning.
-10. Confirm no combat, encounter, resource, crew, crisis, or room job values change from PR B alone.
-
-Manual checks for PR C:
-
-1. Open `임무` and confirm each mission shows an `항로` and `예상 시간` preview.
-2. Accept a mission.
-3. Confirm the modal switches to the Exploration panel.
-4. Confirm the clock unpauses.
-5. Confirm the navigation travel card says `임무 항해 상황판`.
-6. Confirm the active mission panel appears in Exploration.
-7. Confirm the travel record contains mission metadata in dev tools if inspected.
-8. Confirm ordinary manual route planning still works with no mission selected.
-9. Confirm at 1x speed, game time advances about 3 minutes per real second.
-10. Confirm no mission reward is paid yet.
-11. Confirm no mission is marked completed yet.
+1. Accept a mission from the mission board.
+2. Confirm travel starts and Exploration opens.
+3. Let the ship arrive at the mission destination.
+4. Confirm a destination encounter appears if generated.
+5. Resolve the encounter.
+6. Confirm the active mission panel shows `임무 완료하고 보상 수령`.
+7. Click completion.
+8. Confirm the active mission disappears.
+9. Confirm the mission is added to completed mission history.
+10. Confirm Dust/items/recruit candidate rewards appear according to the reward preview and chance rolls.
+11. Confirm completing is blocked while travel is active or an encounter is pending.
+12. Confirm ordinary non-mission travel still works.
