@@ -2,6 +2,8 @@ import { Briefcase, Cpu, Fuel, Store, Wind, Wrench } from "lucide-react";
 import Badge from "../common/Badge";
 import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
+import { formatMinutes, getModuleRule, hasRequiredItems } from "../../data/moduleRecipes";
+import { formatGameDate } from "../../systems/gameClock";
 import { useContractStore } from "../../stores/contractStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useFactionStore } from "../../stores/factionStore";
@@ -18,21 +20,15 @@ const services = [
   { id: "full", label: "종합 출항 패키지", desc: "연료, 산소, 선체를 한 번에 정비합니다.", icon: Store, cost: 720, changes: { fuel: 45, oxygen: 35, hull: 32 } },
 ];
 
-const modulePrice = {
-  common: 180,
-  uncommon: 360,
-  rare: 760,
-  epic: 1400,
-  legendary: 2600,
-};
-
 export default function Market() {
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const docked = SERVICE_ZONES.has(currentZoneId);
   const resources = useGameStore((state) => state.resources);
+  const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
   const addResources = useGameStore((state) => state.addResources);
+  const advanceMinutes = useGameStore((state) => state.advanceMinutes);
   const addLog = useGameStore((state) => state.addLog);
   const items = useInventoryStore((state) => state.items);
   const removeItem = useInventoryStore((state) => state.removeItem);
@@ -61,16 +57,22 @@ export default function Market() {
 
   const buyModule = (module) => {
     if (!docked) {
-      addLog("모듈 구매 실패: 시장 구역에 도킹해야 합니다.");
+      addLog("모듈 제작 실패: 시장 구역에 도킹해야 합니다.");
       return;
     }
-    const price = modulePrice[module.rarity] ?? 300;
-    if (!spendCredits(price)) {
-      addLog(`${module.name} 구매 실패: 크레딧이 부족합니다.`);
+    const rule = getModuleRule(module);
+    if (!hasRequiredItems(items, rule.items)) {
+      addLog(`${module.name} 제작 실패: 전리품/재료가 부족합니다.`);
       return;
     }
+    if (!spendCredits(rule.purchaseCredits)) {
+      addLog(`${module.name} 제작 실패: 크레딧이 부족합니다.`);
+      return;
+    }
+    rule.items.forEach((requirement) => removeItem(requirement.id, requirement.qty));
+    advanceMinutes(rule.craftMinutes);
     unlockModule(module.id);
-    addLog(`모듈 구매 완료: ${module.name}. 함선 메뉴에서 장착할 수 있습니다.`);
+    addLog(`모듈 제작 완료: ${module.name}. 비용 ₢${rule.purchaseCredits}, 소요 ${formatMinutes(rule.craftMinutes)}, 완료 ${formatGameDate(currentMinute + rule.craftMinutes)}.`);
   };
 
   const accept = (contract) => {
@@ -102,7 +104,7 @@ export default function Market() {
     addLog(`의뢰 완료: ${contract.title}. 크레딧 +${contract.rewardCredits}, 평판 +${contract.rep}.`);
   };
 
-  const moduleShop = modules.filter((module) => !unlockedModuleIds.includes(module.id)).slice(0, 8);
+  const moduleShop = modules.filter((module) => !unlockedModuleIds.includes(module.id)).slice(0, 12);
 
   return (
     <section className="space-y-5">
@@ -113,9 +115,9 @@ export default function Market() {
         </div>
         <div className="mt-5 rounded border border-slate-700/70 bg-slate-950/60 p-5">
           <span className={`hud-chip ${docked ? "hud-chip-success" : "hud-chip-warn"}`}>{docked ? "도킹 중" : "도킹 필요"}</span>
-          <div className="mt-3 text-xl font-bold text-slate-50">{docked ? "보급·정비·의뢰 서비스 이용 가능" : "정거장 도킹 필요"}</div>
+          <div className="mt-3 text-xl font-bold text-slate-50">{docked ? "보급·정비·의뢰·모듈 제작 가능" : "정거장 도킹 필요"}</div>
           <p className="mt-2 text-sm text-slate-400">
-            {docked ? "크레딧을 사용해 출항 전 핵심 자원을 회복하고, 의뢰와 모듈 상점을 이용할 수 있습니다." : "앵커 정거장, 에오스 항구, 세이블 포인트, 마지막 시장 같은 구역으로 이동하면 시장 기능이 활성화됩니다."}
+            {docked ? "크레딧과 전리품을 사용해 출항 전 핵심 자원을 회복하고, 의뢰와 모듈 제작을 진행할 수 있습니다." : "앵커 정거장, 에오스 항구, 세이블 포인트, 마지막 시장 같은 구역으로 이동하면 시장 기능이 활성화됩니다."}
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <Status label="크레딧" value={`₢ ${resources.credits}`} />
@@ -184,13 +186,15 @@ export default function Market() {
       </section>
 
       <section>
-        <div className="section-title"><Cpu size={18} />모듈 상점</div>
+        <div className="section-title"><Cpu size={18} />모듈 제작소</div>
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {moduleShop.length === 0 ? (
-            <div className="rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm text-slate-400">구매 가능한 신규 모듈이 없습니다.</div>
+            <div className="rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm text-slate-400">제작 가능한 신규 모듈이 없습니다.</div>
           ) : (
             moduleShop.map((module) => {
-              const price = modulePrice[module.rarity] ?? 300;
+              const rule = getModuleRule(module);
+              const hasItems = hasRequiredItems(items, rule.items);
+              const disabled = !docked || resources.credits < rule.purchaseCredits || !hasItems;
               return (
                 <div key={module.id} className="rounded border border-slate-700/70 bg-slate-950/60 p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -203,7 +207,18 @@ export default function Market() {
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {Object.entries(module.stats).map(([key, value]) => <span key={key} className="hud-chip">{key} {value > 0 ? "+" : ""}{value}</span>)}
                   </div>
-                  <button className="primary-button mt-4 w-full" disabled={!docked || resources.credits < price} onClick={() => buyModule(module)}>구매 ₢ {price}</button>
+                  <div className="mt-3 rounded border border-slate-700/70 bg-slate-900/60 p-3 text-xs leading-5 text-slate-300">
+                    <div className="font-semibold text-slate-100">제작 조건</div>
+                    <div className="mt-1 flex flex-wrap gap-1.5">
+                      <span className="hud-chip">₢ {rule.purchaseCredits}</span>
+                      <span className="hud-chip">{formatMinutes(rule.craftMinutes)}</span>
+                      {rule.items.length === 0 ? <span className="hud-chip hud-chip-success">재료 없음</span> : rule.items.map((req) => {
+                        const owned = items.find((item) => item.id === req.id)?.qty ?? 0;
+                        return <span key={req.id} className={`hud-chip ${owned >= req.qty ? "hud-chip-success" : "hud-chip-danger"}`}>{req.id} {owned}/{req.qty}</span>;
+                      })}
+                    </div>
+                  </div>
+                  <button className="primary-button mt-4 w-full" disabled={disabled} onClick={() => buyModule(module)}>제작/해금</button>
                 </div>
               );
             })
