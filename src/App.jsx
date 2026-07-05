@@ -36,6 +36,7 @@ const panels = {
 };
 
 const modals = {
+  command: { title: "함장 메뉴", component: MenuPanel },
   stats: { title: "스탯", component: StatsModal },
   inventory: { title: "인벤토리", component: InventoryModal },
   map: { title: "성계 지도", component: MapModal },
@@ -52,6 +53,12 @@ export default function App() {
   const modal = useMemo(() => (activeModal ? modals[activeModal] : null), [activeModal]);
   const ModalContent = modal?.component;
   const showPanelTitle = activePanel !== "overview";
+
+  const navigateFromModal = (panelId) => {
+    if (!panels[panelId]) return;
+    setActivePanel(panelId);
+    setActiveModal(null);
+  };
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
@@ -76,7 +83,7 @@ export default function App() {
       <BottomDock activePanel={activePanel} onChangePanel={setActivePanel} onOpenModal={setActiveModal} />
       {modal && (
         <OverlayModal title={modal.title} onClose={() => setActiveModal(null)}>
-          <ModalContent />
+          <ModalContent onNavigate={navigateFromModal} onOpenModal={setActiveModal} />
         </OverlayModal>
       )}
     </div>
