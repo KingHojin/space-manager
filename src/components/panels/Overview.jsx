@@ -42,44 +42,18 @@ function RoleIcon({ role, size = 14 }) {
 }
 
 const quickTiles = [
-  {
-    id: "combat",
-    label: "전투",
-    desc: "전술 상황 확인",
-    icon: Crosshair,
-    border: "border-red-500/40 hover:border-red-400/70",
-    iconColor: "text-red-400",
-  },
-  {
-    id: "hunting",
-    label: "사냥",
-    desc: "생물체 포획",
-    icon: PawPrint,
-    border: "border-emerald-500/40 hover:border-emerald-400/70",
-    iconColor: "text-emerald-400",
-  },
-  {
-    id: "collector",
-    label: "우주 집진기",
-    desc: "자원 자동 수집",
-    icon: Sparkles,
-    border: "border-violet-500/40 hover:border-violet-400/70",
-    iconColor: "text-violet-400",
-  },
-  {
-    id: "market",
-    label: "시장",
-    desc: "거래 & 환전",
-    icon: Store,
-    border: "border-amber-500/40 hover:border-amber-400/70",
-    iconColor: "text-amber-400",
-  },
+  { id: "combat", label: "전투", desc: "라운드 교전 중계", icon: Crosshair, border: "border-red-500/40 hover:border-red-400/70", iconColor: "text-red-400" },
+  { id: "hunting", label: "사냥", desc: "생물체 추적", icon: PawPrint, border: "border-emerald-500/40 hover:border-emerald-400/70", iconColor: "text-emerald-400" },
+  { id: "collector", label: "우주 집진기", desc: "카드 획득", icon: Sparkles, border: "border-violet-500/40 hover:border-violet-400/70", iconColor: "text-violet-400" },
+  { id: "market", label: "시장", desc: "보급 & 정비", icon: Store, border: "border-amber-500/40 hover:border-amber-400/70", iconColor: "text-amber-400" },
 ];
 
 export default function Overview({ onNavigate }) {
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
+  const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const zone = getZoneById(currentZoneId);
+  const allZones = getAllZones();
   const shipName = useGameStore((state) => state.shipName);
   const resources = useGameStore((state) => state.resources);
   const logs = useGameStore((state) => state.logs);
@@ -87,9 +61,17 @@ export default function Overview({ onNavigate }) {
   const items = useInventoryStore((state) => state.items);
   const cards = useInventoryStore((state) => state.cards);
   const crew = useCrewStore((state) => state.crew);
-  const dangerZoneCount = getAllZones().filter(
-    (z) => discoveredZoneIds.includes(z.id) && z.danger >= 4,
-  ).length;
+  const dangerZoneCount = allZones.filter((z) => discoveredZoneIds.includes(z.id) && z.danger >= 4).length;
+  const hiddenCount = allZones.length - discoveredZoneIds.length;
+  const unscannedDiscovered = discoveredZoneIds.filter((id) => !scannedZoneIds.includes(id)).length;
+  const tiredCrew = crew.filter((member) => (member.fatigue ?? 0) >= 60).length;
+  const damaged = resources.hull < 70 || resources.fuel < 35 || resources.oxygen < 35;
+  const missionList = [
+    damaged ? "시장 또는 아이템으로 함선 핵심 자원을 회복" : "현재 자원 안정권 유지 중",
+    unscannedDiscovered > 0 ? `발견됐지만 미스캔 구역 ${unscannedDiscovered}곳 조사` : `새 구역 탐색: 남은 미발견 ${hiddenCount}곳`,
+    dust >= DUST.SINGLE_DRAW_COST ? "우주 집진기 카드 뽑기 가능" : `우주 먼지 ${DUST.SINGLE_DRAW_COST - Math.floor(dust)} 더 수집`,
+    tiredCrew > 0 ? `피로 누적 승무원 ${tiredCrew}명 휴식 권장` : "승무원 컨디션 양호",
+  ];
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -106,96 +88,64 @@ export default function Overview({ onNavigate }) {
                 <span className="hud-chip">{zone?.type}</span>
                 <span className="hud-chip hud-chip-warn">위험 {zone?.danger}</span>
                 <span className="hud-chip hud-chip-success">자원 {zone?.richness}</span>
+                <span className="hud-chip hud-chip-accent">탐사 {discoveredZoneIds.length}/{allZones.length}</span>
               </div>
             </div>
-            <button className="primary-button self-start" onClick={() => onNavigate?.("exploration")}>
-              탐험 열기
-            </button>
+            <button className="primary-button self-start" onClick={() => onNavigate?.("exploration")}>탐험 열기</button>
           </div>
         </div>
       </section>
 
       <section>
-        <div className="section-title">
-          <Rocket size={18} />
-          함선 상태
-        </div>
+        <div className="section-title"><Rocket size={18} />함선 상태</div>
         <div className="mt-4 text-lg font-bold text-slate-50">{shipName}</div>
         <div className="mt-3 space-y-3">
           <GaugeRow label="선체" value={resources.hull} />
           <GaugeRow label="연료" value={resources.fuel} />
           <GaugeRow label="산소" value={resources.oxygen} />
         </div>
-        <button className="secondary-button mt-4 w-full" onClick={() => onNavigate?.("ship")}>
-          함선 관리
-        </button>
+        <button className="secondary-button mt-4 w-full" onClick={() => onNavigate?.("ship")}>함선 관리</button>
       </section>
 
       <section>
-        <div className="section-title">
-          <Users size={18} />
-          승무원 {crew.length}명
-        </div>
+        <div className="section-title"><Users size={18} />승무원 {crew.length}명</div>
         <div className="mt-4 space-y-2">
           {crew.map((member) => (
-            <div
-              key={member.id}
-              className="flex items-center justify-between rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm"
-            >
+            <div key={member.id} className="flex items-center justify-between rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm">
               <div className="flex min-w-0 items-center gap-2">
                 <RoleIcon role={member.role} />
                 <div className="min-w-0">
                   <div className="truncate font-semibold text-slate-100">{member.name}</div>
-                  <div className="text-xs text-slate-500">
-                    {member.role} · 사기 {member.morale}
-                  </div>
+                  <div className="text-xs text-slate-500">{member.role} · 사기 {member.morale} · 피로 {member.fatigue ?? 0}</div>
                 </div>
               </div>
-              <span className={`hud-chip ${member.injury === "정상" ? "hud-chip-success" : "hud-chip-danger"}`}>
-                {member.injury}
-              </span>
+              <span className={`hud-chip ${member.injury === "정상" ? "hud-chip-success" : "hud-chip-danger"}`}>{member.injury}</span>
             </div>
           ))}
         </div>
-        <button className="secondary-button mt-4 w-full" onClick={() => onNavigate?.("crew")}>
-          승무원 관리
-        </button>
+        <button className="secondary-button mt-4 w-full" onClick={() => onNavigate?.("crew")}>승무원 관리</button>
       </section>
 
       <section>
-        <div className="section-title">
-          <Activity size={18} />
-          진행 중 임무
+        <div className="section-title"><Activity size={18} />실시간 목표</div>
+        <div className="mt-4 grid gap-2 text-sm text-slate-300">
+          {missionList.map((mission, index) => (
+            <div key={mission} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">
+              {index + 1}. {mission}
+            </div>
+          ))}
         </div>
-        <ul className="mt-4 space-y-3 text-sm text-slate-300">
-          <li>청색 표류대의 잔류 신호 분석</li>
-          <li>우주 먼지 100 수집 후 카드 뽑기</li>
-          <li>숨겨진 구역 1곳 스캔</li>
-        </ul>
       </section>
 
       <section className="xl:col-span-2">
-        <div className="section-title">
-          <Compass size={18} />
-          바로가기
-        </div>
+        <div className="section-title"><Compass size={18} />바로가기</div>
         <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
           {quickTiles.map((tile) => {
             const Icon = tile.icon;
             return (
-              <button
-                key={tile.id}
-                className={`relative flex flex-col items-start gap-2 rounded border bg-slate-950/60 p-4 text-left ${tile.border}`}
-                onClick={() => onNavigate?.(tile.id)}
-              >
-                {tile.id === "combat" && dangerZoneCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.6rem] font-bold leading-none text-white">
-                    {dangerZoneCount}
-                  </span>
-                )}
-                {tile.id === "collector" && dust >= DUST.SINGLE_DRAW_COST && (
-                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />
-                )}
+              <button key={tile.id} className={`relative flex flex-col items-start gap-2 rounded border bg-slate-950/60 p-4 text-left ${tile.border}`} onClick={() => onNavigate?.(tile.id)}>
+                {tile.id === "combat" && dangerZoneCount > 0 && <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.6rem] font-bold leading-none text-white">{dangerZoneCount}</span>}
+                {tile.id === "collector" && dust >= DUST.SINGLE_DRAW_COST && <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />}
                 <Icon size={20} className={tile.iconColor} />
                 <div className="font-semibold text-slate-100">{tile.label}</div>
                 <div className="text-xs text-slate-500">{tile.desc}</div>
@@ -207,28 +157,20 @@ export default function Overview({ onNavigate }) {
       </section>
 
       <section className="xl:col-span-2">
-        <div className="section-title">
-          <Package size={18} />
-          보유 자원
-        </div>
+        <div className="section-title"><Package size={18} />보유 자원</div>
         <div className="mt-4 flex gap-3 overflow-x-auto pb-1">
           <ResourceChip label="크레딧" value={`₢ ${number(resources.credits)}`} />
           <ResourceChip label="우주 먼지" value={number(dust, 1)} />
-          <ResourceChip label="보유 아이템" value={`${items.length}종`} />
+          <ResourceChip label="보유 아이템" value={`${items.filter((item) => item.qty > 0).length}종`} />
           <ResourceChip label="보유 카드" value={`${cards.length}장`} />
         </div>
       </section>
 
       <section className="xl:col-span-2">
-        <div className="section-title">
-          <Sparkles size={18} />
-          최근 이벤트
-        </div>
+        <div className="section-title"><Sparkles size={18} />최근 이벤트</div>
         <div className="mt-4 grid gap-2">
           {logs.slice(0, 5).map((log, index) => (
-            <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">
-              {log}
-            </div>
+            <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">{log}</div>
           ))}
         </div>
       </section>
@@ -239,13 +181,8 @@ export default function Overview({ onNavigate }) {
 function GaugeRow({ label, value }) {
   return (
     <div>
-      <div className="flex items-center justify-between text-xs">
-        <span className="hud-label">{label}</span>
-        <span className="hud-value">{Math.round(value)}%</span>
-      </div>
-      <div className={`hud-gauge mt-1 ${gaugeTone(value)}`}>
-        <span className="hud-gauge-fill" style={{ width: `${value}%` }} />
-      </div>
+      <div className="flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{Math.round(value)}%</span></div>
+      <div className={`hud-gauge mt-1 ${gaugeTone(value)}`}><span className="hud-gauge-fill" style={{ width: `${value}%` }} /></div>
     </div>
   );
 }
