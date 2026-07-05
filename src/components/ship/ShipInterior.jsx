@@ -1,5 +1,6 @@
 import { Activity, AlertTriangle, Flame, ShieldAlert, Thermometer, ZapOff } from "lucide-react";
 import { ROOMS, ROUTES } from "../../data/shipRooms";
+import { calculateRoomModifiers } from "../../data/roomModules";
 import { CRISIS_CATALOG } from "../../systems/crisisSystem";
 import { getPriorityConfig } from "../../systems/priorities";
 
@@ -43,10 +44,11 @@ function markerTone(priority) {
   return "border-cyan-200 bg-cyan-200 text-cyan-950";
 }
 
-function buildRoomState(roomId, roomMembers, roomActivities) {
+function buildRoomState(roomId, roomMembers, roomActivities, roomState) {
+  const slots = Math.round(calculateRoomModifiers(roomState).slots ?? 1);
   const highPriorityCount = roomActivities.filter((activity) => ["emergency", "high"].includes(activity?.priority)).length;
   if (highPriorityCount > 0) return { label: `중요 ${highPriorityCount}`, tone: "bg-amber-300/20 text-amber-100 border-amber-300/30" };
-  if (roomMembers.length > 1) return { label: `근무 ${roomMembers.length}`, tone: "bg-cyan-300/15 text-cyan-100 border-cyan-300/30" };
+  if (roomMembers.length > 0) return { label: `근무 ${roomMembers.length}/${slots}`, tone: "bg-cyan-300/15 text-cyan-100 border-cyan-300/30" };
   if (roomId === "engineering" && roomMembers.length === 0) return { label: "대기", tone: "bg-slate-400/10 text-slate-300 border-slate-500/30" };
   return null;
 }
@@ -76,7 +78,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
   const aliveCrew = crew.filter((member) => member.alive);
   const roomAssignments = aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomFor(member, activityByMember.get(member.id)) }));
   const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
-  const jobOwnerIds = new Set(Object.values(rooms).map((room) => room.assignedMemberId).filter(Boolean));
+  const jobOwnerIds = new Set(Object.values(rooms).flatMap((room) => room.assignedMemberIds ?? (room.assignedMemberId ? [room.assignedMemberId] : [])).filter(Boolean));
 
   return (
     <section className="overflow-hidden">
@@ -94,14 +96,17 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const Icon = room.icon;
           const assigned = roomAssignments.filter((entry) => entry.roomId === room.id);
           const roomState = rooms[room.id];
+          const modifiers = calculateRoomModifiers(roomState);
           const crisis = roomState?.activeCrisisId ? crisisById.get(roomState.activeCrisisId) : null;
           const crisisConfig = crisis ? CRISIS_CATALOG[crisis.type] : null;
           const CrisisIcon = crisis ? CRISIS_ICONS[crisis.type] ?? AlertTriangle : null;
-          const badge = crisis ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" } : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity));
+          const badge = crisis ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" } : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
           return (
             <div key={room.id} className={`absolute rounded-xl border p-2 ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
-              {badge && <span className={`absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}`}>{badge.label}</span>}
+              <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>
+              {!compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers.slots ?? 1)}</span>}
+              {badge && <span className="absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}">{badge.label}</span>}
               {crisis && <span className="absolute right-1 top-6 rounded border border-red-300/45 bg-red-400/20 px-1 text-[9px] font-black text-red-50">{Math.round(crisis.progress ?? 0)}%</span>}
               {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
             </div>
