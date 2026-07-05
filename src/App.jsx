@@ -65,7 +65,7 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="app-shell flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
       <Header />
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
