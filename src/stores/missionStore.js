@@ -87,7 +87,7 @@ export const useMissionStore = create(
         }));
         return { ok: true, board, refreshed: true };
       },
-      acceptMission: ({ scopeId, missionId, vesselId, currentMinute = 0 } = {}) => {
+      acceptMission: ({ scopeId, missionId, vesselId, currentMinute = 0, availableReputation = 0 } = {}) => {
         if (!scopeId) return { ok: false, reason: "missingScopeId" };
         if (!missionId) return { ok: false, reason: "missingMissionId" };
         if (!vesselId) return { ok: false, reason: "missingVesselId" };
@@ -95,7 +95,7 @@ export const useMissionStore = create(
         const board = state.boardsByScopeId[scopeId];
         const mission = board?.missions?.find((entry) => entry.id === missionId);
         const activeMissions = flattenActive(state.activeByVesselId);
-        const allowed = canAcceptMission({ mission, activeMissions, vesselId });
+        const allowed = canAcceptMission({ mission, activeMissions, vesselId, availableReputation });
         if (!allowed.ok) return allowed;
         const activeMission = acceptMissionRecord(allowed.mission, { vesselId, currentMinute });
         set((nextState) => ({
