@@ -1,6 +1,7 @@
 import { Compass, Crosshair, Home, Menu as MenuIcon, Rocket } from "lucide-react";
 import { getAllZones } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
+import { useNavStore } from "../../stores/navStore";
 
 const tabItems = [
   { id: "overview", label: "홈", icon: Home, type: "panel" },
@@ -12,9 +13,12 @@ const tabItems = [
 
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
-  const activeTravel = useExplorationStore((state) => state.activeTravel);
+  const legacyTravel = useExplorationStore((state) => state.activeTravel);
+  const navTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
+  const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const activeTravel = legacyTravel ?? navTravel;
   const hasHighDangerZone = getAllZones().some((zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4);
 
   const handleTab = (item) => {
@@ -33,7 +37,7 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
         const active = activePanel === item.id;
         const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
         const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
-        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent);
+        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent || navPendingEncounter);
         return (
           <button key={item.id} className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handleTab(item)} disabled={locked}>
             <span className="relative inline-flex">
@@ -41,7 +45,7 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
               {item.id === "combat" && (urgent || hasHighDangerZone) && <span className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${urgent ? "bg-red-400 animate-pulse" : "bg-red-500"}`} />}
               {menuAlert && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />}
             </span>
-            <span>{urgent ? "긴급" : menuAlert ? "대응" : item.label}</span>
+            <span>{locked ? "잠김" : urgent ? "긴급" : menuAlert ? "대응" : item.label}</span>
           </button>
         );
       })}

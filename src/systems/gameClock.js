@@ -8,6 +8,7 @@ import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
 import { useNavStore } from "../stores/navStore";
+import { useRecruitStore } from "../stores/recruitStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
@@ -79,8 +80,9 @@ function applyNavEffect(effect, currentMinute) {
     if (target) useCrewStore.getState().applyCrewOutcome({ memberId: target.id, injury: effect.state ?? "경상", morale: -1 });
   }
   if (effect.kind === "recruitOffer" && effect.templateId) {
+    const result = useRecruitStore.getState().addCandidate(effect.templateId, "navigation");
     useNavStore.getState().addRecruitCandidate(effect.templateId);
-    useGameStore.getState().addLog(`영입 후보 확보: ${effect.templateId}. Phase 10 영입 화면에서 사용할 수 있습니다.`);
+    useGameStore.getState().addLog(result.ok ? `영입 후보 확보: ${effect.templateId}. 영입 화면에서 검토할 수 있습니다.` : `영입 후보 처리 실패: ${effect.templateId} (${result.reason}).`);
   }
   if (effect.kind === "combat") {
     useExplorationStore.getState().setPendingCombatEncounter({ id: effect.enemyId, title: "미확인 적성 함선 접촉", enemyId: effect.enemyId, fallback: true });

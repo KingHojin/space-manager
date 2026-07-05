@@ -13,6 +13,7 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 
 const directives = [
@@ -26,7 +27,6 @@ const directives = [
 function rollCrewCasualty({ crew, enemy, directive, hullDamage, shipHull }) {
   const activeCrew = crew.filter((member) => member.alive !== false);
   if (!enemy || activeCrew.length === 0 || hullDamage <= 0) return null;
-
   const target = activeCrew[Math.floor(Math.random() * activeCrew.length)];
   const directiveModifier = directive === "shield" ? -0.035 : directive === "evade" ? -0.025 : directive === "attack" ? 0.02 : 0;
   const hullModifier = shipHull <= 25 ? 0.055 : shipHull <= 45 ? 0.025 : 0;
@@ -34,7 +34,6 @@ function rollCrewCasualty({ crew, enemy, directive, hullDamage, shipHull }) {
   const deathRisk = Math.max(0.006, Math.min(0.12, baseRisk * 0.38));
   const woundRisk = Math.max(0.08, Math.min(0.34, baseRisk * 2.2));
   const roll = Math.random();
-
   if (roll < deathRisk) return { member: target, injury: "전사", risk: Math.round(deathRisk * 100) };
   if (roll < deathRisk + woundRisk * 0.42) return { member: target, injury: "중상", risk: Math.round((deathRisk + woundRisk) * 100) };
   if (roll < deathRisk + woundRisk) return { member: target, injury: "경상", risk: Math.round((deathRisk + woundRisk) * 100) };
@@ -42,14 +41,15 @@ function rollCrewCasualty({ crew, enemy, directive, hullDamage, shipHull }) {
 }
 
 export default function Combat() {
-  const [feed, setFeed] = useState(["교전 대기 중. 위험 구역을 기준으로 모의 적 함대를 생성할 수 있습니다."]);
+  const [feed, setFeed] = useState(["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."]);
   const [combat, setCombat] = useState(null);
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
-  const activeTravel = useExplorationStore((state) => state.activeTravel);
+  const legacyTravel = useExplorationStore((state) => state.activeTravel);
+  const navTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const clearPendingCombatEncounter = useExplorationStore((state) => state.clearPendingCombatEncounter);
   const resources = useGameStore((state) => state.resources);
@@ -62,15 +62,10 @@ export default function Combat() {
   const addItem = useInventoryStore((state) => state.addItem);
   const activeCrew = crew.filter((member) => member.alive !== false);
   const fallenCrew = crew.filter((member) => member.alive === false);
-  const activeCards = useMemo(
-    () => cards.filter((card) => activeCardIds.includes(card.instanceId)),
-    [cards, activeCardIds],
-  );
+  const activeCards = useMemo(() => cards.filter((card) => activeCardIds.includes(card.instanceId)), [cards, activeCardIds]);
   const power = calculateCombatPower({ modules: installedModules, crew, activeCards });
-  const maxDanger = Math.max(
-    1,
-    ...getAllZones().filter((zone) => discoveredZoneIds.includes(zone.id)).map((zone) => zone.danger),
-  );
+  const maxDanger = Math.max(1, ...getAllZones().filter((zone) => discoveredZoneIds.includes(zone.id)).map((zone) => zone.danger));
+  const activeTravel = legacyTravel ?? navTravel;
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter);
 
   const pushFeed = (lines) => {
@@ -80,7 +75,7 @@ export default function Combat() {
 
   const startEncounter = () => {
     if (travelLocked) {
-      pushFeed(["작전 제한: 항해 중에는 임의 교전을 시작할 수 없습니다. 긴급 조우가 발생했을 때만 대응 가능합니다."]);
+      pushFeed(["작전 제한: 항해 중에는 임의 교전을 시작할 수 없습니다. 전투는 항해 조우나 명시적 교전 이벤트에서만 활성화됩니다."]);
       return;
     }
     if (activeCrew.length === 0) {
@@ -95,7 +90,7 @@ export default function Combat() {
       clearPendingCombatEncounter();
       pushFeed([
         `긴급 항해 교전 대응: ${pendingCombatEncounter.title}`,
-        pendingCombatEncounter.message,
+        pendingCombatEncounter.message ?? "적성 접촉에 대응합니다.",
         `${enemy.name} 식별. 위협도 ${enemy.risk}, 교전력 ${enemy.power}.`,
         "전술 지시 후 교전이 종료되면 항해를 재개할 수 있습니다.",
       ]);
@@ -113,42 +108,23 @@ export default function Combat() {
       pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
       return;
     }
-
     const result = resolveCombatRound({ directive, combat, power });
     setCombat(result.combat);
     addResources(result.resourceChanges);
     if (result.loot) addItem(result.loot.itemId, result.loot.qty);
-
     const lead = activeCrew[Math.floor(Math.random() * activeCrew.length)];
-    if (lead) {
-      applyCrewOutcome({ memberId: lead.id, fatigue: 6, experience: 5, morale: result.combat.status === "won" ? 1 : 0 });
-    }
-
-    const casualty = rollCrewCasualty({
-      crew,
-      enemy: combat.enemy,
-      directive,
-      hullDamage: Math.abs(result.resourceChanges.hull ?? 0),
-      shipHull: resources.hull + (result.resourceChanges.hull ?? 0),
-    });
+    if (lead) applyCrewOutcome({ memberId: lead.id, fatigue: 6, experience: 5, morale: result.combat.status === "won" ? 1 : 0 });
+    const casualty = rollCrewCasualty({ crew, enemy: combat.enemy, directive, hullDamage: Math.abs(result.resourceChanges.hull ?? 0), shipHull: resources.hull + (result.resourceChanges.hull ?? 0) });
     const casualtyLogs = [];
     if (casualty) {
       applyCombatCasualty({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
-      casualtyLogs.push(
-        casualty.injury === "전사"
-          ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.`
-          : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`,
-      );
+      casualtyLogs.push(casualty.injury === "전사" ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.` : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`);
     }
-
     if (result.combat.status === "won" && activeTravel) {
       casualtyLogs.push("긴급 교전 종료. 항해를 계속 진행할 수 있습니다.");
       setPaused(false);
     }
-    if (result.combat.status === "lost" && activeTravel) {
-      casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
-    }
-
+    if (result.combat.status === "lost" && activeTravel) casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
     pushFeed([...result.logs, ...casualtyLogs]);
   };
 
@@ -169,31 +145,24 @@ export default function Combat() {
         <div className="section-title"><Crosshair size={18} />전투 지시</div>
         <div className="mt-5 text-5xl font-bold text-cyan-100">{power}</div>
         <p className="mt-2 text-sm text-slate-400">함선, 생존 승무원, 활성 카드 기준 전투력입니다.</p>
-
         {activeTravel && (
           <div className={`mt-4 rounded border p-3 text-sm leading-6 ${pendingCombatEncounter ? "border-red-400/40 bg-red-400/10 text-red-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}>
             <div className="flex items-center gap-2 font-semibold"><AlertTriangle size={16} />{pendingCombatEncounter ? "항해 중 긴급 교전 발생" : "항해 작전 진행 중"}</div>
-            <p className="mt-1 text-xs opacity-90">
-              {pendingCombatEncounter ? "수동 신규 교전이 아니라 현재 조우한 적 함선에 대응해야 합니다." : "항해 중에는 임의 전투 지시를 시작할 수 없습니다. 적 함선 조우가 발생하면 이 화면에서 대응합니다."}
-            </p>
+            <p className="mt-1 text-xs opacity-90">{pendingCombatEncounter ? "수동 신규 교전이 아니라 현재 조우한 적 함선에 대응해야 합니다." : "항해 중에는 새 전투를 임의로 활성화할 수 없습니다. 적 함선 조우가 발생하면 이 화면에서 대응합니다."}</p>
           </div>
         )}
-
         <div className="mt-4 grid gap-2 sm:grid-cols-3">
           <Metric icon={Shield} label="선체" value={`${Math.round(resources.hull)}%`} />
           <Metric icon={Zap} label="연료" value={`${Math.round(resources.fuel)}%`} />
           <Metric icon={Skull} label="생존/전사" value={`${activeCrew.length}/${fallenCrew.length}`} />
         </div>
-
         <div className="mt-5 rounded border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="flex items-center justify-between gap-2">
             <div>
               <div className="hud-label">교전 대상</div>
               <div className="font-semibold text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div>
             </div>
-            <span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combat?.status === "engaged" || pendingCombatEncounter ? "hud-chip-warn" : ""}`}>
-              {combat?.status ?? (pendingCombatEncounter ? "urgent" : travelLocked ? "locked" : "standby")}
-            </span>
+            <span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combat?.status === "engaged" || pendingCombatEncounter ? "hud-chip-warn" : ""}`}>{combat?.status ?? (pendingCombatEncounter ? "urgent" : travelLocked ? "locked" : "standby")}</span>
           </div>
           {enemy && (
             <div className="mt-4 space-y-3">
@@ -202,55 +171,19 @@ export default function Combat() {
               <div className="text-xs text-slate-500">보상 ₢ {enemy.reward} · 교전력 {enemy.power} · 전리품 {enemy.lootItemId ?? "-"}</div>
             </div>
           )}
-          <button className="primary-button mt-4 w-full" disabled={!canStart} onClick={startEncounter}>
-            {pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}
-          </button>
+          <button className="primary-button mt-4 w-full" disabled={!canStart} onClick={startEncounter}>{pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
           {combat && <button className="secondary-button mt-2 w-full" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
-
-        <div className="mt-4 rounded border border-red-400/25 bg-red-400/10 p-3 text-xs leading-5 text-red-100">
-          XCOM식 승무원 리스크: 적 위험도, 선체 피해, 현재 선체 상태, 지시에 따라 경상/중상/전사 판정이 발생합니다. 방어막 강화와 회피 기동은 위험을 낮춥니다.
-        </div>
-
-        <div className="mt-4 grid gap-2">
-          {directives.map(([id, label]) => (
-            <button key={id} className="secondary-button" disabled={activeCrew.length === 0 || travelLocked} onClick={() => issueDirective(id)}>{label}</button>
-          ))}
-        </div>
+        <div className="mt-4 rounded border border-red-400/25 bg-red-400/10 p-3 text-xs leading-5 text-red-100">XCOM식 승무원 리스크: 적 위험도, 선체 피해, 현재 선체 상태, 지시에 따라 경상/중상/전사 판정이 발생합니다. 방어막 강화와 회피 기동은 위험을 낮춥니다.</div>
+        <div className="mt-4 grid gap-2">{directives.map(([id, label]) => <button key={id} className="secondary-button" disabled={activeCrew.length === 0 || travelLocked} onClick={() => issueDirective(id)}>{label}</button>)}</div>
       </section>
       <section>
         <div className="grid gap-4 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
-          <BattleScene
-            mode="combat"
-            title="함대 교전 장면"
-            leftName={shipName}
-            leftSub={`전투력 ${power} · 생존 승무원 ${activeCrew.length}`}
-            rightName={enemy?.name ?? (pendingCombatEncounter ? "항해 중 접근 함선" : "미확인 적 함대")}
-            rightSub={enemy ? `위협도 ${enemy.risk} · 교전력 ${enemy.power}` : pendingCombatEncounter ? pendingCombatEncounter.message : "새 교전을 생성하면 목표가 표시됩니다."}
-            status={combat?.status ?? (pendingCombatEncounter ? "urgent" : "standby")}
-            directive={combat?.lastDirective ?? "standby"}
-            eventLine={eventLine}
-            intensity={combat?.lastDamage ?? (pendingCombatEncounter ? 45 : 0)}
-            leftTone="cyan"
-            rightTone={combat?.status === "won" ? "slate" : "red"}
-            leftStats={[
-              { label: "선체", value: `${Math.round(resources.hull)}%`, percent: resources.hull },
-              { label: "연료", value: `${Math.round(resources.fuel)}%`, percent: resources.fuel },
-              { label: "피해", value: combat?.lastTaken ? `-${combat.lastTaken}%` : "대기" },
-            ]}
-            rightStats={[
-              { label: "방어막", value: enemy ? `${enemyShield}%` : "-", percent: enemy ? enemyShield : 0 },
-              { label: "선체", value: enemy ? `${enemyHull}%` : "-", percent: enemy ? enemyHull : 0 },
-              { label: "최근 피해", value: combat?.lastDamage ? `${combat.lastDamage}` : pendingCombatEncounter ? "접근 중" : "대기" },
-            ]}
-          />
-
-          <div>
-            <div className="section-title">FM식 전투 중계</div>
-            <div className="mt-4 max-h-[32rem] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 lg:h-[calc(100%-2.5rem)] lg:max-h-none">
-              {feed.map((line, index) => <div key={`${line}-${index}`} className="border-b border-slate-800 py-3 text-sm text-slate-300 last:border-b-0">{line}</div>)}
-            </div>
+          <div className="rounded border border-slate-700/70 bg-slate-950/60 p-4">
+            <div className="hud-label">전술 상황</div>
+            <div className="mt-2 text-lg font-bold text-slate-50">{shipName} · {eventLine}</div>
           </div>
+          <BattleScene combat={combat} power={power} />
         </div>
       </section>
     </div>
@@ -258,19 +191,9 @@ export default function Combat() {
 }
 
 function Metric({ icon: Icon, label, value }) {
-  return (
-    <div className="rounded border border-slate-700/70 bg-slate-950/60 p-3">
-      <div className="flex items-center gap-2 text-slate-400"><Icon size={14} /><span className="hud-label">{label}</span></div>
-      <div className="hud-value mt-1">{value}</div>
-    </div>
-  );
+  return <div className="rounded border border-slate-700/70 bg-slate-950/60 p-3"><Icon size={17} className="text-cyan-200" /><div className="mt-2 text-lg font-bold text-slate-50">{value}</div><div className="text-xs text-slate-500">{label}</div></div>;
 }
 
 function Gauge({ label, value }) {
-  return (
-    <div>
-      <div className="flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{value}%</span></div>
-      <div className="hud-gauge mt-1"><span className="hud-gauge-fill" style={{ width: `${value}%` }} /></div>
-    </div>
-  );
+  return <div><div className="mb-1 flex items-center justify-between text-xs"><span className="text-slate-400">{label}</span><span className="font-bold text-slate-100">{value}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${value}%` }} /></div></div>;
 }

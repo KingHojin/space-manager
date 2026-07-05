@@ -9,6 +9,7 @@ import Combat from "./components/panels/Combat";
 import Hunting from "./components/panels/Hunting";
 import Ship from "./components/panels/Ship";
 import Crew from "./components/panels/Crew";
+import Recruit from "./components/panels/Recruit";
 import Collector from "./components/panels/Collector";
 import Market from "./components/panels/Market";
 import SkillTree from "./components/panels/SkillTree";
@@ -30,6 +31,7 @@ const panels = {
   ship: { title: "함선", component: Ship },
   menu: { title: "메뉴", component: MenuPanel },
   crew: { title: "승무원", component: Crew },
+  recruit: { title: "영입", component: Recruit },
   collector: { title: "컬렉션", component: Collector },
   market: { title: "시장", component: Market },
   skilltree: { title: "스킬트리", component: SkillTree },
