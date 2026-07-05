@@ -111,6 +111,57 @@
   color: rgb(254 202 202);
 }
 
+.crew-bark-bubble {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 0.45rem);
+  z-index: 40;
+  max-width: 7.8rem;
+  min-width: 2.25rem;
+  transform: translateX(-50%);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  border: 1px solid rgb(125 211 252 / 0.42);
+  border-radius: 0.65rem;
+  background: rgb(15 23 42 / 0.94);
+  color: rgb(240 249 255);
+  padding: 0.18rem 0.42rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  box-shadow: 0 0 16px rgb(8 47 73 / 0.5), 0 6px 16px rgb(0 0 0 / 0.35);
+  animation: crew-bark-pop 220ms ease-out 1;
+}
+
+.crew-bark-bubble::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.26rem;
+  width: 0.45rem;
+  height: 0.45rem;
+  transform: translateX(-50%) rotate(45deg);
+  border-right: 1px solid rgb(125 211 252 / 0.35);
+  border-bottom: 1px solid rgb(125 211 252 / 0.35);
+  background: rgb(15 23 42 / 0.94);
+}
+
+.crew-bark-onCrisis,
+.crew-bark-onLowFuel,
+.crew-bark-onDrift {
+  border-color: rgb(252 165 165 / 0.55);
+  color: rgb(254 226 226);
+  box-shadow: 0 0 18px rgb(127 29 29 / 0.42), 0 6px 16px rgb(0 0 0 / 0.35);
+}
+
+.crew-bark-onTreat {
+  border-color: rgb(110 231 183 / 0.48);
+  color: rgb(209 250 229);
+}
+
 @keyframes crew-walk-bob {
   0%, 100% { transform: translateY(0) scale(1); }
   50% { transform: translateY(-2px) scale(1.05); }
@@ -155,9 +206,15 @@
   70% { transform: translateY(0) rotate(0); }
 }
 
+@keyframes crew-bark-pop {
+  0% { opacity: 0; transform: translateX(-50%) translateY(3px) scale(0.92); }
+  100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .crew-marker-core,
-  .crew-marker-avatar {
+  .crew-marker-avatar,
+  .crew-bark-bubble {
     animation: none !important;
   }
 }
