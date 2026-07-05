@@ -1,3 +1,4 @@
+import { roomAnchorPoint } from "../../data/shipInteriorLayout";
 import { getPriorityConfig } from "../../systems/priorities";
 import { deriveTargetAnimState } from "../../stores/crewMotionStore";
 
@@ -95,9 +96,9 @@ export function CrewActivitySummary({ roomAssignments = [], motionByCrewId = {},
 export default function CrewLayer({ roomAssignments = [], motionByCrewId = {}, jobOwnerIds = new Set(), compact = false, onCrewClick }) {
   return (
     <>
-      {roomAssignments.map(({ member, activity, roomId }) => {
+      {roomAssignments.map(({ member, activity, roomId, slotIndex }) => {
         const motion = motionByCrewId[member.id];
-        const fallbackPoint = activity?.point ?? { x: 50, y: 50 };
+        const fallbackPoint = roomAnchorPoint(roomId, member.id, slotIndex);
         const point = motion ? { x: motion.x, y: motion.y } : fallbackPoint;
         return <CrewSprite key={member.id} member={member} activity={activity} roomId={roomId} point={point} motion={motion} jobOwnerIds={jobOwnerIds} compact={compact} onCrewClick={onCrewClick} />;
       })}
