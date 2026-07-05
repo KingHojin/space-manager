@@ -19,18 +19,16 @@ function clamp(value, min, max) {
 }
 
 function normalizeRoom(room) {
-  const assignedMemberIds = Array.isArray(room.assignedMemberIds) ? room.assignedMemberIds.filter(Boolean) : room.assignedMemberId ? [room.assignedMemberId] : [];
-  return {
-    ...room,
-    tier: clamp(room.tier ?? 1, 1, 3),
-    modules: Array.isArray(room.modules) ? room.modules.filter((id) => ROOM_MODULE_CATALOG.some((module) => module.id === id)) : [],
-    assignedMemberIds,
-    assignedMemberId: assignedMemberIds[0] ?? null,
-  };
+  const validModules = Array.isArray(room?.modules) ? room.modules.filter((id) => ROOM_MODULE_CATALOG.some((module) => module.id === id)) : [];
+  const draft = { ...room, tier: clamp(room?.tier ?? 1, 1, 3), modules: validModules };
+  const slots = Math.max(1, Math.round(calculateRoomModifiers(draft).slots ?? 1));
+  const assignedMemberIds = (Array.isArray(room?.assignedMemberIds) ? room.assignedMemberIds : room?.assignedMemberId ? [room.assignedMemberId] : []).filter(Boolean).slice(0, slots);
+  return { ...draft, assignedMemberIds, assignedMemberId: assignedMemberIds[0] ?? null };
 }
 
 function withRoomStatus(room, currentMinute) {
-  const next = { ...normalizeRoom(room), status: deriveRoomStatus(room) };
+  const normalized = normalizeRoom(room);
+  const next = { ...normalized, status: deriveRoomStatus(normalized) };
   if (currentMinute !== undefined) next.updatedAt = currentMinute;
   return next;
 }
@@ -98,10 +96,7 @@ function isCrewUsable(member) {
 }
 
 function clearOverflowAssignments(room) {
-  const modifiers = calculateRoomModifiers(room);
-  const slots = Math.max(1, Math.round(modifiers.slots ?? 1));
-  const ids = (room.assignedMemberIds ?? []).slice(0, slots);
-  return { ...room, assignedMemberIds: ids, assignedMemberId: ids[0] ?? null };
+  return normalizeRoom(room);
 }
 
 export const useShipInteriorStore = create(
