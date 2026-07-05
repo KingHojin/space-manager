@@ -1,4 +1,7 @@
+import { ROOMS } from "../data/shipRooms";
+
 const CREW_IDLE_ACTIONS = ["식사 중", "휴식 중", "생활구역 정리", "동료와 대화", "개인 장비 점검"];
+const ROOM_LABELS = Object.fromEntries(ROOMS.map((room) => [room.id, room.label]));
 const ROLE_ACTIONS = {
   함교: ["항로 분석", "교신 감청", "성계 데이터 갱신", "위험 신호 분류"],
   기관실: ["엔진 출력 조율", "냉각계 점검", "연료 라인 검사", "예비 부품 정리"],
@@ -110,6 +113,7 @@ export function getSituationCards({
   nextContracts = [],
   travelProgress = 0,
   currentMinute = 0,
+  rooms = [],
 }) {
   const cards = [];
   const aliveCrew = crew.filter((member) => member.alive);
@@ -117,6 +121,8 @@ export function getSituationCards({
   const exhaustedCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 80);
   const tiredCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 65);
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
+  const criticalRooms = rooms.filter((room) => room.status === "위험");
+  const maintenanceRooms = rooms.filter((room) => room.status === "점검 필요");
 
   if (pendingCombatEncounter) {
     cards.push(situation({
@@ -160,6 +166,32 @@ export function getSituationCards({
     cards.push(situation({ id: "fuel-critical", priority: "critical", icon: "⛽", title: "연료 고갈 임박", desc: `연료 ${Math.round(resources.fuel)}%. 표류 위험이 급격히 상승합니다.`, action: "보급", targetPanel: "market", meta: "치명" }));
   } else if ((resources.fuel ?? 100) < 35) {
     cards.push(situation({ id: "fuel-warning", priority: "high", icon: "⛽", title: "연료 보급 권장", desc: `연료 ${Math.round(resources.fuel)}%. 항해 이벤트 대응 여력이 낮습니다.`, action: "보급", targetPanel: "market", meta: "주의" }));
+  }
+
+  if (criticalRooms.length > 0) {
+    const names = criticalRooms.map((room) => ROOM_LABELS[room.id] ?? room.id).join(", ");
+    cards.push(situation({
+      id: "rooms-critical",
+      priority: "critical",
+      icon: "🚨",
+      title: "함선 구역 위험",
+      desc: `${names} 구역이 위험 상태입니다. 승무원을 배정해 상태를 안정시키세요.`,
+      action: "구역 확인",
+      targetPanel: "crew",
+      meta: `${criticalRooms.length}곳`,
+    }));
+  } else if (maintenanceRooms.length > 0) {
+    const names = maintenanceRooms.map((room) => ROOM_LABELS[room.id] ?? room.id).join(", ");
+    cards.push(situation({
+      id: "rooms-maintenance",
+      priority: "medium",
+      icon: "🔧",
+      title: "점검 필요 구역",
+      desc: `${names} 구역 상태가 저하되고 있습니다. 여유 있을 때 정비를 배정하세요.`,
+      action: "구역 확인",
+      targetPanel: "crew",
+      meta: `${maintenanceRooms.length}곳`,
+    }));
   }
 
   if (injuredCrew.length > 0) {
