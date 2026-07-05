@@ -76,6 +76,7 @@ function processTravel(currentMinute) {
 
 function processCrewAI(currentMinute) {
   const exploration = useExplorationStore.getState();
+  const shipInterior = useShipInteriorStore.getState();
   const logs = useCrewStore.getState().runCrewAI({
     currentMinute,
     resources: useGameStore.getState().resources,
@@ -83,7 +84,8 @@ function processCrewAI(currentMinute) {
     pendingTravelEvent: exploration.pendingTravelEvent,
     pendingCombatEncounter: exploration.pendingCombatEncounter,
     installationQueue: useShipStore.getState().installationQueue ?? [],
-    rooms: useShipInteriorStore.getState().rooms,
+    rooms: shipInterior.rooms,
+    activeCrises: shipInterior.activeCrises ?? [],
   });
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
@@ -114,6 +116,35 @@ function processRoomJobs(currentMinute, deltaMinutes) {
   logs.forEach((message) => useGameStore.getState().addLog(`함선: ${message}`));
 }
 
+function applyCrisisEffect(effect) {
+  if (!effect) return;
+  if (effect.type === "crewCasualty" && effect.memberId) {
+    useCrewStore.getState().applyCombatCasualty({ memberId: effect.memberId, injury: effect.injury ?? "경상", morale: effect.morale ?? -1 });
+  }
+  if (effect.type === "resourceDelta" && effect.resources) {
+    useGameStore.getState().addResources(effect.resources);
+  }
+}
+
+function processCrises(currentMinute, deltaMinutes) {
+  const activities = useCrewStore.getState().crewActivities ?? [];
+  const crisisActivities = {};
+  activities.forEach((activity) => {
+    if (activity.intent === "crisis-response" && activity.crisisId) {
+      crisisActivities[activity.crisisId] = { memberId: activity.memberId, roomId: activity.roomId };
+    }
+  });
+
+  const { effects, logs } = useShipInteriorStore.getState().tickCrises({
+    currentMinute,
+    deltaMinutes,
+    crisisActivities,
+    crew: useCrewStore.getState().crew,
+  });
+  effects.forEach(applyCrisisEffect);
+  logs.forEach((message) => useGameStore.getState().addLog(`함선 위기: ${message}`));
+}
+
 export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
@@ -123,6 +154,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processTravel(currentMinute);
   processCrewAI(currentMinute);
   processRoomJobs(currentMinute, deltaMinutes);
+  processCrises(currentMinute, deltaMinutes);
 }
 
 export const useGameClock = () => {
