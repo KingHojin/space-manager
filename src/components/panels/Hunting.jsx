@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { PawPrint, Radar, Shield, Skull } from "lucide-react";
+import { AlertTriangle, PawPrint, Radar, Shield, Skull } from "lucide-react";
 import BattleScene from "../common/BattleScene";
 import { useCrewStore } from "../../stores/crewStore";
+import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { creatures } from "../../data/creatures";
@@ -27,6 +28,7 @@ export default function Hunting() {
   const addItem = useInventoryStore((state) => state.addItem);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
+  const activeTravel = useExplorationStore((state) => state.activeTravel);
   const activeCrew = crew.filter((member) => member.alive !== false);
 
   const getScout = () => activeCrew.reduce((best, member) => ((member.stats.scouting ?? 0) > (best?.stats.scouting ?? 0) ? member : best), activeCrew[0]);
@@ -40,6 +42,10 @@ export default function Hunting() {
   };
 
   const attemptHunt = (creature) => {
+    if (activeTravel) {
+      addLog("사냥 지시 불가: 항해 작전 중에는 생체 추적조를 새로 편성할 수 없습니다.");
+      return;
+    }
     if (activeCrew.length === 0) {
       addLog("사냥 실패: 생존 승무원이 없어 추적조를 편성할 수 없습니다.");
       return;
@@ -70,41 +76,34 @@ export default function Hunting() {
     ? lastHunt.success
       ? `${lastHunt.scout?.name ?? "정찰조"}가 ${lastHunt.creature.name}의 약점(${lastHunt.creature.weakness})을 포착. ${lastHunt.creature.reward} 회수 성공.`
       : `${lastHunt.creature.name}이 추적망을 찢고 반격. 선체 ${lastHunt.hullLoss}%, 산소 ${lastHunt.oxygenLoss}% 손실.`
-    : "생체 신호가 화면에 잡힙니다. 목표를 선택하면 추적 장면이 중계됩니다.";
+    : activeTravel
+      ? "항해 작전 중입니다. 새 사냥 지시는 도착 후 가능합니다."
+      : "생체 신호가 화면에 잡힙니다. 목표를 선택하면 추적 장면이 중계됩니다.";
 
   return (
     <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
       <section>
-        <div className="section-title">
-          <PawPrint size={18} />
-          사냥 미션
-        </div>
+        <div className="section-title"><PawPrint size={18} />사냥 미션</div>
+        {activeTravel && (
+          <div className="mt-4 rounded border border-amber-300/35 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">
+            <div className="flex items-center gap-2 font-semibold"><AlertTriangle size={16} />항해 작전 진행 중</div>
+            <p className="mt-1 text-xs opacity-90">항해 중에는 추적조를 외부로 내보낼 수 없습니다. 항해 인카운터는 자동으로 처리되며, 전투 조우만 전투 탭에서 대응합니다.</p>
+          </div>
+        )}
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
           {creatures.map((creature) => {
             const { scout, score, target, chance } = estimate(creature);
             return (
               <div key={creature.id} className="rounded border border-slate-700/70 bg-slate-950/60 p-4">
                 <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-slate-100">{creature.name}</div>
-                    <p className="mt-1 text-sm text-slate-400">약점: {creature.weakness}</p>
-                  </div>
+                  <div><div className="font-semibold text-slate-100">{creature.name}</div><p className="mt-1 text-sm text-slate-400">약점: {creature.weakness}</p></div>
                   <span className={`hud-chip ${dangerTone(creature.danger)}`}>위험 {creature.danger}</span>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1.5">
-                  <span className="hud-chip">보상 {creature.reward}</span>
-                  <span className="hud-chip">₢ {creature.credits}</span>
-                  <span className="hud-chip">{creature.itemId}</span>
-                  <span className={`hud-chip ${chanceTone(chance)}`}>예상 {chance}%</span>
+                  <span className="hud-chip">보상 {creature.reward}</span><span className="hud-chip">₢ {creature.credits}</span><span className="hud-chip">{creature.itemId}</span><span className={`hud-chip ${chanceTone(chance)}`}>예상 {chance}%</span>
                 </div>
-                <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-                  <Info label="정찰조" value={scout?.name ?? "없음"} />
-                  <Info label="판정" value={`${score}/${target}`} />
-                  <Info label="선체" value={`${Math.round(resources.hull)}%`} />
-                </div>
-                <button className="primary-button mt-4 w-full" disabled={activeCrew.length === 0} onClick={() => attemptHunt(creature)}>
-                  추적 시작
-                </button>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-xs"><Info label="정찰조" value={scout?.name ?? "없음"} /><Info label="판정" value={`${score}/${target}`} /><Info label="선체" value={`${Math.round(resources.hull)}%`} /></div>
+                <button className="primary-button mt-4 w-full" disabled={activeCrew.length === 0 || Boolean(activeTravel)} onClick={() => attemptHunt(creature)}>{activeTravel ? "항해 중 사냥 불가" : "추적 시작"}</button>
               </div>
             );
           })}
@@ -120,29 +119,16 @@ export default function Hunting() {
             leftSub={`정찰조 ${featuredEstimate?.scout?.name ?? "대기"} · 판정 ${featuredEstimate?.score ?? 0}/${featuredEstimate?.target ?? 0}`}
             rightName={featuredCreature?.name ?? "미확인 생명체"}
             rightSub={featuredCreature ? `위험 ${featuredCreature.danger} · 약점 ${featuredCreature.weakness}` : "목표 없음"}
-            status={lastHunt ? (lastHunt.success ? "success" : "failed") : "standby"}
-            directive={lastHunt ? (lastHunt.success ? "capture" : "counter") : "tracking"}
+            status={activeTravel ? "locked" : lastHunt ? (lastHunt.success ? "success" : "failed") : "standby"}
+            directive={activeTravel ? "travel" : lastHunt ? (lastHunt.success ? "capture" : "counter") : "tracking"}
             eventLine={sceneLine}
-            intensity={lastHunt ? Math.max(20, lastHunt.creature.danger * 18) : 12}
+            intensity={lastHunt ? Math.max(20, lastHunt.creature.danger * 18) : activeTravel ? 8 : 12}
             leftTone="emerald"
             rightTone={lastHunt?.success ? "slate" : featuredCreature?.danger >= 5 ? "violet" : "amber"}
-            leftStats={[
-              { label: "선체", value: `${Math.round(resources.hull)}%`, percent: resources.hull },
-              { label: "산소", value: `${Math.round(resources.oxygen)}%`, percent: resources.oxygen },
-              { label: "예상", value: `${featuredEstimate?.chance ?? 0}%`, percent: featuredEstimate?.chance ?? 0 },
-            ]}
-            rightStats={[
-              { label: "위험", value: featuredCreature ? `${featuredCreature.danger}` : "-", percent: featuredCreature ? Math.min(100, featuredCreature.danger * 14) : 0 },
-              { label: "전리품", value: featuredCreature?.itemId ?? "-" },
-              { label: "최근 판정", value: lastHunt ? `${lastHunt.score}+${lastHunt.roll}/${lastHunt.target}` : "대기" },
-            ]}
+            leftStats={[{ label: "선체", value: `${Math.round(resources.hull)}%`, percent: resources.hull }, { label: "산소", value: `${Math.round(resources.oxygen)}%`, percent: resources.oxygen }, { label: "예상", value: `${featuredEstimate?.chance ?? 0}%`, percent: featuredEstimate?.chance ?? 0 }]}
+            rightStats={[{ label: "위험", value: featuredCreature ? `${featuredCreature.danger}` : "-", percent: featuredCreature ? Math.min(100, featuredCreature.danger * 14) : 0 }, { label: "전리품", value: featuredCreature?.itemId ?? "-" }, { label: "최근 판정", value: lastHunt ? `${lastHunt.score}+${lastHunt.roll}/${lastHunt.target}` : "대기" }]}
           />
-
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric icon={Radar} label="추적 대상" value={featuredCreature?.name ?? "없음"} />
-            <Metric icon={Skull} label="위험도" value={featuredCreature?.danger ?? "-"} />
-            <Metric icon={Shield} label="최근 결과" value={lastHunt ? (lastHunt.success ? "성공" : "실패") : activeCrew.length === 0 ? "승무원 없음" : "대기"} />
-          </div>
+          <div className="grid gap-3 sm:grid-cols-3"><Metric icon={Radar} label="추적 대상" value={featuredCreature?.name ?? "없음"} /><Metric icon={Skull} label="위험도" value={featuredCreature?.danger ?? "-"} /><Metric icon={Shield} label="최근 결과" value={lastHunt ? (lastHunt.success ? "성공" : "실패") : activeTravel ? "항해 중" : activeCrew.length === 0 ? "승무원 없음" : "대기"} /></div>
         </div>
       </section>
     </div>
@@ -150,22 +136,9 @@ export default function Hunting() {
 }
 
 function Info({ label, value }) {
-  return (
-    <div className="rounded border border-slate-700/70 bg-slate-900/70 px-2 py-2">
-      <div className="hud-label truncate">{label}</div>
-      <div className="hud-value mt-1 truncate">{value}</div>
-    </div>
-  );
+  return <div className="rounded border border-slate-700/70 bg-slate-900/70 px-2 py-2"><div className="hud-label truncate">{label}</div><div className="hud-value mt-1 truncate">{value}</div></div>;
 }
 
 function Metric({ icon: Icon, label, value }) {
-  return (
-    <div className="rounded border border-slate-700/70 bg-slate-950/60 p-3">
-      <div className="flex items-center gap-2 text-slate-400">
-        <Icon size={14} />
-        <span className="hud-label">{label}</span>
-      </div>
-      <div className="hud-value mt-1 truncate">{value}</div>
-    </div>
-  );
+  return <div className="rounded border border-slate-700/70 bg-slate-950/60 p-3"><div className="flex items-center gap-2 text-slate-400"><Icon size={14} /><span className="hud-label">{label}</span></div><div className="hud-value mt-1 truncate">{value}</div></div>;
 }
