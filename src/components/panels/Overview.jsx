@@ -12,6 +12,7 @@ import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import PlanetCanvas from "../three/PlanetCanvas";
 import StarMap from "../exploration/StarMap";
+import TaskQueuePanel from "../common/TaskQueuePanel";
 import { number } from "../../utils/format";
 
 function gaugeTone(value) {
@@ -117,6 +118,8 @@ export default function Overview({ onNavigate, onOpenModal }) {
           </div>
         </div>
       </section>
+
+      <TaskQueuePanel onNavigate={onNavigate} />
 
       <div className="grid gap-3 lg:grid-cols-3">
         <section>
