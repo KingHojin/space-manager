@@ -9,7 +9,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
 import { resolveScanEvent } from "../../systems/explorationEvents";
 import { formatGameDate } from "../../systems/gameClock";
-import { calculateTravelPlan, getTravelProgress } from "../../systems/travelSystem";
+import { calculateTravelPlan, getTravelEncounterChance, getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
 import PlanetCanvas from "../three/PlanetCanvas";
 
@@ -67,6 +67,8 @@ export default function Exploration() {
   const activeProgress = getTravelProgress(activeTravel, currentMinute);
   const activeDestination = getZoneById(activeTravel?.toZoneId);
   const activeOrigin = getZoneById(activeTravel?.fromZoneId);
+  const encounterChance = Math.round(getTravelEncounterChance(activeTravel) * 100);
+  const nextEncounterRollAt = activeTravel ? (activeTravel.lastEncounterAt ?? activeTravel.startedAt) + (activeTravel.encounterRollInterval ?? 180) : null;
 
   const handleSelect = (zone) => {
     if (!discoveredZoneIds.includes(zone.id)) return;
@@ -189,7 +191,9 @@ export default function Exploration() {
               </div>
               <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
                 <Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(activeTravel.completeAt - currentMinute)))} />
-                <Info label="인카운터" value={`${activeTravel.encounters.filter((entry) => entry.resolved).length}/${activeTravel.encounters.length}`} />
+                <Info label="인카운터" value={`${activeTravel.encounterCount ?? 0}회 발생`} />
+                <Info label="다음 판정" value={nextEncounterRollAt ? formatGameDate(nextEncounterRollAt) : "-"} />
+                <Info label="위험 확률" value={`${encounterChance}%`} />
               </div>
               <div className="mt-3 grid gap-1.5">
                 {travelLog.slice(0, 3).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
