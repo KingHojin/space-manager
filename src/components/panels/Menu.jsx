@@ -21,11 +21,14 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useMissionStore } from "../../stores/missionStore";
 import { useRecruitStore } from "../../stores/recruitStore";
+import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { number } from "../../utils/format";
 
 const primaryMenus = [
+  { id: "missions", label: "임무", desc: "계약 임무 선택, 위험도·보상 확인, 출항 동기 설정", icon: Briefcase, tone: "border-sky-400/45 bg-sky-400/10 text-sky-100", modal: true },
   { id: "skilltree", label: "스킬트리", desc: "탐사·전투·공학·과학·외교 성장 빌드 관리", icon: GitBranch, tone: "border-violet-400/45 bg-violet-400/10 text-violet-100" },
   { id: "crew", label: "승무원", desc: "훈련, 휴식, 치료, 역할별 능력 관리", icon: Users, tone: "border-cyan-400/45 bg-cyan-400/10 text-cyan-100" },
   { id: "recruit", label: "영입", desc: "승무원 가챠, 조우 후보 검토, 역할 공백 보강", icon: Sparkles, tone: "border-amber-400/45 bg-amber-400/10 text-amber-100" },
@@ -53,6 +56,9 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const candidatePool = useRecruitStore((state) => state.candidatePool ?? []);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
+  const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
+  const boardsByScopeId = useMissionStore((state) => state.boardsByScopeId);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const itemCount = items.filter((item) => item.qty > 0).length;
@@ -60,13 +66,23 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const nextContracts = contracts.filter((contract) => !completedIds.includes(contract.id) && !acceptedIds.includes(contract.id));
   const totalZones = getAllZones().length;
   const exploredPercent = Math.round((discoveredZoneIds.length / Math.max(1, totalZones)) * 100);
+  const offeredMissionCount = Object.values(boardsByScopeId ?? {}).reduce((sum, board) => sum + (board.missions?.length ?? 0), 0);
   const menuBadges = {
+    missions: activeMission ? "진행 중" : offeredMissionCount > 0 ? `임무 ${offeredMissionCount}` : "신규",
     skilltree: availablePoints > 0 ? `포인트 ${availablePoints}` : "빌드",
     crew: `${crew.length}명`,
     recruit: candidatePool.length > 0 ? `후보 ${candidatePool.length}` : "뽑기",
     market: activeContracts.length > 0 ? `의뢰 ${activeContracts.length}` : `신규 ${nextContracts.length}`,
     collector: `카드 ${cards.length}`,
     hunting: "보상",
+  };
+
+  const handlePrimary = (menu) => {
+    if (menu.modal) {
+      onOpenModal?.(menu.id);
+      return;
+    }
+    onNavigate?.(menu.id);
   };
 
   return (
@@ -90,11 +106,11 @@ export default function Menu({ onNavigate, onOpenModal }) {
           <div className="section-title"><GitBranch size={18} />주요 메뉴</div>
           {availablePoints > 0 && <span className="hud-chip hud-chip-accent">스킬 포인트 {availablePoints}</span>}
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-7">
           {primaryMenus.map((menu) => {
             const Icon = menu.icon;
             return (
-              <button key={menu.id} className={`group rounded border p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300 ${menu.tone}`} onClick={() => onNavigate?.(menu.id)}>
+              <button key={menu.id} className={`group rounded border p-4 text-left transition hover:-translate-y-0.5 hover:border-cyan-300 ${menu.tone}`} onClick={() => handlePrimary(menu)}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="grid h-11 w-11 shrink-0 place-items-center rounded border border-current/30 bg-slate-950/40"><Icon size={21} /></div>
                   <span className="hud-chip bg-slate-950/40">{menuBadges[menu.id]}</span>

@@ -1,4 +1,4 @@
-import { Archive, BarChart2, BookOpen, Compass, Crosshair, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, BookOpen, Briefcase, Compass, Crosshair, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
@@ -18,6 +18,7 @@ const icons = {
 };
 
 const quickActions = [
+  { id: "missions", label: "임무", icon: Briefcase },
   { id: "stats", label: "스탯", icon: BarChart2 },
   { id: "inventory", label: "아이템", icon: Archive },
   { id: "map", label: "지도", icon: Map },

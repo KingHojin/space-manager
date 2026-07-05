@@ -18,6 +18,7 @@ import OverlayModal from "./components/modals/OverlayModal";
 import StatsModal from "./components/modals/StatsModal";
 import InventoryModal from "./components/modals/InventoryModal";
 import MapModal from "./components/modals/MapModal";
+import MissionBoardModal from "./components/modals/MissionBoardModal";
 import CardsModal from "./components/modals/CardsModal";
 import LogModal from "./components/modals/LogModal";
 import SaveLoadModal from "./components/modals/SaveLoadModal";
@@ -39,6 +40,7 @@ const panels = {
 
 const modals = {
   command: { title: "함장 메뉴", component: MenuPanel },
+  missions: { title: "임무 게시판", component: MissionBoardModal },
   stats: { title: "스탯", component: StatsModal },
   inventory: { title: "인벤토리", component: InventoryModal },
   map: { title: "성계 지도", component: MapModal },
