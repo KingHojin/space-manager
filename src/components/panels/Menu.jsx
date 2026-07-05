@@ -58,7 +58,7 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const completedIds = useContractStore((state) => state.completedIds);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
-  const missionSummary = useMissionStore((state) => state.getMissionSummary());
+  const boardsByScopeId = useMissionStore((state) => state.boardsByScopeId);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const itemCount = items.filter((item) => item.qty > 0).length;
@@ -66,8 +66,9 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const nextContracts = contracts.filter((contract) => !completedIds.includes(contract.id) && !acceptedIds.includes(contract.id));
   const totalZones = getAllZones().length;
   const exploredPercent = Math.round((discoveredZoneIds.length / Math.max(1, totalZones)) * 100);
+  const offeredMissionCount = Object.values(boardsByScopeId ?? {}).reduce((sum, board) => sum + (board.missions?.length ?? 0), 0);
   const menuBadges = {
-    missions: activeMission ? "진행 중" : missionSummary.offered > 0 ? `임무 ${missionSummary.offered}` : "신규",
+    missions: activeMission ? "진행 중" : offeredMissionCount > 0 ? `임무 ${offeredMissionCount}` : "신규",
     skilltree: availablePoints > 0 ? `포인트 ${availablePoints}` : "빌드",
     crew: `${crew.length}명`,
     recruit: candidatePool.length > 0 ? `후보 ${candidatePool.length}` : "뽑기",
