@@ -31,10 +31,29 @@ function applyCrewRisk(risk) {
   useGameStore.getState().addLog(`승무원 피해: ${target.name} ${injury}.`);
 }
 
+function consumeTravelFuel(activeTravel, currentMinute) {
+  const lastFuelAt = activeTravel.lastFuelAt ?? activeTravel.startedAt;
+  const elapsed = Math.max(0, currentMinute - lastFuelAt);
+  if (elapsed <= 0 || activeTravel.duration <= 0) return;
+
+  const fuelBurn = Math.min(activeTravel.fuelCost, (activeTravel.fuelCost / activeTravel.duration) * elapsed);
+  if (fuelBurn > 0) {
+    useGameStore.getState().addResources({ fuel: -fuelBurn });
+    useExplorationStore.getState().registerTravelFuelTick(currentMinute);
+  }
+
+  const fuel = useGameStore.getState().resources.fuel;
+  if (fuel <= 0) {
+    useGameStore.getState().addLog("항해 경고: 연료가 고갈되었습니다. 표류 위험이 급상승합니다.");
+  }
+}
+
 function processTravel(currentMinute) {
   const exploration = useExplorationStore.getState();
   const activeTravel = exploration.activeTravel;
   if (!activeTravel) return;
+
+  consumeTravelFuel(activeTravel, currentMinute);
 
   if (shouldRollTravelEncounter(activeTravel, currentMinute)) {
     const chance = getTravelEncounterChance(activeTravel);
