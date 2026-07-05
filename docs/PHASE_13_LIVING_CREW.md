@@ -16,11 +16,13 @@ Implemented first:
 - smooth room-to-room movement
 - facing
 - animation-state placeholders and visual states
-- future idle and bark hooks
+- low-frequency idle actions
+- rAF pause/culling refinements
+- future bark hooks
 
 ### Layer B — Inner Life
 
-Gameplay-affecting state. Not implemented in PR A or PR B.
+Gameplay-affecting state. Not implemented in PR A, PR B, or PR C.
 
 Planned later:
 
@@ -78,9 +80,35 @@ Planned later:
 - Crew list chips show the visible anim-state label.
 - `prefers-reduced-motion` disables crew marker animations.
 
-## What PR A/B intentionally do not do
+## PR C implemented
 
-- No idle action rolling yet.
+### Files
+
+- `src/stores/crewMotionStore.js`
+- `src/components/ship/ShipInterior.jsx`
+- `src/crewMotion.css`
+
+### Behavior
+
+- Idle crew now roll low-frequency visible-only idle actions:
+  - `stand`
+  - `look`
+  - `stretch`
+  - `coffee`
+  - `chat`
+- Idle rolls happen on a multi-second timer, not every frame.
+- `chat` only appears when another idle crew member is in the same room.
+- Room-specific idle pools keep coffee mostly in living spaces.
+- ShipInterior rAF loop now pauses when:
+  - game is paused
+  - browser tab is hidden
+  - ShipInterior is outside the viewport via `IntersectionObserver`
+- Idle labels/glyphs are reflected in marker badges and crew list chips.
+- CSS-only idle micro animations were added.
+- No gameplay values or crew AI decisions are changed.
+
+## What PR A/B/C intentionally do not do
+
 - No bark speech bubbles yet.
 - No personality, mood, or social relations yet.
 - No job speed modifiers.
@@ -103,14 +131,14 @@ Manual checks:
 3. Wait for crew AI to assign different room activities.
 4. Confirm crew markers move smoothly instead of teleporting.
 5. Confirm walk/work/rest/treat/panic/down have distinct visual expressions.
-6. Pause the game and confirm motion stops.
-7. Resume and confirm motion continues.
-8. Trigger a crisis and confirm responders show emergency/panic style.
-9. Injure a crew member and confirm serious-or-worse visual down/treat state appears.
-10. Confirm no gameplay values change from motion/visuals alone.
+6. Confirm idle crew occasionally show look/stretch/coffee/chat without log spam.
+7. Scroll ShipInterior out of view and confirm rAF work stops via visible culling.
+8. Switch browser tab away and confirm rAF work stops.
+9. Pause the game and confirm motion stops.
+10. Resume and confirm motion continues.
+11. Confirm no gameplay values change from motion/visuals alone.
 
 ## Next PRs
 
-- PR C: idle action rolling and performance/culling refinements.
 - PR D: bark bubbles and trigger data.
 - PR E onward: Layer B personality/mood/social.
