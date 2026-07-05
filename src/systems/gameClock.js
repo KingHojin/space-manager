@@ -72,9 +72,7 @@ function applyNavEffect(effect, currentMinute) {
     useNavStore.getState().refuel(effect.delta);
     useGameStore.getState().addResources({ fuel: effect.delta });
   }
-  if (effect.kind === "spawnCrisis") {
-    useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
-  }
+  if (effect.kind === "spawnCrisis") useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
   if (effect.kind === "injure") {
     const crew = useCrewStore.getState().crew.filter((member) => member.alive);
     const target = effect.crewId === "random" ? crew[Math.floor(Math.random() * crew.length)] : crew.find((member) => member.id === effect.crewId);
@@ -109,27 +107,13 @@ function processCrewAI(currentMinute) {
   const nav = useNavStore.getState();
   const shipInterior = useShipInteriorStore.getState();
   const crewStore = useCrewStore.getState();
-  const logs = crewStore.runCrewAI({
-    currentMinute,
-    resources: useGameStore.getState().resources,
-    activeTravel: nav.travel ?? exploration.activeTravel,
-    pendingTravelEvent: nav.pendingEncounter ?? exploration.pendingTravelEvent,
-    pendingCombatEncounter: exploration.pendingCombatEncounter,
-    installationQueue: useShipStore.getState().installationQueue ?? [],
-    rooms: shipInterior.rooms,
-    activeCrises: shipInterior.activeCrises ?? [],
-    roleCoverage: crewStore.getRoleCoverage(),
-  });
+  const logs = crewStore.runCrewAI({ currentMinute, resources: useGameStore.getState().resources, activeTravel: nav.travel ?? exploration.activeTravel, pendingTravelEvent: nav.pendingEncounter ?? exploration.pendingTravelEvent, pendingCombatEncounter: exploration.pendingCombatEncounter, installationQueue: useShipStore.getState().installationQueue ?? [], rooms: shipInterior.rooms, activeCrises: shipInterior.activeCrises ?? [], roleCoverage: crewStore.getRoleCoverage() });
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
 
-function applyRoomJobEffect(effect, roomId) {
+function applyRoomJobEffect(effect) {
   if (!effect) return;
-  if (effect.crewFatigueAll) {
-    useCrewStore.getState().crew.forEach((member) => {
-      if (member.alive) useCrewStore.getState().applyCrewOutcome({ memberId: member.id, fatigue: effect.crewFatigueAll });
-    });
-  }
+  if (effect.crewFatigueAll) useCrewStore.getState().crew.forEach((member) => { if (member.alive) useCrewStore.getState().applyCrewOutcome({ memberId: member.id, fatigue: effect.crewFatigueAll }); });
   if (effect.hullDelta) useGameStore.getState().addResources({ hull: effect.hullDelta });
 }
 
@@ -138,7 +122,10 @@ function processRoomJobs(currentMinute, deltaMinutes) {
   const activities = crewStore.crewActivities ?? [];
   const roomActivities = {};
   activities.forEach((activity) => {
-    if (activity.intent === "room-job" && activity.roomId) roomActivities[activity.roomId] = { memberId: activity.memberId, jobId: activity.jobId, speedMultiplier: activity.speedMultiplier ?? 1 };
+    if (activity.intent !== "room-job" || !activity.roomId) return;
+    const list = roomActivities[activity.roomId] ?? [];
+    list.push({ memberId: activity.memberId, roomId: activity.roomId, jobId: activity.jobId, speedMultiplier: activity.speedMultiplier ?? 1 });
+    roomActivities[activity.roomId] = list;
   });
   const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities, roleCoverage: crewStore.getRoleCoverage() });
   completedJobs.forEach((job) => applyRoomJobEffect(job.effect, job.roomId));
@@ -155,9 +142,7 @@ function processCrises(currentMinute, deltaMinutes) {
   const crewStore = useCrewStore.getState();
   const activities = crewStore.crewActivities ?? [];
   const crisisActivities = {};
-  activities.forEach((activity) => {
-    if (activity.intent === "crisis-response" && activity.crisisId) crisisActivities[activity.crisisId] = { memberId: activity.memberId, roomId: activity.roomId };
-  });
+  activities.forEach((activity) => { if (activity.intent === "crisis-response" && activity.crisisId) crisisActivities[activity.crisisId] = { memberId: activity.memberId, roomId: activity.roomId }; });
   const { effects, logs } = useShipInteriorStore.getState().tickCrises({ currentMinute, deltaMinutes, crisisActivities, crew: crewStore.crew, roleCoverage: crewStore.getRoleCoverage() });
   effects.forEach(applyCrisisEffect);
   logs.forEach((message) => useGameStore.getState().addLog(`함선 위기: ${message}`));
@@ -185,7 +170,6 @@ export function processTimedJobs(deltaMinutes = 0) {
 export const useGameClock = () => {
   const isPaused = useGameStore((state) => state.isPaused);
   const speed = useGameStore((state) => state.speed);
-
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === "Space" && !["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
@@ -196,7 +180,6 @@ export const useGameClock = () => {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
-
   useEffect(() => {
     if (isPaused) return undefined;
     const timer = window.setInterval(() => {
