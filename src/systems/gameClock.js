@@ -23,8 +23,9 @@ export const formatGameDate = (totalMinutes) => {
 export function processTimedJobs() {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
+  const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
-  [...crewLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
+  [...crewLogs, ...treatmentLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
 }
 
 export const useGameClock = () => {
