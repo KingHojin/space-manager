@@ -1,4 +1,4 @@
-import { AlertTriangle, Pause, Play, SkipForward } from "lucide-react";
+import { AlertTriangle, Bell, Pause, Play, SkipForward } from "lucide-react";
 import { RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { useGameStore } from "../../stores/gameStore";
 import { formatGameDate } from "../../systems/gameClock";
@@ -71,14 +71,22 @@ export default function Header() {
           <Resource label="선체" value={percent(resources.hull)} gaugeValue={resources.hull} gaugeTone={gaugeTone(resources.hull)} />
         </div>
 
-        {warningCount > 0 && (
-          <div className="hidden lg:flex lg:items-center lg:pl-5">
+        <div className="hidden lg:flex lg:items-center lg:gap-3 lg:pl-5">
+          <button className="icon-button relative" title="알림">
+            <Bell size={18} />
+            {warningCount > 0 && (
+              <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.6rem] font-bold leading-none text-white">
+                {warningCount}
+              </span>
+            )}
+          </button>
+          {warningCount > 0 && (
             <span className="hud-chip hud-chip-danger">
               <AlertTriangle size={12} />
               경고 {warningCount}
             </span>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </header>
   );

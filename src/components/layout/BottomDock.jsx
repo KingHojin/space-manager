@@ -16,6 +16,8 @@ import {
   Store,
   Users,
 } from "lucide-react";
+import { getAllZones } from "../../data/sectors";
+import { useExplorationStore } from "../../stores/explorationStore";
 
 const tabItems = [
   { id: "overview", label: "개요", icon: BarChart3 },
@@ -45,6 +47,10 @@ const morePanelIds = morePanels.map((item) => item.id);
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
   const [sheetOpen, setSheetOpen] = useState(false);
   const moreActive = morePanelIds.includes(activePanel);
+  const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
+  const hasHighDangerZone = getAllZones().some(
+    (zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4,
+  );
 
   const selectPanel = (id) => {
     onChangePanel(id);
@@ -105,7 +111,12 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
               className={`hud-tab-button ${active ? "hud-tab-button-active" : ""}`}
               onClick={() => onChangePanel(item.id)}
             >
-              <Icon size={18} />
+              <span className="relative inline-flex">
+                <Icon size={18} />
+                {item.id === "combat" && hasHighDangerZone && (
+                  <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+                )}
+              </span>
               <span>{item.label}</span>
             </button>
           );

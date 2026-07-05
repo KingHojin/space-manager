@@ -1,6 +1,19 @@
-import { Users } from "lucide-react";
+import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
 import { useCrewStore } from "../../stores/crewStore";
 import { statLabel } from "../../utils/format";
+
+const ROLE_ICONS = {
+  함교: { icon: Compass, color: "text-cyan-400" },
+  포탑: { icon: Crosshair, color: "text-red-400" },
+  기관실: { icon: Wrench, color: "text-amber-400" },
+  의무실: { icon: Cross, color: "text-emerald-400" },
+};
+
+function RoleIcon({ role, size = 14 }) {
+  const config = ROLE_ICONS[role] ?? { icon: User, color: "text-slate-500" };
+  const Icon = config.icon;
+  return <Icon size={size} className={config.color} />;
+}
 
 export default function Crew() {
   const crew = useCrewStore((state) => state.crew);
@@ -26,7 +39,12 @@ export default function Crew() {
           {crew.map((member) => (
             <tr key={member.id}>
               <td className="font-semibold text-slate-100">{member.name}</td>
-              <td>{member.role}</td>
+              <td>
+                <span className="inline-flex items-center gap-1.5">
+                  <RoleIcon role={member.role} />
+                  {member.role}
+                </span>
+              </td>
               {Object.keys(statLabel).map((key) => (
                 <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>
               ))}
