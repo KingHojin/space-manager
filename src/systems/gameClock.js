@@ -73,6 +73,19 @@ function processTravel(currentMinute) {
   }
 }
 
+function processCrewAI(currentMinute) {
+  const exploration = useExplorationStore.getState();
+  const logs = useCrewStore.getState().runCrewAI({
+    currentMinute,
+    resources: useGameStore.getState().resources,
+    activeTravel: exploration.activeTravel,
+    pendingTravelEvent: exploration.pendingTravelEvent,
+    pendingCombatEncounter: exploration.pendingCombatEncounter,
+    installationQueue: useShipStore.getState().installationQueue ?? [],
+  });
+  logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
+}
+
 export function processTimedJobs() {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
@@ -80,6 +93,7 @@ export function processTimedJobs() {
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
   [...crewLogs, ...treatmentLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
   processTravel(currentMinute);
+  processCrewAI(currentMinute);
 }
 
 export const useGameClock = () => {

@@ -1,6 +1,7 @@
 import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { summarizeCrewAI } from "../../systems/crewAI";
 import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -55,12 +56,30 @@ function Info({ label, value, tone = "" }) {
   return <div className="rounded border border-slate-700/70 bg-slate-900/70 px-3 py-2"><div className="hud-label">{label}</div><div className={`hud-value mt-1 ${tone}`}>{value}</div></div>;
 }
 
+function ActivityCard({ activity }) {
+  if (!activity) return null;
+  const priority = getPriorityConfig(activity.priority);
+  return (
+    <div className="mt-3 rounded border border-sky-400/30 bg-sky-400/10 p-3 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <div>
+          <div className="hud-label">AI CURRENT ORDER</div>
+          <div className="mt-1 font-semibold text-slate-100">{activity.station} · {activity.action}</div>
+          <div className="mt-1 text-xs text-slate-400">{activity.detail}</div>
+        </div>
+        <span className={`hud-chip shrink-0 ${priority.tone}`}>{priority.shortLabel}</span>
+      </div>
+    </div>
+  );
+}
+
 export default function Crew() {
-  const { crew, trainingQueue, treatmentQueue, startTraining, startTreatment, restMember } = useCrewStore();
+  const { crew, trainingQueue, treatmentQueue, crewActivities, crewActivityLog, startTraining, startTreatment, restMember } = useCrewStore();
   const currentMinute = useGameStore((state) => state.currentMinute);
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
   const addLog = useGameStore((state) => state.addLog);
+  const aiSummary = summarizeCrewAI(crewActivities ?? []);
 
   const busy = (memberId) => trainingQueue.some((task) => task.memberId === memberId) || treatmentQueue.some((task) => task.memberId === memberId);
 
@@ -94,14 +113,21 @@ export default function Crew() {
     <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
       <section>
         <div className="section-title"><Users size={18} />승무원 스쿼드</div>
+        <div className="mt-4 grid grid-cols-4 gap-2 text-sm">
+          <Info label="AI 활동" value={`${aiSummary.total}명`} />
+          <Info label="긴급" value={`${aiSummary.emergency}명`} tone={aiSummary.emergency > 0 ? "text-red-300" : ""} />
+          <Info label="높음" value={`${aiSummary.high}명`} tone={aiSummary.high > 0 ? "text-amber-300" : ""} />
+          <Info label="일반" value={`${aiSummary.normal + aiSummary.low}명`} />
+        </div>
         <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm leading-6 text-slate-300">
-          훈련과 치료는 시간과 크레딧을 소모합니다. 치료는 부상 정도에 따라 자동으로 높은 우선순위가 부여되고, 작업 큐에서 직접 변경할 수 있습니다.
+          승무원은 게임 시간이 흐를 때마다 현재 항해, 위협, 부상, 피로, 작업 큐를 보고 자동으로 행동을 배정받습니다. 플레이어는 직접 행동 하나하나보다 우선순위와 큐를 조정합니다.
         </div>
         <div className="mt-4 grid gap-3">
           {crew.map((member) => {
             const mainStat = trainingByRole[member.role] ?? "scouting";
             const trainingTask = trainingQueue.find((task) => task.memberId === member.id);
             const treatmentTask = treatmentQueue.find((task) => task.memberId === member.id);
+            const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id);
             const isBusy = Boolean(trainingTask || treatmentTask);
             const rule = treatmentRule(member.injury);
             return (
@@ -110,6 +136,7 @@ export default function Crew() {
                   <div className="min-w-0"><div className="flex items-center gap-2"><RoleIcon role={member.role} size={16} /><div className="font-semibold text-slate-100">{member.name}</div></div><div className="mt-1 text-xs text-slate-500">{member.role} · {member.trait ?? "일반 대원"}</div></div>
                   <span className={`hud-chip ${!member.alive || member.injury !== "정상" ? "hud-chip-danger" : "hud-chip-success"}`}>{!member.alive ? "전사" : member.injury}</span>
                 </div>
+                <ActivityCard activity={activity} />
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><Info label="사기" value={member.morale} /><Info label="피로" value={`${member.fatigue ?? 0}`} tone={fatigueTone(member.fatigue ?? 0)} /><Info label="경험" value={`${member.experience ?? 0}`} /></div>
                 {trainingTask && <Progress task={trainingTask} currentMinute={currentMinute} label="훈련 진행 중" />}
                 {treatmentTask && <Progress task={treatmentTask} currentMinute={currentMinute} label="치료 진행 중" />}
@@ -127,7 +154,15 @@ export default function Crew() {
       <section>
         <div className="section-title">스쿼드 종합표</div>
         <div className="mt-4 overflow-auto rounded border border-slate-700/70">
-          <table className="data-table"><thead><tr><th>이름</th><th>역할</th>{Object.values(statLabel).map((label) => <th key={label}>{label}</th>)}<th>피로</th><th>상태</th></tr></thead><tbody>{crew.map((member) => <tr key={member.id} className={!member.alive ? "opacity-60" : ""}><td className="font-semibold text-slate-100">{member.name}</td><td><span className="inline-flex items-center gap-1.5"><RoleIcon role={member.role} />{member.role}</span></td>{Object.keys(statLabel).map((key) => <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>)}<td><span className={`hud-chip ${fatigueTone(member.fatigue ?? 0)}`}>{member.fatigue ?? 0}</span></td><td><span className={`hud-chip ${!member.alive ? "hud-chip-danger" : member.injury === "정상" ? "hud-chip-success" : "hud-chip-warn"}`}>{!member.alive ? "전사" : member.injury}</span></td></tr>)}</tbody></table>
+          <table className="data-table"><thead><tr><th>이름</th><th>역할</th><th>현재 AI 행동</th>{Object.values(statLabel).map((label) => <th key={label}>{label}</th>)}<th>피로</th><th>상태</th></tr></thead><tbody>{crew.map((member) => { const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id); return <tr key={member.id} className={!member.alive ? "opacity-60" : ""}><td className="font-semibold text-slate-100">{member.name}</td><td><span className="inline-flex items-center gap-1.5"><RoleIcon role={member.role} />{member.role}</span></td><td>{activity ? `${activity.station} · ${activity.action}` : "대기"}</td>{Object.keys(statLabel).map((key) => <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>)}<td><span className={`hud-chip ${fatigueTone(member.fatigue ?? 0)}`}>{member.fatigue ?? 0}</span></td><td><span className={`hud-chip ${!member.alive ? "hud-chip-danger" : member.injury === "정상" ? "hud-chip-success" : "hud-chip-warn"}`}>{!member.alive ? "전사" : member.injury}</span></td></tr>; })}</tbody></table>
+        </div>
+
+        <div className="mt-4 rounded border border-slate-700/70 bg-slate-950/60 p-4">
+          <div className="section-title">최근 AI 배정 기록</div>
+          <div className="mt-3 grid gap-2">
+            {(crewActivityLog ?? []).slice(0, 8).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
+            {(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}
+          </div>
         </div>
       </section>
     </div>

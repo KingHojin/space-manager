@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialCrew } from "../data/crew";
+import { generateCrewActivities, CREW_AI_INTERVAL } from "../systems/crewAI";
 import { normalizePriority } from "../systems/priorities";
 
 const moraleOrder = ["나쁨", "보통", "좋음", "최상"];
@@ -69,6 +70,9 @@ export const useCrewStore = create(
       crew: initialCrew.map((member) => ({ ...member, alive: true })),
       trainingQueue: [],
       treatmentQueue: [],
+      crewActivities: [],
+      crewActivityLog: [],
+      lastCrewAiAt: null,
       startTraining: ({ memberId, statKey, completeAt, cost, duration, priority = "normal" }) =>
         set((state) => ({
           trainingQueue: [
@@ -91,6 +95,29 @@ export const useCrewStore = create(
         set((state) => ({
           treatmentQueue: state.treatmentQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
         })),
+      runCrewAI: (snapshot) => {
+        const currentMinute = snapshot.currentMinute ?? 0;
+        const state = get();
+        if (state.lastCrewAiAt !== null && currentMinute - state.lastCrewAiAt < CREW_AI_INTERVAL) return [];
+        const activities = generateCrewActivities({
+          crew: state.crew,
+          queues: { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue },
+          snapshot,
+          currentMinute,
+        });
+        const previousByMember = new Map((state.crewActivities ?? []).map((activity) => [activity.memberId, activity]));
+        const changed = activities.filter((activity) => previousByMember.get(activity.memberId)?.action !== activity.action || previousByMember.get(activity.memberId)?.station !== activity.station);
+        const logEntries = changed.slice(0, 3).map((activity) => {
+          const member = state.crew.find((entry) => entry.id === activity.memberId);
+          return `${member?.name ?? "승무원"}: ${activity.station} · ${activity.action}`;
+        });
+        set((nextState) => ({
+          crewActivities: activities,
+          lastCrewAiAt: currentMinute,
+          crewActivityLog: [...logEntries, ...(nextState.crewActivityLog ?? [])].slice(0, 12),
+        }));
+        return logEntries;
+      },
       completeReadyTraining: (currentMinute) => {
         const ready = get().trainingQueue.filter((task) => task.completeAt <= currentMinute);
         if (ready.length === 0) return [];
@@ -170,6 +197,9 @@ export const useCrewStore = create(
         crew: mergeCrew(persistedState?.crew),
         trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")),
         treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" ? "emergency" : "high")),
+        crewActivities: persistedState?.crewActivities ?? [],
+        crewActivityLog: persistedState?.crewActivityLog ?? [],
+        lastCrewAiAt: persistedState?.lastCrewAiAt ?? null,
       }),
     },
   ),
