@@ -11,12 +11,14 @@ export const useExplorationStore = create(
       scannedZoneIds: ["anchor-station"],
       route: ["anchor-station"],
       activeTravel: null,
+      pendingTravelEvent: null,
       pendingCombatEncounter: null,
       travelLog: [],
       selectZone: (zoneId) => set({ selectedZoneId: zoneId }),
       startTravel: (plan) =>
         set({
           activeTravel: plan,
+          pendingTravelEvent: null,
           pendingCombatEncounter: null,
           selectedZoneId: plan.toZoneId,
           travelLog: [`항로 설정: ${plan.distanceLy} LY · ${plan.duration}분 소요`],
@@ -34,7 +36,23 @@ export const useExplorationStore = create(
                 encounterCount: (state.activeTravel.encounterCount ?? 0) + (happened ? 1 : 0),
               }
             : null,
-          travelLog: summary ? [summary, ...state.travelLog].slice(0, 6) : state.travelLog,
+          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
+        })),
+      setPendingTravelEvent: (eventCard) =>
+        set((state) => ({
+          pendingTravelEvent: eventCard,
+          travelLog: eventCard ? [`이벤트 카드 발생: ${eventCard.title}`, ...state.travelLog].slice(0, 8) : state.travelLog,
+        })),
+      resolvePendingTravelEvent: (nextTravel, summary) =>
+        set((state) => ({
+          activeTravel: nextTravel ?? state.activeTravel,
+          pendingTravelEvent: null,
+          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
+        })),
+      dismissPendingTravelEvent: (summary) =>
+        set((state) => ({
+          pendingTravelEvent: null,
+          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
         })),
       setPendingCombatEncounter: (encounter) => set({ pendingCombatEncounter: encounter }),
       clearPendingCombatEncounter: () => set({ pendingCombatEncounter: null }),
@@ -46,10 +64,11 @@ export const useExplorationStore = create(
             currentZoneId: destinationId,
             selectedZoneId: null,
             activeTravel: null,
+            pendingTravelEvent: null,
             pendingCombatEncounter: null,
             route: [...state.route, destinationId].slice(-8),
             discoveredZoneIds: Array.from(new Set([...state.discoveredZoneIds, destinationId])),
-            travelLog: [`목적지 도착: ${getAllZones().find((zone) => zone.id === destinationId)?.name ?? destinationId}`, ...state.travelLog].slice(0, 6),
+            travelLog: [`목적지 도착: ${getAllZones().find((zone) => zone.id === destinationId)?.name ?? destinationId}`, ...state.travelLog].slice(0, 8),
           };
         }),
       moveToZone: (zoneId) =>
@@ -76,6 +95,7 @@ export const useExplorationStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         activeTravel: persistedState?.activeTravel ?? null,
+        pendingTravelEvent: persistedState?.pendingTravelEvent ?? null,
         pendingCombatEncounter: persistedState?.pendingCombatEncounter ?? null,
         travelLog: persistedState?.travelLog ?? [],
       }),
