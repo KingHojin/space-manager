@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
 import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
@@ -32,6 +33,7 @@ const RARITY_BORDER_CLASS = {
 const FUEL_PER_DISTANCE = 1.4;
 
 export default function Exploration() {
+  const [lastOutcome, setLastOutcome] = useState(null);
   const zones = getAllZones();
   const sector = sectors[0];
   const {
@@ -46,8 +48,10 @@ export default function Exploration() {
     revealRandomZone,
   } = useExplorationStore();
   const { resources, spendFuel, addLog, addResources, shipName, shipGrade } = useGameStore();
+  const items = useInventoryStore((state) => state.items);
   const addDust = useInventoryStore((state) => state.addDust);
   const addItem = useInventoryStore((state) => state.addItem);
+  const removeItem = useInventoryStore((state) => state.removeItem);
   const { modules, installed } = useShipStore();
   const current = getZoneById(currentZoneId);
   const focused = getZoneById(selectedZoneId) ?? current;
@@ -55,6 +59,7 @@ export default function Exploration() {
   const fuelCost = Math.round(focused.distance * FUEL_PER_DISTANCE);
   const canAffordMove = resources.fuel >= fuelCost;
   const grade = SHIP_GRADES[shipGrade];
+  const probeQty = items.find((item) => item.id === "survey-probe")?.qty ?? 0;
 
   const handleSelect = (zone) => {
     if (!discoveredZoneIds.includes(zone.id)) return;
@@ -65,6 +70,7 @@ export default function Exploration() {
     spendFuel(fuelCost);
     moveToZone(focused.id);
     addLog(`${focused.name} 구역으로 이동했습니다. 연료 ${fuelCost} 소모.`);
+    setLastOutcome(null);
     selectZone(null);
   };
 
@@ -89,7 +95,41 @@ export default function Exploration() {
     if (outcome.revealCount) rewards.push(`구역 공개 +${outcome.revealCount}`);
     Object.entries(outcome.resources ?? {}).forEach(([key, value]) => rewards.push(`${key} ${value > 0 ? "+" : ""}${value}`));
 
-    addLog(`${current.name} 스캔: ${outcome.title} — ${outcome.message}${rewards.length ? ` (${rewards.join(", ")})` : ""}`);
+    const summary = `${current.name} 스캔: ${outcome.title} — ${outcome.message}${rewards.length ? ` (${rewards.join(", ")})` : ""}`;
+    addLog(summary);
+    setLastOutcome({ ...outcome, zoneName: current.name, zoneType: current.type, richness: current.richness, summary });
+  };
+
+  const precisionAnalyze = () => {
+    if (!lastOutcome) return;
+    if (resources.oxygen < 3) {
+      addLog("정밀 분석 실패: 산소 여유가 부족합니다.");
+      return;
+    }
+    const bonusDust = 10 + Math.round((lastOutcome.richness ?? 1) * 2);
+    addResources({ oxygen: -3 });
+    addDust(bonusDust);
+    addLog(`${lastOutcome.zoneName} 정밀 분석 완료: 산소 -3, 우주 먼지 +${bonusDust}.`);
+  };
+
+  const deployProbe = () => {
+    if (!lastOutcome) return;
+    if (probeQty <= 0) {
+      addLog("탐사 프로브가 없습니다. 시장 또는 스캔 보상으로 확보하세요.");
+      return;
+    }
+    removeItem("survey-probe", 1);
+    revealRandomZone();
+    addDust(8);
+    addLog(`${lastOutcome.zoneName}에 탐사 프로브 투입: 구역 1곳 공개, 우주 먼지 +8.`);
+  };
+
+  const salvageSweep = () => {
+    if (!lastOutcome) return;
+    const credits = 70 + Math.round((lastOutcome.richness ?? 1) * 25);
+    addResources({ fuel: -2, hull: -2, credits });
+    addItem("alloy-plate", 1);
+    addLog(`${lastOutcome.zoneName} 잔해 회수: 크레딧 +${credits}, 합금 장갑판 +1, 연료 -2, 선체 -2.`);
   };
 
   return (
@@ -160,6 +200,21 @@ export default function Exploration() {
             </button>
           )}
         </section>
+
+        {lastOutcome && (
+          <section>
+            <div className="section-title">스캔 후속 선택지</div>
+            <div className="mt-3 rounded border border-cyan-400/30 bg-cyan-400/10 p-4">
+              <div className="font-semibold text-cyan-100">{lastOutcome.title}</div>
+              <p className="mt-2 text-sm text-slate-300">{lastOutcome.message}</p>
+            </div>
+            <div className="mt-3 grid gap-2">
+              <button className="secondary-button" onClick={precisionAnalyze}>정밀 분석 · 산소 -3 / 먼지 보너스</button>
+              <button className="secondary-button" onClick={deployProbe}>탐사 프로브 투입 · 보유 {probeQty}</button>
+              <button className="secondary-button" onClick={salvageSweep}>잔해 회수 · 연료/선체 소모, 크레딧 획득</button>
+            </div>
+          </section>
+        )}
 
         <section>
           <div className="section-title">
