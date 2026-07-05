@@ -1,0 +1,119 @@
+.crew-marker-core {
+  transform-origin: center;
+  transition: filter 160ms ease, opacity 160ms ease, box-shadow 160ms ease;
+}
+
+.crew-marker-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 120ms ease;
+}
+
+.crew-marker-facing-left {
+  transform: scaleX(-1);
+}
+
+.crew-marker-state-badge {
+  position: absolute;
+  left: -0.35rem;
+  bottom: -0.35rem;
+  display: grid;
+  min-width: 0.9rem;
+  height: 0.9rem;
+  place-items: center;
+  border: 1px solid rgb(15 23 42 / 0.9);
+  border-radius: 999px;
+  background: rgb(15 23 42 / 0.92);
+  color: rgb(224 242 254);
+  font-size: 0.55rem;
+  line-height: 1;
+  box-shadow: 0 0 8px rgb(0 0 0 / 0.45);
+}
+
+.crew-marker-walk {
+  animation: crew-walk-bob 520ms ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgb(56 189 248 / 0.25), 0 0 12px rgb(56 189 248 / 0.3);
+}
+
+.crew-marker-work {
+  animation: crew-work-pulse 860ms ease-in-out infinite;
+  box-shadow: 0 0 12px rgb(56 189 248 / 0.28);
+}
+
+.crew-marker-rest {
+  opacity: 0.74;
+  animation: crew-rest-breathe 1600ms ease-in-out infinite;
+  filter: saturate(0.82);
+}
+
+.crew-marker-treat {
+  animation: crew-treat-glow 900ms ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgb(52 211 153 / 0.35), 0 0 14px rgb(52 211 153 / 0.35);
+}
+
+.crew-marker-panic {
+  animation: crew-panic-jitter 180ms linear infinite;
+  box-shadow: 0 0 0 1px rgb(248 113 113 / 0.45), 0 0 16px rgb(248 113 113 / 0.48);
+}
+
+.crew-marker-down {
+  transform: rotate(90deg) scale(0.92);
+  opacity: 0.72;
+  filter: grayscale(0.75) saturate(0.75);
+}
+
+.crew-marker-state-walk,
+.crew-marker-state-work {
+  border-color: rgb(56 189 248 / 0.55);
+  color: rgb(125 211 252);
+}
+
+.crew-marker-state-rest {
+  border-color: rgb(148 163 184 / 0.45);
+  color: rgb(203 213 225);
+}
+
+.crew-marker-state-treat {
+  border-color: rgb(52 211 153 / 0.55);
+  color: rgb(110 231 183);
+}
+
+.crew-marker-state-panic,
+.crew-marker-state-down {
+  border-color: rgb(248 113 113 / 0.6);
+  color: rgb(254 202 202);
+}
+
+@keyframes crew-walk-bob {
+  0%, 100% { transform: translateY(0) scale(1); }
+  50% { transform: translateY(-2px) scale(1.05); }
+}
+
+@keyframes crew-work-pulse {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.06); filter: brightness(1.16); }
+}
+
+@keyframes crew-rest-breathe {
+  0%, 100% { transform: scale(0.96); }
+  50% { transform: scale(1); }
+}
+
+@keyframes crew-treat-glow {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.04); filter: brightness(1.22); }
+}
+
+@keyframes crew-panic-jitter {
+  0%, 100% { transform: translate(0, 0) rotate(0); }
+  25% { transform: translate(1px, -1px) rotate(-4deg); }
+  50% { transform: translate(-1px, 1px) rotate(4deg); }
+  75% { transform: translate(1px, 1px) rotate(-2deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .crew-marker-core {
+    animation: none !important;
+  }
+}
