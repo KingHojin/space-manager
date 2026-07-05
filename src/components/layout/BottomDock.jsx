@@ -12,11 +12,12 @@ const tabItems = [
 
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
-  const hasHighDangerZone = getAllZones().some(
-    (zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4,
-  );
+  const activeTravel = useExplorationStore((state) => state.activeTravel);
+  const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
+  const hasHighDangerZone = getAllZones().some((zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4);
 
   const handleTab = (item) => {
+    if (item.id === "combat" && activeTravel && !pendingCombatEncounter) return;
     if (item.type === "modal") {
       onOpenModal(item.id);
       return;
@@ -25,26 +26,19 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
   };
 
   return (
-    <div
-      className="grid grid-cols-5 gap-1 border-t border-slate-700/80 bg-slate-950 px-2 pt-1.5 lg:hidden"
-      style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}
-    >
+    <div className="grid grid-cols-5 gap-1 border-t border-slate-700/80 bg-slate-950 px-2 pt-1.5 lg:hidden" style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}>
       {tabItems.map((item) => {
         const Icon = item.icon;
         const active = activePanel === item.id;
+        const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
+        const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
         return (
-          <button
-            key={item.id}
-            className={`hud-tab-button ${active ? "hud-tab-button-active" : ""}`}
-            onClick={() => handleTab(item)}
-          >
+          <button key={item.id} className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handleTab(item)} disabled={locked}>
             <span className="relative inline-flex">
               <Icon size={18} />
-              {item.id === "combat" && hasHighDangerZone && (
-                <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-red-500" />
-              )}
+              {item.id === "combat" && (urgent || hasHighDangerZone) && <span className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${urgent ? "bg-red-400 animate-pulse" : "bg-red-500"}`} />}
             </span>
-            <span>{item.label}</span>
+            <span>{urgent ? "긴급" : item.label}</span>
           </button>
         );
       })}
