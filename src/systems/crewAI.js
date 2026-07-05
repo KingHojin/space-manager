@@ -1,4 +1,5 @@
 import { ROOMS } from "../data/shipRooms";
+import { getCrisisConfig, getCrisisLabel, scoreCrisisForMember } from "./crisisSystem";
 import { comparePriorityTasks, getPriorityConfig, normalizePriority } from "./priorities";
 import { pickRoomJobsForIdleCrew } from "./roomJobs";
 
@@ -41,6 +42,36 @@ function assignedQueueTask(member, queues) {
     ...queues.trainingQueue.filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "training" })),
   ].sort(comparePriorityTasks);
   return tasks[0] ?? null;
+}
+
+function pickCrisisAssignment(member, snapshot, claimedCrisisIds) {
+  const activeCrises = snapshot.activeCrises ?? [];
+  let bestCrisis = null;
+  let bestScore = -Infinity;
+
+  activeCrises.forEach((crisis) => {
+    if (claimedCrisisIds.has(crisis.id)) return;
+    const score = scoreCrisisForMember(member, crisis);
+    if (score === null) return;
+    if (score > bestScore) {
+      bestScore = score;
+      bestCrisis = crisis;
+    }
+  });
+
+  if (!bestCrisis) return null;
+  claimedCrisisIds.add(bestCrisis.id);
+  const config = getCrisisConfig(bestCrisis.type);
+  const roomLabel = ROOM_LABELS[bestCrisis.roomId] ?? bestCrisis.roomId;
+  return {
+    station: roomLabel,
+    action: config.responderAction,
+    intent: "crisis-response",
+    priority: "emergency",
+    detail: `${getCrisisLabel(bestCrisis)} · severity ${bestCrisis.severity}`,
+    crisisId: bestCrisis.id,
+    roomId: bestCrisis.roomId,
+  };
 }
 
 function roleCrisisAssignment(member, snapshot) {
@@ -89,10 +120,28 @@ function roomJobPriority(room) {
 export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, currentMinute = 0 }) {
   const roomJobCandidates = [];
   const fixedActivities = new Map();
+  const claimedCrisisIds = new Set();
 
   crew.forEach((member, index) => {
     if (!member.alive) {
       fixedActivities.set(member.id, { memberId: member.id, station: "명예 전당", action: "작전 제외", intent: "inactive", priority: "low", detail: "전사", updatedAt: currentMinute });
+      return;
+    }
+
+    if (member.injury && member.injury !== "정상") {
+      const priority = member.injury === "중상" ? "emergency" : "high";
+      fixedActivities.set(member.id, { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: member.injury, updatedAt: currentMinute });
+      return;
+    }
+
+    if ((member.fatigue ?? 0) >= 85) {
+      fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", updatedAt: currentMinute });
+      return;
+    }
+
+    const crisisResponse = pickCrisisAssignment(member, snapshot, claimedCrisisIds);
+    if (crisisResponse) {
+      fixedActivities.set(member.id, { memberId: member.id, ...crisisResponse, updatedAt: currentMinute });
       return;
     }
 
@@ -105,17 +154,6 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     if (queueTask?.queueType === "training") {
       const priority = normalizePriority(queueTask.priority ?? "normal");
       fixedActivities.set(member.id, { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute });
-      return;
-    }
-
-    if (member.injury && member.injury !== "정상") {
-      const priority = member.injury === "중상" ? "emergency" : "high";
-      fixedActivities.set(member.id, { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: member.injury, updatedAt: currentMinute });
-      return;
-    }
-
-    if ((member.fatigue ?? 0) >= 85) {
-      fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", updatedAt: currentMinute });
       return;
     }
 
