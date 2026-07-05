@@ -3,6 +3,8 @@ import { getZoneById } from "../data/sectors";
 const LY_PER_MAP_UNIT = 1 / 5;
 const BASE_LY_PER_HOUR = 2.2;
 const BASE_FUEL_PER_LY = 1.35;
+const MIN_TRAVEL_MINUTES = 1440;
+const TRAVEL_TIME_MULTIPLIER = 6;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -33,11 +35,13 @@ export function calculateTravelPlan({ fromZone, toZone, modules = [], currentMin
   const stats = getShipStats(modules);
   const distanceLy = calculateRouteDistance(fromZone, toZone);
   const speedLyPerHour = Math.max(0.9, BASE_LY_PER_HOUR + (stats.engine ?? 0) * 0.08);
-  const duration = Math.max(45, Math.round((distanceLy / speedLyPerHour) * 60));
+  const baseDuration = Math.round((distanceLy / speedLyPerHour) * 60 * TRAVEL_TIME_MULTIPLIER);
+  const dangerDelay = 1 + Math.max(0, (toZone?.danger ?? 1) - 1) * 0.08;
+  const duration = Math.max(MIN_TRAVEL_MINUTES, Math.round(baseDuration * dangerDelay));
   const fuelMultiplier = clamp(1 - (stats.fuelEfficiency ?? 0) * 0.035, 0.62, 1.45);
   const dangerTax = 1 + Math.max(0, (toZone?.danger ?? 1) - 2) * 0.04;
   const fuelCost = Math.max(1, Math.round(distanceLy * BASE_FUEL_PER_LY * fuelMultiplier * dangerTax));
-  const encounterCount = Math.min(4, Math.max(1, Math.floor(duration / 180)));
+  const encounterCount = Math.min(5, Math.max(2, Math.floor(duration / 480)));
   const encounters = Array.from({ length: encounterCount }, (_, index) => {
     const ratio = (index + 1) / (encounterCount + 1);
     return {
