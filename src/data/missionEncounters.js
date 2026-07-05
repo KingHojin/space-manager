@@ -70,7 +70,7 @@ export const MISSION_ENCOUNTER_TEMPLATES = Object.freeze([
     risk: "medium",
     options: [
       { id: "mask-cargo", label: "화물 신호 위장", role: "함교", risk: "medium", rewardPreview: { reputation: 1 }, outcomes: [{ kind: "reward", reward: { reputation: 1 } }] },
-      { id: "pay-decoy", label: "미끼 화물 투하", role: "기관실", risk: "low", rewardPreview: {}, outcomes: [{ kind: "reward", reward: { scrap: -4 } }, { kind: "log", message: "미끼 화물로 검문을 회피했습니다." }] },
+      { id: "pay-decoy", label: "미끼 화물 투하", role: "기관실", risk: "low", rewardPreview: { dust: 4 }, outcomes: [{ kind: "resource", delta: { fuel: -1 } }, { kind: "reward", reward: { dust: 4 } }, { kind: "log", message: "미끼 화물로 검문을 회피했습니다." }] },
       { id: "challenge", label: "교전 각오", role: "포탑", risk: "high", rewardPreview: { scrap: 12 }, outcomes: [{ kind: "combat", dangerBonus: 1 }, { kind: "reward", reward: { scrap: 12 } }] },
     ],
   },
