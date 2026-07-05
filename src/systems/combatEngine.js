@@ -25,11 +25,12 @@ export const ENEMY_FLEETS = [
 ];
 
 export const calculateCombatPower = ({ modules, crew, activeCards }) => {
+  const activeCrew = crew.filter((member) => member.alive !== false);
   const modulePower = modules.reduce(
     (sum, module) => sum + (module.stats.attack || 0) + (module.stats.defense || 0) + Math.floor((module.stats.control || 0) / 2),
     0,
   );
-  const crewPower = crew.reduce(
+  const crewPower = activeCrew.reduce(
     (sum, member) =>
       sum +
       member.stats.gunnery +
