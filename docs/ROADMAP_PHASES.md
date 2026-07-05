@@ -1,7 +1,7 @@
 # Space Manager phased roadmap
 
 ## Phase 1 — FM Command Center
-Status: in progress / base implementation complete
+Status: base implementation complete
 
 Goal: make the home screen feel like a captain's live situation room, not a static dashboard.
 
@@ -13,6 +13,7 @@ Implemented:
 - Crew autonomous activity preview
 - Frontier signal hooks
 - Resource, mission, report, and task queue summaries
+- Prioritized captain approval deck
 
 Next refinements:
 - Convert frontier signals into real generated objectives
@@ -20,13 +21,23 @@ Next refinements:
 - Add report history by category
 
 ## Phase 2 — Priority System
+Status: base implementation complete
+
 Goal: every ship task receives a priority and can be sorted by emergency, high, normal, or low.
 
-Target systems:
-- Crew work assignment
-- Repair / treatment / training / module work
-- Event response recommendation
-- Auto-sorting in command center
+Implemented:
+- Shared task priority helper
+- Crew training priority
+- Crew treatment priority
+- Ship job priority in the store
+- Priority-based task queue sorting
+- Priority cycling from the task queue
+- Priority change logs
+
+Next refinements:
+- Show priority badges inside every ship module card
+- Let the player set priority before job creation
+- Use priority as the first input for crew AI in Phase 3
 
 ## Phase 3 — Crew AI
 Goal: crew members should act even when the player does not manually command them.
