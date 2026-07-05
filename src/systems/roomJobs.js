@@ -6,6 +6,7 @@ export const ROOM_CONDITION_DECAY_PER_HOUR = 0.5;
 export const ROOM_LOAD_GROWTH_PER_HOUR = 0.8;
 
 const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
+const SUPPORT_ROOMS = new Set(["cargo", "living"]);
 
 export const ROOM_JOB_CATALOG = {
   bridge: { id: "bridge-route-analysis", roomId: "bridge", label: "항로 정밀 분석", durationMinutes: 90, conditionRestore: 20, loadRelief: 20 },
@@ -61,6 +62,15 @@ export function getRoomSlots(room) {
   return Math.max(1, Math.round(calculateRoomModifiers(room).slots ?? 1));
 }
 
+function roomNeedScore(room) {
+  const conditionNeed = Math.max(0, 100 - (room.condition ?? 100));
+  const loadNeed = Math.max(0, room.load ?? 0);
+  let score = conditionNeed * 0.3 + loadNeed * 0.3;
+  if ((room.condition ?? 100) < 70 || (room.load ?? 0) > 40) score += 18;
+  if ((room.condition ?? 100) < 35 || (room.load ?? 0) > 75) score += 28;
+  return score;
+}
+
 export function scoreJobForMember(member, room, job, context = {}) {
   if (!job || !member?.alive) return null;
   if (!canWorkWithInjury(member.injury)) return null;
@@ -68,12 +78,13 @@ export function scoreJobForMember(member, room, job, context = {}) {
   const assignedIds = normalizeAssignedIds(room);
   if (assignedIds.length >= getRoomSlots(room) && !assignedIds.includes(member.id)) return null;
   const roleMatch = ROLE_ROOM[member.role] === room.id;
-  let score = roleMatch ? 40 : 10;
-  score += (100 - room.condition) * 0.3;
-  score += room.load * 0.3;
+  const supportRoom = SUPPORT_ROOMS.has(room.id);
+  let score = roleMatch ? 40 : supportRoom ? 22 : 10;
+  score += roomNeedScore(room);
   score -= (member.fatigue ?? 0) * 0.2;
   if (assignedIds.includes(member.id)) score += 15;
   if (context.activeTravel && ["bridge", "engineering"].includes(room.id)) score += 10;
+  if (supportRoom && ((room.condition ?? 100) < 70 || (room.load ?? 0) > 40)) score += 14;
   score *= injuryWorkSpeedMultiplier(member.injury);
   score *= calculateRoomModifiers(room).jobSpeedMul;
   return score;
