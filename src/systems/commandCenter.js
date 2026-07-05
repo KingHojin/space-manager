@@ -17,9 +17,48 @@ const SIGNAL_TEMPLATES = [
   { icon: "📦", title: "버려진 화물 기록", desc: "항로 주변에 등록되지 않은 화물 포드 기록이 있습니다. 회수 경쟁이 붙을 수 있습니다.", tone: "border-orange-400/35 bg-orange-400/10", targetPanel: "exploration" },
 ];
 
+const PRIORITY_SCORE = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+  info: 4,
+};
+
+const PRIORITY_LABEL = {
+  critical: "긴급",
+  high: "높음",
+  medium: "보통",
+  low: "낮음",
+  info: "정보",
+};
+
+const PRIORITY_TONE = {
+  critical: "border-red-400/45 bg-red-400/10 text-red-100",
+  high: "border-amber-300/45 bg-amber-300/10 text-amber-100",
+  medium: "border-cyan-300/35 bg-cyan-300/10 text-cyan-100",
+  low: "border-slate-500/40 bg-slate-500/10 text-slate-100",
+  info: "border-emerald-300/35 bg-emerald-300/10 text-emerald-100",
+};
+
 function stableIndex(seed, offset, length) {
   const value = Math.abs(Math.sin(seed * 12.9898 + offset * 78.233) * 43758.5453);
   return Math.floor(value) % length;
+}
+
+function situation({ id, priority = "info", icon = "•", title, desc, action, targetPanel, meta = null }) {
+  return {
+    id,
+    priority,
+    priorityLabel: PRIORITY_LABEL[priority] ?? priority,
+    tone: PRIORITY_TONE[priority] ?? PRIORITY_TONE.info,
+    icon,
+    title,
+    desc,
+    action,
+    targetPanel,
+    meta,
+  };
 }
 
 export function getCrewActivity(member, currentMinute, index = 0) {
@@ -55,4 +94,129 @@ export function getShipStatus({ resources, activeTravel, pendingTravelEvent, pen
   if ((resources.fuel ?? 100) < 25 || (resources.oxygen ?? 100) < 25) return { label: "자원 경고", tone: "hud-chip-warn", desc: "보급 계획 필요" };
   if (activeTravel) return { label: "항해 중", tone: "hud-chip-accent", desc: "도착 전까지 작업과 이벤트 대응 가능" };
   return { label: "정상 운항", tone: "hud-chip-success", desc: "다음 항로 또는 계약 선택 가능" };
+}
+
+export function getSituationCards({
+  resources,
+  activeTravel,
+  pendingTravelEvent,
+  pendingCombatEncounter,
+  crew = [],
+  trainingQueue = [],
+  treatmentQueue = [],
+  installationQueue = [],
+  skillPoints = 0,
+  activeContracts = [],
+  nextContracts = [],
+  travelProgress = 0,
+  currentMinute = 0,
+}) {
+  const cards = [];
+  const aliveCrew = crew.filter((member) => member.alive);
+  const injuredCrew = aliveCrew.filter((member) => member.injury && member.injury !== "정상");
+  const exhaustedCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 80);
+  const tiredCrew = aliveCrew.filter((member) => (member.fatigue ?? 0) >= 65);
+  const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
+
+  if (pendingCombatEncounter) {
+    cards.push(situation({
+      id: "pending-combat",
+      priority: "critical",
+      icon: "☠️",
+      title: "긴급 교전 발생",
+      desc: pendingCombatEncounter.title ?? "미확인 적성 함선 접근",
+      action: "전술 지시",
+      targetPanel: "combat",
+      meta: "즉시",
+    }));
+  }
+
+  if (pendingTravelEvent) {
+    cards.push(situation({
+      id: "pending-travel-event",
+      priority: "critical",
+      icon: "⚠️",
+      title: "항해 이벤트 결재 대기",
+      desc: `${pendingTravelEvent.title}: 선택하지 않아도 항해 시간은 계속 흐릅니다.`,
+      action: "선택지 확인",
+      targetPanel: "exploration",
+      meta: "항해 중",
+    }));
+  }
+
+  if ((resources.hull ?? 100) <= 20) {
+    cards.push(situation({ id: "hull-critical", priority: "critical", icon: "🛑", title: "선체 무결성 위험", desc: `현재 선체 ${Math.round(resources.hull)}%. 장거리 항해와 교전을 피해야 합니다.`, action: "정비", targetPanel: "ship", meta: "위험" }));
+  } else if ((resources.hull ?? 100) < 40) {
+    cards.push(situation({ id: "hull-warning", priority: "high", icon: "🧯", title: "선체 수리 권장", desc: `현재 선체 ${Math.round(resources.hull)}%. 다음 위험 구역 진입 전 정비가 필요합니다.`, action: "정비", targetPanel: "ship", meta: "주의" }));
+  }
+
+  if ((resources.oxygen ?? 100) <= 20) {
+    cards.push(situation({ id: "oxygen-critical", priority: "critical", icon: "🫁", title: "산소 부족", desc: `산소 ${Math.round(resources.oxygen)}%. 항해 지속 시 승무원 위험이 커집니다.`, action: "보급", targetPanel: "market", meta: "치명" }));
+  } else if ((resources.oxygen ?? 100) < 35) {
+    cards.push(situation({ id: "oxygen-warning", priority: "high", icon: "🫁", title: "산소 보급 필요", desc: `산소 ${Math.round(resources.oxygen)}%. 장거리 항해 전 보급을 추천합니다.`, action: "보급", targetPanel: "market", meta: "주의" }));
+  }
+
+  if ((resources.fuel ?? 100) <= 20) {
+    cards.push(situation({ id: "fuel-critical", priority: "critical", icon: "⛽", title: "연료 고갈 임박", desc: `연료 ${Math.round(resources.fuel)}%. 표류 위험이 급격히 상승합니다.`, action: "보급", targetPanel: "market", meta: "치명" }));
+  } else if ((resources.fuel ?? 100) < 35) {
+    cards.push(situation({ id: "fuel-warning", priority: "high", icon: "⛽", title: "연료 보급 권장", desc: `연료 ${Math.round(resources.fuel)}%. 항해 이벤트 대응 여력이 낮습니다.`, action: "보급", targetPanel: "market", meta: "주의" }));
+  }
+
+  if (injuredCrew.length > 0) {
+    cards.push(situation({ id: "injured-crew", priority: injuredCrew.length >= 2 ? "critical" : "high", icon: "✚", title: "부상자 치료 대기", desc: `${injuredCrew.length}명이 치료가 필요합니다. 치료 큐를 배정하세요.`, action: "의무실", targetPanel: "crew", meta: `${injuredCrew.length}명` }));
+  }
+
+  if (exhaustedCrew.length > 0) {
+    cards.push(situation({ id: "crew-exhausted", priority: "high", icon: "😵", title: "승무원 피로 누적", desc: `${exhaustedCrew.length}명이 한계 피로 상태입니다. 휴식 또는 교대가 필요합니다.`, action: "휴식 배정", targetPanel: "crew", meta: `${exhaustedCrew.length}명` }));
+  } else if (tiredCrew.length > 0) {
+    cards.push(situation({ id: "crew-tired", priority: "medium", icon: "☕", title: "승무원 피로 관리", desc: `${tiredCrew.length}명의 피로가 높습니다. 장거리 항해 전에 휴식시키면 안정적입니다.`, action: "확인", targetPanel: "crew", meta: `${tiredCrew.length}명` }));
+  }
+
+  if (activeTravel) {
+    const remaining = Math.max(0, Math.ceil((activeTravel.completeAt ?? currentMinute) - currentMinute));
+    cards.push(situation({
+      id: "active-travel",
+      priority: pendingTravelEvent ? "high" : "medium",
+      icon: "🚀",
+      title: "항해 진행 중",
+      desc: `진행률 ${Math.round(travelProgress)}%. 남은 ${remaining}분 동안 훈련·치료·정비 작업을 병행할 수 있습니다.`,
+      action: "항해판",
+      targetPanel: "exploration",
+      meta: `${Math.round(travelProgress)}%`,
+    }));
+  } else {
+    cards.push(situation({ id: "no-route", priority: "medium", icon: "🧭", title: "항로 미지정", desc: "함선이 대기 중입니다. 프론티어 신호나 계약을 보고 다음 목적지를 지정하세요.", action: "항로 설정", targetPanel: "exploration", meta: "대기" }));
+  }
+
+  if (queuedWorkCount === 0) {
+    cards.push(situation({ id: "empty-queue", priority: "medium", icon: "🗂", title: "작업 큐 비어 있음", desc: "훈련, 치료, 모듈 장착/개선을 예약하면 항해 시간이 낭비되지 않습니다.", action: "작업 배정", targetPanel: "crew", meta: "0건" }));
+  } else {
+    cards.push(situation({ id: "active-queue", priority: "info", icon: "⏳", title: "작업 큐 진행 중", desc: `${queuedWorkCount}건의 훈련/치료/정비가 진행 중입니다. 완료 시 자동 보고됩니다.`, action: "큐 확인", targetPanel: "crew", meta: `${queuedWorkCount}건` }));
+  }
+
+  if (skillPoints > 0) {
+    cards.push(situation({ id: "skill-points", priority: "medium", icon: "🌟", title: "스킬 포인트 사용 가능", desc: `${skillPoints}포인트를 사용해 탐사/전투/공학 방향성을 강화할 수 있습니다.`, action: "스킬트리", targetPanel: "skilltree", meta: `${skillPoints}P` }));
+  }
+
+  if (activeContracts.length > 0) {
+    cards.push(situation({ id: "active-contracts", priority: "info", icon: "📑", title: "진행 중 의뢰", desc: `${activeContracts.length}개의 계약이 진행 중입니다. 목적지와 보상 조건을 확인하세요.`, action: "계약 확인", targetPanel: "market", meta: `${activeContracts.length}건` }));
+  } else if (nextContracts.length > 0) {
+    cards.push(situation({ id: "available-contracts", priority: "low", icon: "💼", title: "새 의뢰 후보", desc: `${nextContracts.length}개의 계약 후보가 있습니다. 탐험 루프를 만들기 좋습니다.`, action: "시장", targetPanel: "market", meta: `${nextContracts.length}건` }));
+  }
+
+  return cards.sort((a, b) => (PRIORITY_SCORE[a.priority] ?? 9) - (PRIORITY_SCORE[b.priority] ?? 9));
+}
+
+export function summarizeSituations(cards = []) {
+  return cards.reduce(
+    (acc, card) => {
+      acc.total += 1;
+      if (card.priority === "critical") acc.critical += 1;
+      if (card.priority === "high") acc.high += 1;
+      if (["medium", "low"].includes(card.priority)) acc.normal += 1;
+      if (card.priority === "info") acc.info += 1;
+      return acc;
+    },
+    { total: 0, critical: 0, high: 0, normal: 0, info: 0 },
+  );
 }
