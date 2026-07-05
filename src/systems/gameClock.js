@@ -72,6 +72,11 @@ function applyNavEffect(effect, currentMinute) {
   if (effect.kind === "fuel" && effect.delta) {
     useNavStore.getState().refuel(effect.delta);
     useGameStore.getState().addResources({ fuel: effect.delta });
+    if (effect.delta < 0 && useNavStore.getState().fuel <= 0 && !useNavStore.getState().driftState) {
+      const drift = useNavStore.getState().enterDrift(currentMinute, "fuel_loss_event");
+      drift.effects.forEach((nested) => applyNavEffect(nested, currentMinute));
+      drift.logs.forEach((message) => useGameStore.getState().addLog(`항해: ${message}`));
+    }
   }
   if (effect.kind === "spawnCrisis") useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
   if (effect.kind === "crewNeeds") {
