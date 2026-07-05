@@ -16,7 +16,7 @@ export const TACTICAL_STATIONS = Object.freeze({
   bridge: { id: "bridge", label: "함교/조타", role: "함교", stat: "piloting", desc: "회피·도주 판단 보정" },
   gunnery: { id: "gunnery", label: "포탑 담당", role: "포탑", stat: "gunnery", desc: "화력·서브시스템 타격 보정" },
   engineering: { id: "engineering", label: "기관실 담당", role: "기관실", stat: "engineering", desc: "방어막·피해 억제 보정" },
-  medbay: { id: "medbay", label: "의무 대응", role: "의무실", stat: "medical", desc: "승무원 부상 위험 완화" },
+  medbay: { id: "medbay", label: "의무 대응", role: "의무실", stat: "medicine", desc: "승무원 부상 위험 완화" },
 });
 
 export const ENEMY_FLEETS = [
@@ -32,7 +32,7 @@ export const ENEMY_FLEETS = [
   { id: "heretic-nav-cult", name: "이단 항법단", hull: 86, shield: 62, power: 104, reward: 560, risk: 4, lootItemId: "ancient-coordinate", lootItemQty: 1 },
   { id: "ancient-warden", name: "고대 감시자", hull: 96, shield: 88, power: 116, reward: 720, risk: 5, lootItemId: "ancient-relay", lootItemQty: 1 },
   { id: "ancient-defense-array", name: "고대 방어 포대", hull: 122, shield: 112, power: 130, reward: 840, risk: 5, lootItemId: "phase-crystal", lootItemQty: 1 },
-  { id: "blackbox-guardian", name: "블랙박스 수호함", hull: 108, shield: 94, power: 900, risk: 5, reward: 900, lootItemId: "blackbox", lootItemQty: 2 },
+  { id: "blackbox-guardian", name: "블랙박스 수호함", hull: 108, shield: 94, power: 124, reward: 900, risk: 5, lootItemId: "blackbox", lootItemQty: 2 },
   { id: "umbra-battlecruiser", name: "엄브라 전투순양함", hull: 148, shield: 126, power: 158, reward: 1180, risk: 6, lootItemId: "void-map", lootItemQty: 1 },
   { id: "zero-throne-guard", name: "제로 왕좌 근위대", hull: 178, shield: 150, power: 190, reward: 1600, risk: 7, lootItemId: "crown-neural-core", lootItemQty: 1 },
   { id: "seraphim-auto-fleet", name: "세라핌 자동함대", hull: 164, shield: 182, power: 202, reward: 1800, risk: 7, lootItemId: "seraphim-core", lootItemQty: 1 },
@@ -112,7 +112,7 @@ export function calculateTacticalCrewBonus({ crew = [], assignments = {} } = {})
   const damageMul = 1 + clamp(statScore(gunner, "gunnery") / 900, 0, 0.06);
   const bridgeDefense = clamp(statScore(bridge, "piloting") / 1000, 0, 0.055);
   const engineerDefense = clamp(statScore(engineer, "engineering") / 950, 0, 0.06);
-  const medicalSafety = clamp(statScore(medic, "medical") / 1200, 0, 0.05);
+  const medicalSafety = clamp(statScore(medic, "medicine") / 1200, 0, 0.05);
   const takenMul = 1 - bridgeDefense - engineerDefense;
   const retreatThresholdShift = clamp(statScore(bridge, "piloting") / 900 + statScore(engineer, "engineering") / 1300, 0, 0.12);
   const casualtyRiskMul = 1 - medicalSafety;
