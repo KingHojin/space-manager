@@ -12,6 +12,7 @@ function stableIndex(text, length) {
 }
 
 function roomFor(member, activity) {
+  if (activity?.roomId) return activity.roomId;
   const text = `${activity?.station ?? ""} ${activity?.action ?? ""}`;
   if (/브릿지|함교|항로|지휘/.test(text)) return "bridge";
   if (/관제|포탑|표적|센서|감시/.test(text)) return "ops";
@@ -48,6 +49,14 @@ function buildRoomState(roomId, roomMembers, roomActivities) {
   return null;
 }
 
+function roomConditionBadge(room) {
+  if (!room) return null;
+  if (room.status === "위험") return { label: "위험", tone: "bg-red-400/20 text-red-100 border-red-400/35" };
+  if (room.status === "점검 필요") return { label: "점검 필요", tone: "bg-amber-300/20 text-amber-100 border-amber-300/30" };
+  if (room.status === "작업 중") return { label: "작업 중", tone: "bg-cyan-300/15 text-cyan-100 border-cyan-300/30" };
+  return null;
+}
+
 function RouteLine({ from, to, active }) {
   const start = roomCenter(from);
   const end = roomCenter(to);
@@ -58,11 +67,12 @@ function RouteLine({ from, to, active }) {
   return <span className={`absolute h-[2px] origin-center rounded-full ${active ? "bg-cyan-200/50" : "bg-cyan-300/12"}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
 }
 
-export default function ShipInterior({ crew = [], activities = [], compact = false, onCrewClick }) {
+export default function ShipInterior({ crew = [], activities = [], rooms = {}, compact = false, onCrewClick }) {
   const activityByMember = new Map(activities.map((activity) => [activity.memberId, activity]));
   const aliveCrew = crew.filter((member) => member.alive);
   const roomAssignments = aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomFor(member, activityByMember.get(member.id)) }));
   const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
+  const jobOwnerIds = new Set(Object.values(rooms).map((room) => room.assignedMemberId).filter(Boolean));
 
   return (
     <section className="overflow-hidden">
@@ -79,20 +89,27 @@ export default function ShipInterior({ crew = [], activities = [], compact = fal
         {ROOMS.map((room) => {
           const Icon = room.icon;
           const assigned = roomAssignments.filter((entry) => entry.roomId === room.id);
-          const state = buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity));
+          const roomState = rooms[room.id];
+          const badge = roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity));
           return (
             <div key={room.id} className={`absolute rounded-xl border p-2 ${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span><Icon size={compact ? 12 : 14} /></div>
-              {state && <span className={`absolute bottom-1 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${state.tone}`}>{state.label}</span>}
+              {badge && <span className={`absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}`}>{badge.label}</span>}
+              {roomState?.jobId && (
+                <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60">
+                  <div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} />
+                </div>
+              )}
             </div>
           );
         })}
         {roomAssignments.map(({ member, activity, roomId }) => {
           const point = roomPoint(roomId, member.id);
           const priority = getPriorityConfig(activity?.priority ?? "normal");
+          const isJobOwner = jobOwnerIds.has(member.id) && activity?.intent === "room-job";
           return (
             <button key={member.id} className="absolute z-20 -translate-x-1/2 -translate-y-1/2 transition-all duration-700 ease-in-out" style={{ left: `${point.x}%`, top: `${point.y}%` }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"}`}>
-              <span className={`relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)}`}>{member.name.slice(0, 1)}<span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-slate-950 ${activity?.priority === "emergency" ? "animate-pulse bg-red-400" : activity?.priority === "high" ? "bg-amber-300" : "bg-emerald-300"}`} /></span>
+              <span className={`relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""}`}>{member.name.slice(0, 1)}<span className={`absolute -right-1 -top-1 h-2.5 w-2.5 rounded-full border border-slate-950 ${activity?.priority === "emergency" ? "animate-pulse bg-red-400" : activity?.priority === "high" ? "bg-amber-300" : "bg-emerald-300"}`} /></span>
               {!compact && <span className="mt-1 block max-w-24 truncate rounded border border-slate-700/80 bg-slate-950/90 px-1.5 py-0.5 text-[10px] font-semibold text-slate-100">{member.name} · {priority.shortLabel}</span>}
             </button>
           );

@@ -5,6 +5,7 @@ import { summarizeCrewAI } from "../../systems/crewAI";
 import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
+import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { statLabel } from "../../utils/format";
 import ShipInterior from "../ship/ShipInterior";
 
@@ -80,6 +81,7 @@ export default function Crew() {
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
   const addLog = useGameStore((state) => state.addLog);
+  const rooms = useShipInteriorStore((state) => state.rooms);
   const aiSummary = summarizeCrewAI(crewActivities ?? []);
 
   const busy = (memberId) => trainingQueue.some((task) => task.memberId === memberId) || treatmentQueue.some((task) => task.memberId === memberId);
@@ -153,7 +155,7 @@ export default function Crew() {
         </div>
       </section>
       <div className="grid gap-4">
-        <ShipInterior crew={crew} activities={crewActivities ?? []} />
+        <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} />
         <section>
           <div className="section-title">스쿼드 종합표</div>
           <div className="mt-4 overflow-auto rounded border border-slate-700/70">
