@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { modules } from "../data/modules";
+import { normalizePriority } from "../systems/priorities";
 
 const initialInstalled = modules.reduce((acc, module) => {
   if (!acc[module.slot] || module.defaultInstalled) acc[module.slot] = module.id;
@@ -40,6 +41,11 @@ function mergeUnlocked(persistedState) {
   );
 }
 
+function normalizeWorkTask(task) {
+  const fallback = task.type === "equip" ? "high" : "normal";
+  return { ...task, priority: normalizePriority(task.priority ?? fallback) };
+}
+
 export const useShipStore = create(
   persist(
     (set, get) => ({
@@ -51,19 +57,23 @@ export const useShipStore = create(
         set((state) => ({
           unlockedModuleIds: Array.from(new Set([...(state.unlockedModuleIds ?? initialUnlockedIds), moduleId])),
         })),
-      startInstallation: ({ slot, moduleId, completeAt, cost, duration }) =>
+      startInstallation: ({ slot, moduleId, completeAt, cost, duration, priority = "high" }) =>
         set((state) => ({
           installationQueue: [
             ...state.installationQueue.filter((task) => task.slot !== slot),
-            { id: crypto.randomUUID(), type: "equip", slot, moduleId, completeAt, cost, duration, startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), type: "equip", slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
-      startUpgrade: ({ moduleId, completeAt, cost, duration }) =>
+      startUpgrade: ({ moduleId, completeAt, cost, duration, priority = "normal" }) =>
         set((state) => ({
           installationQueue: [
             ...state.installationQueue,
-            { id: crypto.randomUUID(), type: "upgrade", moduleId, completeAt, cost, duration, startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), type: "upgrade", moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
+        })),
+      setInstallationPriority: (taskId, priority) =>
+        set((state) => ({
+          installationQueue: state.installationQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
         })),
       completeReadyInstallations: (currentMinute) => {
         const ready = get().installationQueue.filter((task) => task.completeAt <= currentMinute);
@@ -118,7 +128,7 @@ export const useShipStore = create(
         modules: mergeModules(persistedState?.modules),
         installed: mergeInstalled(persistedState?.installed),
         unlockedModuleIds: mergeUnlocked(persistedState),
-        installationQueue: persistedState?.installationQueue ?? [],
+        installationQueue: (persistedState?.installationQueue ?? []).map(normalizeWorkTask),
       }),
     },
   ),
