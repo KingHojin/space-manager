@@ -26,12 +26,13 @@ export function createInitialRoomState() {
   return Object.fromEntries(
     ROOM_IDS.map((id) => [
       id,
-      { id, condition: 82, load: 18, jobId: null, assignedMemberId: null, progress: 0, status: "안정" },
+      { id, condition: 82, load: 18, jobId: null, assignedMemberId: null, progress: 0, activeCrisisId: null, status: "안정" },
     ]),
   );
 }
 
 export function deriveRoomStatus(room) {
+  if (room.activeCrisisId) return "위기";
   if (room.jobId) return "작업 중";
   if (room.condition < 35 || room.load > 75) return "위험";
   if (room.condition < 70 || room.load > 40) return "점검 필요";
@@ -44,6 +45,8 @@ export function deriveRoomStatus(room) {
  */
 export function scoreJobForMember(member, room, job, context = {}) {
   if (!job || !member?.alive) return null;
+  if (member.injury && member.injury !== "정상") return null;
+  if (room.activeCrisisId) return null;
 
   const roleMatch = ROLE_ROOM[member.role] === room.id;
   let score = roleMatch ? 40 : 10;
@@ -75,6 +78,7 @@ export function pickRoomJobsForIdleCrew({ idleMembers, rooms, currentMinute, con
       if (claimedRoomIds.has(roomId)) return;
       const room = rooms[roomId];
       if (!room) return;
+      if (room.activeCrisisId) return;
       if (room.assignedMemberId && room.assignedMemberId !== member.id) return;
 
       const job = getRoomJob(roomId);
@@ -134,8 +138,15 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
     let progress = room.progress;
     let jobId = room.jobId;
     let assignedMemberId = room.assignedMemberId;
+    const activeCrisisId = room.activeCrisisId ?? null;
 
-    if (claim && job) {
+    if (activeCrisisId) {
+      jobId = null;
+      assignedMemberId = null;
+      progress = 0;
+      condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours, 0, 100);
+      load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * 1.35, 0, 100);
+    } else if (claim && job) {
       assignedMemberId = claim.memberId;
       jobId = job.id;
       progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100, 0, 100);
@@ -158,7 +169,7 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
       load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours, 0, 100);
     }
 
-    const draftRoom = { id: roomId, condition, load, jobId, assignedMemberId, progress };
+    const draftRoom = { id: roomId, condition, load, jobId, assignedMemberId, progress, activeCrisisId };
     nextRooms[roomId] = { ...draftRoom, status: deriveRoomStatus(draftRoom), updatedAt: currentMinute };
   });
 
