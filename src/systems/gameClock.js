@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { rollEvent } from "./eventEngine";
+import { rollTravelEncounter } from "./travelSystem";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
@@ -20,12 +21,40 @@ export const formatGameDate = (totalMinutes) => {
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
 
+function processTravel(currentMinute) {
+  const exploration = useExplorationStore.getState();
+  const activeTravel = exploration.activeTravel;
+  if (!activeTravel) return;
+
+  const checkpoint = activeTravel.encounters?.find((entry) => !entry.resolved && entry.minute <= currentMinute);
+  if (checkpoint) {
+    let summary = "항로 구간 통과: 이상 신호 없음.";
+    if (Math.random() <= checkpoint.chance) {
+      const outcome = rollTravelEncounter(activeTravel, currentMinute);
+      if (outcome.resources) useGameStore.getState().addResources(outcome.resources);
+      if (outcome.dust) useInventoryStore.getState().addDust(outcome.dust);
+      if (outcome.item) useInventoryStore.getState().addItem(outcome.item.id, outcome.item.qty ?? 1);
+      if (outcome.reveal) useExplorationStore.getState().revealRandomZone();
+      summary = `항해 인카운터: ${outcome.title} — ${outcome.message}`;
+      useGameStore.getState().addLog(summary);
+    }
+    useExplorationStore.getState().resolveTravelEncounter(checkpoint.id, summary);
+  }
+
+  if (currentMinute >= activeTravel.completeAt) {
+    const destination = getZoneById(activeTravel.toZoneId);
+    useExplorationStore.getState().completeTravel();
+    useGameStore.getState().addLog(`${destination?.name ?? "목적지"} 도착. 항해 완료.`);
+  }
+}
+
 export function processTimedJobs() {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
   [...crewLogs, ...treatmentLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
+  processTravel(currentMinute);
 }
 
 export const useGameClock = () => {
