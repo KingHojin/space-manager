@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { Clock3, Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
+import { AlertTriangle, Clock3, Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
 import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
 import { formatMinutes } from "../../data/moduleRecipes";
+import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
 import { resolveScanEvent } from "../../systems/explorationEvents";
 import { formatGameDate } from "../../systems/gameClock";
-import { calculateTravelPlan, getTravelEncounterChance, getTravelProgress } from "../../systems/travelSystem";
+import { applyTravelEventChoice, calculateTravelPlan, getTravelEncounterChance, getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
 import PlanetCanvas from "../three/PlanetCanvas";
 
@@ -33,6 +34,14 @@ const RARITY_BORDER_CLASS = {
   legendary: "border-amber-300/60",
 };
 
+const EVENT_TONE_CLASS = {
+  danger: "border-red-400/45 bg-red-400/10",
+  combat: "border-orange-300/45 bg-orange-300/10",
+  warning: "border-amber-300/45 bg-amber-300/10",
+  choice: "border-cyan-300/45 bg-cyan-300/10",
+  reward: "border-emerald-300/45 bg-emerald-300/10",
+};
+
 export default function Exploration() {
   const [lastOutcome, setLastOutcome] = useState(null);
   const zones = getAllZones();
@@ -44,13 +53,18 @@ export default function Exploration() {
     scannedZoneIds,
     route,
     activeTravel,
+    pendingTravelEvent,
     travelLog,
     selectZone,
     startTravel,
     scanZone,
     revealRandomZone,
+    resolvePendingTravelEvent,
+    setPendingCombatEncounter,
   } = useExplorationStore();
   const { resources, addLog, addResources, shipName, shipGrade, currentMinute, setPaused } = useGameStore();
+  const crew = useCrewStore((state) => state.crew);
+  const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const items = useInventoryStore((state) => state.items);
   const addDust = useInventoryStore((state) => state.addDust);
   const addItem = useInventoryStore((state) => state.addItem);
@@ -69,7 +83,7 @@ export default function Exploration() {
   const activeDestination = getZoneById(activeTravel?.toZoneId);
   const activeOrigin = getZoneById(activeTravel?.fromZoneId);
   const encounterChance = Math.round(getTravelEncounterChance(activeTravel) * 100);
-  const nextEncounterRollAt = activeTravel ? (activeTravel.lastEncounterAt ?? activeTravel.startedAt) + (activeTravel.encounterRollInterval ?? 180) : null;
+  const nextEncounterRollAt = activeTravel ? (activeTravel.lastEncounterAt ?? activeTravel.startedAt) + (activeTravel.encounterRollInterval ?? 6) : null;
   const travelFuelUsed = activeTravel ? Math.min(activeTravel.fuelCost, Math.max(0, ((currentMinute - activeTravel.startedAt) / Math.max(1, activeTravel.duration)) * activeTravel.fuelCost)) : 0;
 
   const handleSelect = (zone) => {
@@ -88,6 +102,48 @@ export default function Exploration() {
     setPaused(false);
     addLog(`${focused.name} 항해 시작: ${routePlan.distanceLy} LY, 예상 총연료 ${routePlan.fuelCost}, 소요 ${formatMinutes(routePlan.duration)}, 도착 ${formatGameDate(routePlan.completeAt)}.`);
     if (fuelRisk) addLog(`${focused.name} 항해 경고: 현재 연료가 예상 총소모량보다 낮습니다. 항해 중 표류 위험이 있습니다.`);
+  };
+
+  const applyCrewRisk = (risk) => {
+    if (!risk) return null;
+    const aliveCrew = crew.filter((member) => member.alive);
+    if (aliveCrew.length === 0) return null;
+    const target = aliveCrew[Math.floor(Math.random() * aliveCrew.length)];
+    const injury = risk === "major" ? "중상" : "경상";
+    applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
+    return `${target.name} ${injury}`;
+  };
+
+  const handleTravelChoice = (choiceId) => {
+    if (!activeTravel || !pendingTravelEvent) return;
+    const result = applyTravelEventChoice(activeTravel, pendingTravelEvent, choiceId);
+    if (!result) return;
+
+    const { effects, nextTravel, summary } = result;
+    if (effects.resources) addResources(effects.resources);
+    if (effects.dust) addDust(effects.dust);
+    if (effects.item) addItem(effects.item.id, effects.item.qty ?? 1);
+    if (effects.reveal) revealRandomZone();
+    const crewSummary = applyCrewRisk(effects.crewRisk);
+
+    if (effects.combatHint) {
+      setPendingCombatEncounter({
+        id: `travel-combat-${currentMinute}`,
+        createdAt: currentMinute,
+        title: pendingTravelEvent.title,
+        message: effects.message ?? pendingTravelEvent.message,
+        danger: activeDestination?.danger ?? 2,
+        originZoneId: activeTravel.fromZoneId,
+        targetZoneId: activeTravel.toZoneId,
+      });
+    }
+
+    const delayText = effects.delay ? ` · 도착 ${effects.delay > 0 ? "+" : ""}${effects.delay}분` : "";
+    const combatText = effects.combatHint ? " · 긴급 교전 발생" : "";
+    const crewText = crewSummary ? ` · 승무원 피해: ${crewSummary}` : "";
+    const finalSummary = `${summary}${delayText}${combatText}${crewText}`;
+    resolvePendingTravelEvent(nextTravel, finalSummary);
+    addLog(finalSummary);
   };
 
   const handleScan = () => {
@@ -195,12 +251,17 @@ export default function Exploration() {
                 <Info label="인카운터" value={`${activeTravel.encounterCount ?? 0}회 발생`} />
                 <Info label="위험 확률" value={`${encounterChance}%`} />
                 <Info label="다음 판정" value={nextEncounterRollAt ? formatGameDate(nextEncounterRollAt) : "-"} />
+                <Info label="상태" value={pendingTravelEvent ? "이벤트 대응 필요" : "항로 유지"} />
               </div>
               <div className="mt-3 grid gap-1.5">
-                {travelLog.slice(0, 3).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
+                {travelLog.slice(0, 4).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
               </div>
             </div>
           </section>
+        )}
+
+        {pendingTravelEvent && (
+          <TravelEventCard event={pendingTravelEvent} onChoose={handleTravelChoice} />
         )}
 
         <section>
@@ -269,6 +330,33 @@ export default function Exploration() {
         </section>
       </aside>
     </div>
+  );
+}
+
+function TravelEventCard({ event, onChoose }) {
+  const toneClass = EVENT_TONE_CLASS[event.severity] ?? EVENT_TONE_CLASS.choice;
+  return (
+    <section>
+      <div className="section-title"><AlertTriangle size={18} />항해 이벤트 카드</div>
+      <div className={`mt-4 rounded border p-4 ${toneClass}`}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{event.zoneName} 접근 중</div>
+            <div className="mt-1 text-lg font-bold text-slate-50">{event.title}</div>
+          </div>
+          <span className="hud-chip hud-chip-warn">시간 계속 흐름</span>
+        </div>
+        <p className="mt-3 text-sm leading-6 text-slate-300">{event.message}</p>
+        <div className="mt-4 grid gap-2">
+          {event.choices.map((choice) => (
+            <button key={choice.id} className="secondary-button text-left" onClick={() => onChoose(choice.id)}>
+              <span className="block font-semibold text-slate-100">{choice.label}</span>
+              <span className="mt-0.5 block text-xs font-normal text-slate-400">{choice.hint}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </section>
   );
 }
 
