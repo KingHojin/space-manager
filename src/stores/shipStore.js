@@ -30,6 +30,16 @@ function mergeInstalled(savedInstalled = {}) {
   return next;
 }
 
+function mergeUnlocked(persistedState) {
+  return Array.from(
+    new Set([
+      ...initialUnlockedIds,
+      ...Object.values(persistedState?.installed ?? {}),
+      ...((persistedState?.unlockedModuleIds) ?? []),
+    ]),
+  );
+}
+
 export const useShipStore = create(
   persist(
     (set) => ({
@@ -79,7 +89,7 @@ export const useShipStore = create(
         ...(persistedState ?? {}),
         modules: mergeModules(persistedState?.modules),
         installed: mergeInstalled(persistedState?.installed),
-        unlockedModuleIds: Array.from(new Set([...initialUnlockedIds, ...((persistedState?.unlockedModuleIds) ?? [])])),
+        unlockedModuleIds: mergeUnlocked(persistedState),
       }),
     },
   ),
