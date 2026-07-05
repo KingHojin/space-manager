@@ -76,10 +76,6 @@ export const useCrewStore = create(
           return `${member?.name ?? "승무원"} 역할 훈련 완료.`;
         });
       },
-      trainMember: (memberId, statKey) =>
-        set((state) => ({
-          crew: state.crew.map((member) => (member.id === memberId ? applyTraining(member, statKey) : member)),
-        })),
       restMember: (memberId) =>
         set((state) => ({
           crew: state.crew.map((member) =>
