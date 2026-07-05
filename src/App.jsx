@@ -58,7 +58,7 @@ export default function App() {
         <div className="hidden lg:block">
           <Sidebar activePanel={activePanel} onChange={setActivePanel} onOpenModal={setActiveModal} />
         </div>
-        <main className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
+        <main className={`grid min-h-0 grid-cols-1 bg-slate-900 ${showPanelTitle ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]"}`}>
           {showPanelTitle && (
             <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
               <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
