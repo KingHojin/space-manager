@@ -1,6 +1,20 @@
-import { Activity, Compass, Crosshair, Package, PawPrint, Rocket, Sparkles, Store, Users } from "lucide-react";
-import { RESOURCES } from "../../data/constants";
-import { getZoneById } from "../../data/sectors";
+import {
+  Activity,
+  Compass,
+  Cross,
+  Crosshair,
+  Package,
+  PawPrint,
+  Rocket,
+  Sparkles,
+  Store,
+  User,
+  Users,
+  Wrench,
+} from "lucide-react";
+import { DUST, RESOURCES } from "../../data/constants";
+import { creatures } from "../../data/creatures";
+import { getAllZones, getZoneById } from "../../data/sectors";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -14,15 +28,57 @@ function gaugeTone(value) {
   return "hud-gauge-success";
 }
 
+const ROLE_ICONS = {
+  함교: { icon: Compass, color: "text-cyan-400" },
+  포탑: { icon: Crosshair, color: "text-red-400" },
+  기관실: { icon: Wrench, color: "text-amber-400" },
+  의무실: { icon: Cross, color: "text-emerald-400" },
+};
+
+function RoleIcon({ role, size = 14 }) {
+  const config = ROLE_ICONS[role] ?? { icon: User, color: "text-slate-500" };
+  const Icon = config.icon;
+  return <Icon size={size} className={config.color} />;
+}
+
 const quickTiles = [
-  { id: "combat", label: "전투", desc: "전술 상황 확인", icon: Crosshair },
-  { id: "hunting", label: "사냥", desc: "생물체 포획", icon: PawPrint },
-  { id: "collector", label: "우주 집진기", desc: "자원 자동 수집", icon: Sparkles },
-  { id: "market", label: "시장", desc: "거래 & 환전", icon: Store },
+  {
+    id: "combat",
+    label: "전투",
+    desc: "전술 상황 확인",
+    icon: Crosshair,
+    border: "border-red-500/40 hover:border-red-400/70",
+    iconColor: "text-red-400",
+  },
+  {
+    id: "hunting",
+    label: "사냥",
+    desc: "생물체 포획",
+    icon: PawPrint,
+    border: "border-emerald-500/40 hover:border-emerald-400/70",
+    iconColor: "text-emerald-400",
+  },
+  {
+    id: "collector",
+    label: "우주 집진기",
+    desc: "자원 자동 수집",
+    icon: Sparkles,
+    border: "border-violet-500/40 hover:border-violet-400/70",
+    iconColor: "text-violet-400",
+  },
+  {
+    id: "market",
+    label: "시장",
+    desc: "거래 & 환전",
+    icon: Store,
+    border: "border-amber-500/40 hover:border-amber-400/70",
+    iconColor: "text-amber-400",
+  },
 ];
 
 export default function Overview({ onNavigate }) {
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
+  const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const zone = getZoneById(currentZoneId);
   const shipName = useGameStore((state) => state.shipName);
   const resources = useGameStore((state) => state.resources);
@@ -31,6 +87,9 @@ export default function Overview({ onNavigate }) {
   const items = useInventoryStore((state) => state.items);
   const cards = useInventoryStore((state) => state.cards);
   const crew = useCrewStore((state) => state.crew);
+  const dangerZoneCount = getAllZones().filter(
+    (z) => discoveredZoneIds.includes(z.id) && z.danger >= 4,
+  ).length;
 
   return (
     <div className="grid gap-4 xl:grid-cols-2">
@@ -83,10 +142,13 @@ export default function Overview({ onNavigate }) {
               key={member.id}
               className="flex items-center justify-between rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm"
             >
-              <div>
-                <div className="font-semibold text-slate-100">{member.name}</div>
-                <div className="text-xs text-slate-500">
-                  {member.role} · 사기 {member.morale}
+              <div className="flex min-w-0 items-center gap-2">
+                <RoleIcon role={member.role} />
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-slate-100">{member.name}</div>
+                  <div className="text-xs text-slate-500">
+                    {member.role} · 사기 {member.morale}
+                  </div>
                 </div>
               </div>
               <span className={`hud-chip ${member.injury === "정상" ? "hud-chip-success" : "hud-chip-danger"}`}>
@@ -123,12 +185,21 @@ export default function Overview({ onNavigate }) {
             return (
               <button
                 key={tile.id}
-                className="flex flex-col items-start gap-2 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-left hover:border-cyan-400/60"
+                className={`relative flex flex-col items-start gap-2 rounded border bg-slate-950/60 p-4 text-left ${tile.border}`}
                 onClick={() => onNavigate?.(tile.id)}
               >
-                <Icon size={20} className="text-cyan-300" />
+                {tile.id === "combat" && dangerZoneCount > 0 && (
+                  <span className="absolute -top-1.5 -right-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[0.6rem] font-bold leading-none text-white">
+                    {dangerZoneCount}
+                  </span>
+                )}
+                {tile.id === "collector" && dust >= DUST.SINGLE_DRAW_COST && (
+                  <span className="absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full bg-emerald-400" />
+                )}
+                <Icon size={20} className={tile.iconColor} />
                 <div className="font-semibold text-slate-100">{tile.label}</div>
                 <div className="text-xs text-slate-500">{tile.desc}</div>
+                {tile.id === "hunting" && <span className="hud-chip mt-1">{creatures.length}종 서식</span>}
               </button>
             );
           })}

@@ -4,7 +4,7 @@ export const sectors = [
     name: "헬리오스 외연",
     description: "낡은 항로와 미확인 잔해대가 얽힌 초반 탐험 성계입니다.",
     zones: [
-      { id: "anchor-station", name: "앵커 정거장", type: "station", danger: 1, richness: 1, distance: 0, discovered: true, pos: { x: 18, y: 62 } },
+      { id: "anchor-station", name: "앵커 정거장", type: "station", danger: 1, richness: 1, distance: 0, discovered: true, pos: { x: 22, y: 70 } },
       { id: "blue-drift", name: "청색 표류대", type: "nebula", danger: 2, richness: 3, distance: 2, discovered: true, pos: { x: 34, y: 44 } },
       { id: "mare-ruins", name: "마레 폐허", type: "ruin", danger: 3, richness: 4, distance: 4, discovered: false, pos: { x: 50, y: 58 } },
       { id: "ion-reef", name: "이온 암초", type: "anomaly", danger: 2, richness: 2, distance: 3, discovered: false, pos: { x: 44, y: 26 } },
