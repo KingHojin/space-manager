@@ -85,8 +85,39 @@ Rooms left unattended passively decay: condition -0.5/hour, load +0.8/hour.
   surface rooms in poor condition or overloaded as situation cards.
 - **E** — stabilization pass and this document's final review.
 
+Phase 5 is complete: all sub-PRs (A–E) are merged to `master`.
+
+## Stabilization notes (PR E)
+
+A Playwright soak test drove the game clock through 30 consecutive 15-minute ticks
+(via `useGameStore.advanceMinutes` + `processTimedJobs`, with the built-in interval
+paused for determinism) and confirmed, end to end:
+
+- Idle crew whose role matches a room (함교→bridge, 포탑→ops, 의무실→medbay,
+  기관실→engineering) reliably claim that room's job when free.
+- `progress` advances every tick while a job is claimed, and each job reaches
+  completion at its configured `durationMinutes` (confirmed via
+  `함선: <job label> 완료 (<roomId>)` log lines for all four role-matched rooms).
+- On completion, `condition`/`load` move by the job's configured amounts (rooms
+  reached `condition: 100, load: 0` after repeated completions) and the room
+  becomes claimable again — the same crew member re-claims it next tick via the
+  sticky-assignment bonus in `scoreJobForMember`, so a room does not sit idle
+  between jobs as long as its role-matched crew member stays free.
+- `living` and `cargo` (no dedicated `ROLE_ROOM` owner) were not claimed during the
+  soak run because every crew member in the default roster already had a
+  higher-scoring, role-matched room to work in; this matches the scoring design
+  (role-match bonus dominates) rather than being a bug — a larger or more varied
+  crew roster will fill those rooms too.
+- `npm run build` passes with no new warnings beyond the pre-existing large-chunk
+  notice.
+- No console errors or crashes were observed across the 30-tick run or in the
+  Overview/ShipInterior UI before and after.
+
 ## Next refinements
 
 - Let the player set per-room job priority instead of always taking the AI's pick.
 - Room-based events (medbay overload, engine fault) feeding into Phase 6 reports.
 - Multiple job slots per room for larger crews.
+- Give unattended rooms without a role owner (living, cargo) a way to compete for
+  idle crew even when role-matched rooms are also open, e.g. a small bonus for
+  rooms that have gone longest without a job.
