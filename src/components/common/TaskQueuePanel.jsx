@@ -1,6 +1,7 @@
 import { Clock3, Cross, Cpu, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { comparePriorityTasks, getNextPriority, getPriorityConfig, normalizePriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useShipStore } from "../../stores/shipStore";
@@ -14,12 +15,13 @@ function remainingText(task, currentMinute) {
   return task.completeAt <= currentMinute ? "완료 대기" : `남은 ${formatMinutes(Math.ceil(task.completeAt - currentMinute))}`;
 }
 
-function TaskRow({ task, currentMinute, onNavigate }) {
+function TaskRow({ task, currentMinute, onNavigate, onCyclePriority }) {
   const progress = clampProgress(task, currentMinute);
   const Icon = task.icon;
+  const priority = getPriorityConfig(task.priority);
 
   return (
-    <button className={`rounded border p-3 text-left ${task.tone}`} onClick={() => onNavigate?.(task.targetPanel)}>
+    <div className={`rounded border p-3 text-left ${task.tone}`}>
       <div className="flex items-start gap-3">
         <div className="grid h-10 w-10 shrink-0 place-items-center rounded border border-white/10 bg-slate-950/50">
           <Icon size={18} />
@@ -30,7 +32,10 @@ function TaskRow({ task, currentMinute, onNavigate }) {
               <div className="truncate font-semibold text-slate-50">{task.title}</div>
               <div className="mt-0.5 text-xs text-slate-400">{task.subtitle}</div>
             </div>
-            <span className="hud-chip shrink-0">{task.kind}</span>
+            <div className="flex shrink-0 flex-col items-end gap-1">
+              <span className="hud-chip">{task.kind}</span>
+              <span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span>
+            </div>
           </div>
 
           <div className="mt-3">
@@ -47,19 +52,28 @@ function TaskRow({ task, currentMinute, onNavigate }) {
             <span className="hud-chip hud-chip-accent">{remainingText(task, currentMinute)}</span>
             <span className="hud-chip">완료 {formatGameDate(task.completeAt)}</span>
           </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button className="secondary-button min-h-8 text-xs" onClick={() => onNavigate?.(task.targetPanel)}>관리 화면</button>
+            <button className="secondary-button min-h-8 text-xs" onClick={() => onCyclePriority?.(task)}>우선순위 변경</button>
+          </div>
         </div>
       </div>
-    </button>
+    </div>
   );
 }
 
 export default function TaskQueuePanel({ onNavigate }) {
   const currentMinute = useGameStore((state) => state.currentMinute);
+  const addLog = useGameStore((state) => state.addLog);
   const crew = useCrewStore((state) => state.crew);
   const trainingQueue = useCrewStore((state) => state.trainingQueue ?? []);
   const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
+  const setTrainingPriority = useCrewStore((state) => state.setTrainingPriority);
+  const setTreatmentPriority = useCrewStore((state) => state.setTreatmentPriority);
   const modules = useShipStore((state) => state.modules);
   const installationQueue = useShipStore((state) => state.installationQueue ?? []);
+  const setInstallationPriority = useShipStore((state) => state.setInstallationPriority);
 
   const crewById = new Map(crew.map((member) => [member.id, member]));
   const moduleById = new Map(modules.map((module) => [module.id, module]));
@@ -69,6 +83,8 @@ export default function TaskQueuePanel({ onNavigate }) {
       const member = crewById.get(task.memberId);
       return {
         ...task,
+        priority: normalizePriority(task.priority),
+        queueType: "training",
         kind: "훈련 중",
         title: member?.name ?? "승무원 훈련",
         subtitle: `${member?.role ?? "승무원"} · ${statLabel[task.statKey] ?? task.statKey} +1 예정`,
@@ -81,6 +97,8 @@ export default function TaskQueuePanel({ onNavigate }) {
       const member = crewById.get(task.memberId);
       return {
         ...task,
+        priority: normalizePriority(task.priority),
+        queueType: "treatment",
         kind: "치료 중",
         title: member?.name ?? "의무실 치료",
         subtitle: `${task.injury ?? member?.injury ?? "부상"} 치료 · 비용 ₢${task.cost ?? 0}`,
@@ -94,6 +112,8 @@ export default function TaskQueuePanel({ onNavigate }) {
       const isUpgrade = task.type === "upgrade";
       return {
         ...task,
+        priority: normalizePriority(task.priority),
+        queueType: "ship",
         kind: isUpgrade ? "개선 중" : "장착 중",
         title: module?.name ?? "함선 모듈 작업",
         subtitle: isUpgrade ? `Lv.${module?.level ?? 1} → Lv.${(module?.level ?? 1) + 1}` : `${task.slot} 슬롯 장착 예정`,
@@ -102,15 +122,27 @@ export default function TaskQueuePanel({ onNavigate }) {
         targetPanel: "ship",
       };
     }),
-  ].sort((a, b) => a.completeAt - b.completeAt);
+  ].sort(comparePriorityTasks);
+
+  const onCyclePriority = (task) => {
+    const nextPriority = getNextPriority(task.priority);
+    if (task.queueType === "training") setTrainingPriority(task.id, nextPriority);
+    if (task.queueType === "treatment") setTreatmentPriority(task.id, nextPriority);
+    if (task.queueType === "ship") setInstallationPriority(task.id, nextPriority);
+    addLog(`${task.title} 작업 우선순위 변경: ${getPriorityConfig(nextPriority).label}.`);
+  };
 
   const visibleTasks = tasks.slice(0, 5);
+  const topPriority = tasks[0] ? getPriorityConfig(tasks[0].priority).label : "없음";
 
   return (
     <section>
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Clock3 size={18} />진행 중 작업 큐</div>
-        <span className={`hud-chip ${tasks.length > 0 ? "hud-chip-accent" : ""}`}>{tasks.length}건</span>
+        <div className="flex gap-1.5">
+          <span className={`hud-chip ${tasks.length > 0 ? "hud-chip-accent" : ""}`}>{tasks.length}건</span>
+          {tasks.length > 0 && <span className="hud-chip hud-chip-warn">최우선 {topPriority}</span>}
+        </div>
       </div>
 
       {tasks.length === 0 ? (
@@ -119,7 +151,7 @@ export default function TaskQueuePanel({ onNavigate }) {
         </div>
       ) : (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
-          {visibleTasks.map((task) => <TaskRow key={task.id} task={task} currentMinute={currentMinute} onNavigate={onNavigate} />)}
+          {visibleTasks.map((task) => <TaskRow key={task.id} task={task} currentMinute={currentMinute} onNavigate={onNavigate} onCyclePriority={onCyclePriority} />)}
           {tasks.length > visibleTasks.length && (
             <button className="secondary-button h-full min-h-20" onClick={() => onNavigate?.("crew")}>+{tasks.length - visibleTasks.length}개 추가 작업 보기</button>
           )}
