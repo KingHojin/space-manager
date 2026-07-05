@@ -1,18 +1,11 @@
-import { useState } from "react";
-import { AlertTriangle, Clock3, Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
-import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
-import { getAllZones, getZoneById, sectors } from "../../data/sectors";
+import { AlertTriangle, Clock3, Fuel, Radar, Rocket, Route } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
-import { useCrewStore } from "../../stores/crewStore";
-import { useExplorationStore } from "../../stores/explorationStore";
+import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useGameStore } from "../../stores/gameStore";
-import { useInventoryStore } from "../../stores/inventoryStore";
-import { useShipStore } from "../../stores/shipStore";
-import { resolveScanEvent } from "../../systems/explorationEvents";
-import { formatGameDate } from "../../systems/gameClock";
-import { applyTravelEventChoice, calculateTravelPlan, getTravelEncounterChance, getTravelProgress } from "../../systems/travelSystem";
+import { useNavStore } from "../../stores/navStore";
+import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
+import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
 import StarMap from "../exploration/StarMap";
-import PlanetCanvas from "../three/PlanetCanvas";
 
 function dangerChipClass(danger) {
   if (danger >= 5) return "hud-chip-danger";
@@ -20,350 +13,178 @@ function dangerChipClass(danger) {
   return "";
 }
 
-function gaugeTone(value) {
-  if (value < RESOURCES.LOW_RESOURCE_WARNING) return "hud-gauge-danger";
-  if (value < 50) return "hud-gauge-warn";
-  return "hud-gauge-success";
+function Info({ label, value, tone = "" }) {
+  return <div className="rounded border border-slate-700/70 bg-slate-950/70 px-3 py-2"><div className="hud-label">{label}</div><div className={`hud-value mt-1 ${tone}`}>{value}</div></div>;
 }
 
-const RARITY_BORDER_CLASS = {
-  common: "border-slate-500/50",
-  uncommon: "border-emerald-400/50",
-  rare: "border-sky-400/50",
-  epic: "border-violet-400/50",
-  legendary: "border-amber-300/60",
-};
-
-const EVENT_TONE_CLASS = {
-  danger: "border-red-400/45 bg-red-400/10",
-  combat: "border-orange-300/45 bg-orange-300/10",
-  warning: "border-amber-300/45 bg-amber-300/10",
-  choice: "border-cyan-300/45 bg-cyan-300/10",
-  reward: "border-emerald-300/45 bg-emerald-300/10",
-};
-
-export default function Exploration() {
-  const [lastOutcome, setLastOutcome] = useState(null);
-  const zones = getAllZones();
-  const sector = sectors[0];
-  const {
-    currentZoneId,
-    selectedZoneId,
-    discoveredZoneIds,
-    scannedZoneIds,
-    route,
-    activeTravel,
-    pendingTravelEvent,
-    travelLog,
-    selectZone,
-    startTravel,
-    scanZone,
-    revealRandomZone,
-    resolvePendingTravelEvent,
-    setPendingCombatEncounter,
-  } = useExplorationStore();
-  const { resources, addLog, addResources, shipName, shipGrade, currentMinute, setPaused } = useGameStore();
-  const crew = useCrewStore((state) => state.crew);
-  const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
-  const items = useInventoryStore((state) => state.items);
-  const addDust = useInventoryStore((state) => state.addDust);
-  const addItem = useInventoryStore((state) => state.addItem);
-  const removeItem = useInventoryStore((state) => state.removeItem);
-  const { modules, installed } = useShipStore();
-  const installedModules = Object.values(installed).map((id) => modules.find((entry) => entry.id === id)).filter(Boolean);
-  const current = getZoneById(currentZoneId);
-  const focused = getZoneById(selectedZoneId) ?? current;
-  const isViewingCurrent = focused.id === current.id;
-  const routePlan = current && focused && !isViewingCurrent ? calculateTravelPlan({ fromZone: current, toZone: focused, modules: installedModules, currentMinute }) : null;
-  const fuelRisk = Boolean(routePlan && resources.fuel < routePlan.fuelCost);
-  const canStartTravel = Boolean(routePlan) && !activeTravel && resources.fuel > 0;
-  const grade = SHIP_GRADES[shipGrade];
-  const probeQty = items.find((item) => item.id === "survey-probe")?.qty ?? 0;
-  const activeProgress = getTravelProgress(activeTravel, currentMinute);
-  const activeDestination = getZoneById(activeTravel?.toZoneId);
-  const activeOrigin = getZoneById(activeTravel?.fromZoneId);
-  const encounterChance = Math.round(getTravelEncounterChance(activeTravel) * 100);
-  const nextEncounterRollAt = activeTravel ? (activeTravel.lastEncounterAt ?? activeTravel.startedAt) + (activeTravel.encounterRollInterval ?? 6) : null;
-  const travelFuelUsed = activeTravel ? Math.min(activeTravel.fuelCost, Math.max(0, ((currentMinute - activeTravel.startedAt) / Math.max(1, activeTravel.duration)) * activeTravel.fuelCost)) : 0;
-
-  const handleSelect = (zone) => {
-    if (!discoveredZoneIds.includes(zone.id)) return;
-    selectZone(zone.id === currentZoneId ? null : zone.id);
-  };
-
-  const handleSetCourse = () => {
-    if (!routePlan || activeTravel) return;
-    if (resources.fuel <= 0) {
-      addLog(`${focused.name} 항해 실패: 연료가 완전히 고갈되었습니다.`);
-      return;
-    }
-    startTravel(routePlan);
-    setLastOutcome(null);
-    setPaused(false);
-    addLog(`${focused.name} 항해 시작: ${routePlan.distanceLy} LY, 예상 총연료 ${routePlan.fuelCost}, 소요 ${formatMinutes(routePlan.duration)}, 도착 ${formatGameDate(routePlan.completeAt)}.`);
-    if (fuelRisk) addLog(`${focused.name} 항해 경고: 현재 연료가 예상 총소모량보다 낮습니다. 항해 중 표류 위험이 있습니다.`);
-  };
-
-  const applyCrewRisk = (risk) => {
-    if (!risk) return null;
-    const aliveCrew = crew.filter((member) => member.alive);
-    if (aliveCrew.length === 0) return null;
-    const target = aliveCrew[Math.floor(Math.random() * aliveCrew.length)];
-    const injury = risk === "major" ? "중상" : "경상";
-    applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
-    return `${target.name} ${injury}`;
-  };
-
-  const handleTravelChoice = (choiceId) => {
-    if (!activeTravel || !pendingTravelEvent) return;
-    const result = applyTravelEventChoice(activeTravel, pendingTravelEvent, choiceId);
-    if (!result) return;
-
-    const { effects, nextTravel, summary } = result;
-    if (effects.resources) addResources(effects.resources);
-    if (effects.dust) addDust(effects.dust);
-    if (effects.item) addItem(effects.item.id, effects.item.qty ?? 1);
-    if (effects.reveal) revealRandomZone();
-    const crewSummary = applyCrewRisk(effects.crewRisk);
-
-    if (effects.combatHint) {
-      setPendingCombatEncounter({
-        id: `travel-combat-${currentMinute}`,
-        createdAt: currentMinute,
-        title: pendingTravelEvent.title,
-        message: effects.message ?? pendingTravelEvent.message,
-        danger: activeDestination?.danger ?? 2,
-        originZoneId: activeTravel.fromZoneId,
-        targetZoneId: activeTravel.toZoneId,
-      });
-    }
-
-    const delayText = effects.delay ? ` · 도착 ${effects.delay > 0 ? "+" : ""}${effects.delay}분` : "";
-    const combatText = effects.combatHint ? " · 긴급 교전 발생" : "";
-    const crewText = crewSummary ? ` · 승무원 피해: ${crewSummary}` : "";
-    const finalSummary = `${summary}${delayText}${combatText}${crewText}`;
-    resolvePendingTravelEvent(nextTravel, finalSummary);
-    addLog(finalSummary);
-  };
-
-  const handleScan = () => {
-    if (!current) return;
-    if (activeTravel) {
-      addLog("항해 중에는 현재 구역 스캔을 실행할 수 없습니다.");
-      return;
-    }
-    const scannedBefore = scannedZoneIds.includes(current.id);
-    const outcome = resolveScanEvent({ zone: current, scannedBefore });
-    const resourceChanges = { ...(outcome.resources ?? {}) };
-
-    if (outcome.credits) resourceChanges.credits = outcome.credits;
-    if (Object.keys(resourceChanges).length > 0) addResources(resourceChanges);
-    if (outcome.dust) addDust(outcome.dust);
-    if (outcome.itemId) addItem(outcome.itemId, outcome.itemQty ?? 1);
-    Array.from({ length: outcome.revealCount ?? 0 }).forEach(() => revealRandomZone());
-
-    scanZone(current.id);
-
-    const rewards = [];
-    if (outcome.credits) rewards.push(`크레딧 ${outcome.credits > 0 ? "+" : ""}${outcome.credits}`);
-    if (outcome.dust) rewards.push(`우주 먼지 +${outcome.dust}`);
-    if (outcome.itemId) rewards.push(`아이템 ${outcome.itemId} x${outcome.itemQty ?? 1}`);
-    if (outcome.revealCount) rewards.push(`구역 공개 +${outcome.revealCount}`);
-    Object.entries(outcome.resources ?? {}).forEach(([key, value]) => rewards.push(`${key} ${value > 0 ? "+" : ""}${value}`));
-
-    const summary = `${current.name} 스캔: ${outcome.title} — ${outcome.message}${rewards.length ? ` (${rewards.join(", ")})` : ""}`;
-    addLog(summary);
-    setLastOutcome({ ...outcome, zoneName: current.name, zoneType: current.type, richness: current.richness, summary });
-  };
-
-  const precisionAnalyze = () => {
-    if (!lastOutcome) return;
-    if (resources.oxygen < 3) {
-      addLog("정밀 분석 실패: 산소 여유가 부족합니다.");
-      return;
-    }
-    const bonusDust = 10 + Math.round((lastOutcome.richness ?? 1) * 2);
-    addResources({ oxygen: -3 });
-    addDust(bonusDust);
-    addLog(`${lastOutcome.zoneName} 정밀 분석 완료: 산소 -3, 우주 먼지 +${bonusDust}.`);
-  };
-
-  const deployProbe = () => {
-    if (!lastOutcome) return;
-    if (probeQty <= 0) {
-      addLog("탐사 프로브가 없습니다. 시장 또는 스캔 보상으로 확보하세요.");
-      return;
-    }
-    removeItem("survey-probe", 1);
-    revealRandomZone();
-    addDust(8);
-    addLog(`${lastOutcome.zoneName}에 탐사 프로브 투입: 구역 1곳 공개, 우주 먼지 +8.`);
-  };
-
-  const salvageSweep = () => {
-    if (!lastOutcome) return;
-    const credits = 70 + Math.round((lastOutcome.richness ?? 1) * 25);
-    addResources({ fuel: -2, hull: -2, credits });
-    addItem("alloy-plate", 1);
-    addLog(`${lastOutcome.zoneName} 잔해 회수: 크레딧 +${credits}, 합금 장갑판 +1, 연료 -2, 선체 -2.`);
-  };
-
+function EncounterCard({ encounter, onResolve }) {
+  if (!encounter) return null;
   return (
-    <div className="grid grid-cols-1 gap-4 xl:h-full xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
-      <section className="xl:overflow-y-auto">
-        <div className="section-title"><Radar size={18} />{sector.name} 성계 지도</div>
-        <div className="mt-3">
-          <StarMap
-            zones={zones}
-            currentZoneId={currentZoneId}
-            selectedZoneId={selectedZoneId}
-            discoveredZoneIds={discoveredZoneIds}
-            route={route}
-            activeTravel={activeTravel}
-            currentMinute={currentMinute}
-            onSelect={handleSelect}
-            sectorName={sector.name}
-            exploredCount={discoveredZoneIds.length}
-            totalCount={zones.length}
-          />
+    <section className="rounded border border-red-400/45 bg-red-400/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="section-title"><AlertTriangle size={18} />조우 결재</div>
+          <h3 className="mt-3 text-lg font-black text-red-100">{encounter.icon} {encounter.title}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-300">{encounter.description}</p>
         </div>
-        <div className="hud-label mt-2">스캔 {scannedZoneIds.length}</div>
-      </section>
-      <aside className="space-y-4">
-        {activeTravel && (
-          <section>
-            <div className="section-title"><Clock3 size={18} />항해 상황판</div>
-            <div className="mt-4 rounded border border-amber-300/35 bg-amber-300/10 p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-amber-100">{activeOrigin?.name} → {activeDestination?.name}</div>
-                  <div className="mt-1 text-xs text-slate-400">{activeTravel.distanceLy} LY · 도착 {formatGameDate(activeTravel.completeAt)}</div>
-                </div>
-                <span className="hud-chip hud-chip-warn">항해 중</span>
-              </div>
-              <div className="mt-3">
-                <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">진행률</span><span className="hud-value">{Math.round(activeProgress)}%</span></div>
-                <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${activeProgress}%` }} /></div>
-              </div>
-              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-                <Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(activeTravel.completeAt - currentMinute)))} />
-                <Info label="연료 소모" value={`${travelFuelUsed.toFixed(1)} / ${activeTravel.fuelCost}`} />
-                <Info label="인카운터" value={`${activeTravel.encounterCount ?? 0}회 발생`} />
-                <Info label="위험 확률" value={`${encounterChance}%`} />
-                <Info label="다음 판정" value={nextEncounterRollAt ? formatGameDate(nextEncounterRollAt) : "-"} />
-                <Info label="상태" value={pendingTravelEvent ? "이벤트 대응 필요" : "항로 유지"} />
-              </div>
-              <div className="mt-3 grid gap-1.5">
-                {travelLog.slice(0, 4).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
-              </div>
-            </div>
-          </section>
-        )}
-
-        {pendingTravelEvent && (
-          <TravelEventCard event={pendingTravelEvent} onChoose={handleTravelChoice} />
-        )}
-
-        <section>
-          <div className="section-title"><ScanLine size={18} />구역 정보</div>
-          <div className="mt-4 flex flex-col gap-4 sm:flex-row">
-            <div className="h-40 w-40 shrink-0 overflow-hidden rounded border border-slate-700/70 bg-slate-950/60 sm:h-44 sm:w-44"><PlanetCanvas zone={focused} interactive /></div>
-            <div className="flex min-w-0 flex-1 flex-col justify-between gap-3">
-              <div className="min-w-0">
-                <div className="truncate text-2xl font-bold text-cyan-100">{focused.name}</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <span className="hud-chip">{focused.type}</span>
-                  <span className={`hud-chip ${dangerChipClass(focused.danger)}`}>위험 {focused.danger}</span>
-                  <span className="hud-chip hud-chip-success">자원 {focused.richness}</span>
-                </div>
-              </div>
-              <div className="space-y-2 text-sm">
-                {isViewingCurrent ? (
-                  <Info label="스캔 상태" value={scannedZoneIds.includes(current.id) ? "완료" : "미완료"} />
-                ) : (
-                  <>
-                    <Info label="항로 거리" value={`${routePlan?.distanceLy ?? 0} LY`} />
-                    <Info label="소요 시간" value={routePlan ? formatMinutes(routePlan.duration) : "-"} />
-                    <Info label="도착 예정" value={routePlan ? formatGameDate(routePlan.completeAt) : "-"} />
-                    <Info label="예상 총연료" value={`${routePlan?.fuelCost ?? 0}`} />
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          {isViewingCurrent ? (
-            <button className="primary-button mt-4 w-full" onClick={handleScan} disabled={Boolean(activeTravel)}>{activeTravel ? "항해 중 스캔 불가" : "현재 구역 스캔 & 이벤트 판정"}</button>
-          ) : (
-            <button className="primary-button mt-4 flex w-full items-center justify-center gap-2" onClick={handleSetCourse} disabled={!canStartTravel}>
-              <Fuel size={16} />
-              {activeTravel ? "항해 진행 중" : canStartTravel ? `항해 시작 (예상 연료 ${routePlan.fuelCost})${fuelRisk ? " · 연료 위험" : ""}` : "항해 불가 · 연료 고갈"}
-            </button>
-          )}
-        </section>
-
-        {lastOutcome && (
-          <section>
-            <div className="section-title">스캔 후속 선택지</div>
-            <div className="mt-3 rounded border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="font-semibold text-cyan-100">{lastOutcome.title}</div><p className="mt-2 text-sm text-slate-300">{lastOutcome.message}</p></div>
-            <div className="mt-3 grid gap-2"><button className="secondary-button" onClick={precisionAnalyze}>정밀 분석 · 산소 -3 / 먼지 보너스</button><button className="secondary-button" onClick={deployProbe}>탐사 프로브 투입 · 보유 {probeQty}</button><button className="secondary-button" onClick={salvageSweep}>잔해 회수 · 연료/선체 소모, 크레딧 획득</button></div>
-          </section>
-        )}
-
-        <section>
-          <div className="section-title"><Rocket size={18} />함선 개요</div>
-          <div className="mt-4 flex items-center justify-between gap-2"><div className="min-w-0 truncate text-lg font-bold text-slate-50">{shipName}</div><span className="hud-chip hud-chip-accent shrink-0">{grade.icon} · {grade.label}</span></div>
-          <div className="mt-3 space-y-3"><GaugeRow label="선체" value={resources.hull} /><GaugeRow label="연료" value={resources.fuel} /><GaugeRow label="산소" value={resources.oxygen} /></div>
-          <div className="hud-label mt-4">장착 모듈</div>
-          <div className="mt-2 grid grid-cols-3 gap-2">
-            {MODULE_SLOTS.map((slot) => {
-              const module = modules.find((entry) => entry.id === installed[slot]);
-              const borderClass = RARITY_BORDER_CLASS[module?.rarity] ?? RARITY_BORDER_CLASS.common;
-              return <div key={slot} className={`min-w-0 rounded border ${borderClass} bg-slate-950/60 p-2`}><div className="hud-label truncate">{slot}</div><div className="truncate text-xs font-semibold text-slate-100">{module?.name ?? "-"}</div></div>;
-            })}
-          </div>
-        </section>
-
-        <section>
-          <div className="section-title"><Route size={18} />최근 이동 경로</div>
-          <div className="mt-4 flex gap-2 overflow-x-auto pb-1">{route.map((zoneId, index) => <span key={`${zoneId}-${index}`} className="hud-chip shrink-0">{getZoneById(zoneId)?.name}</span>)}</div>
-          <p className="mt-3 text-xs text-slate-500">스캔 완료 구역: {scannedZoneIds.length}</p>
-        </section>
-      </aside>
-    </div>
-  );
-}
-
-function TravelEventCard({ event, onChoose }) {
-  const toneClass = EVENT_TONE_CLASS[event.severity] ?? EVENT_TONE_CLASS.choice;
-  return (
-    <section>
-      <div className="section-title"><AlertTriangle size={18} />항해 이벤트 카드</div>
-      <div className={`mt-4 rounded border p-4 ${toneClass}`}>
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-400">{event.zoneName} 접근 중</div>
-            <div className="mt-1 text-lg font-bold text-slate-50">{event.title}</div>
-          </div>
-          <span className="hud-chip hud-chip-warn">시간 계속 흐름</span>
-        </div>
-        <p className="mt-3 text-sm leading-6 text-slate-300">{event.message}</p>
-        <div className="mt-4 grid gap-2">
-          {event.choices.map((choice) => (
-            <button key={choice.id} className="secondary-button text-left" onClick={() => onChoose(choice.id)}>
-              <span className="block font-semibold text-slate-100">{choice.label}</span>
-              <span className="mt-0.5 block text-xs font-normal text-slate-400">{choice.hint}</span>
-            </button>
-          ))}
-        </div>
+        <span className="hud-chip hud-chip-danger">{encounter.typeLabel}</span>
+      </div>
+      <div className="mt-4 grid gap-2">
+        {encounter.options.map((option) => (
+          <button key={option.id} className="secondary-button justify-between text-left" onClick={() => onResolve(option.id)}>
+            <span>{option.label}</span>
+            <span className="text-xs text-cyan-200">결재</span>
+          </button>
+        ))}
       </div>
     </section>
   );
 }
 
-function Info({ label, value }) {
-  return <div className="flex items-center justify-between border-b border-slate-800 pb-2"><span className="hud-label">{label}</span><span className="hud-value text-right">{value}</span></div>;
-}
+export default function Exploration() {
+  const currentMinute = useGameStore((state) => state.currentMinute);
+  const setPaused = useGameStore((state) => state.setPaused);
+  const addLog = useGameStore((state) => state.addLog);
+  const sector = useNavStore((state) => state.sector);
+  const currentNodeId = useNavStore((state) => state.currentNodeId);
+  const selectedNodeId = useNavStore((state) => state.selectedNodeId);
+  const route = useNavStore((state) => state.route ?? []);
+  const travel = useNavStore((state) => state.travel);
+  const fuel = useNavStore((state) => state.fuel);
+  const discovered = useNavStore((state) => state.discovered ?? []);
+  const pendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const driftState = useNavStore((state) => state.driftState);
+  const recruitCandidates = useNavStore((state) => state.recruitCandidates ?? []);
+  const navLog = useNavStore((state) => state.navLog ?? []);
+  const selectNode = useNavStore((state) => state.selectNode);
+  const planRoute = useNavStore((state) => state.planRoute);
+  const refuel = useNavStore((state) => state.refuel);
 
-function GaugeRow({ label, value }) {
-  return <div><div className="flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{Math.round(value)}%</span></div><div className={`hud-gauge mt-1 ${gaugeTone(value)}`}><span className="hud-gauge-fill" style={{ width: `${value}%` }} /></div></div>;
+  const nodes = sector.nodes ?? [];
+  const zones = nodes.map(nodeToZone);
+  const current = nodes.find((node) => node.id === currentNodeId) ?? nodes[0];
+  const selected = nodes.find((node) => node.id === selectedNodeId) ?? current;
+  const discoveredSet = new Set(discovered);
+  const isCurrent = selected?.id === current?.id;
+  const plannedRoute = selected && !isCurrent ? route : [current?.id].filter(Boolean);
+  const plannedDistance = selected && !isCurrent ? routeDistance(sector, plannedRoute.length > 1 ? plannedRoute : [current.id, selected.id]) : 0;
+  const travelFrom = nodes.find((node) => node.id === travel?.fromId);
+  const travelTo = nodes.find((node) => node.id === travel?.toId);
+  const travelProgress = travel ? Math.max(0, Math.min(100, ((currentMinute - travel.startedAt) / Math.max(1, travel.duration)) * 100)) : 0;
+
+  const handleSelect = (zone) => {
+    if (!discoveredSet.has(zone.id)) return;
+    selectNode(zone.id === currentNodeId ? null : zone.id);
+  };
+
+  const handlePlan = () => {
+    if (!selected || isCurrent) return;
+    const result = planRoute(selected.id, currentMinute);
+    if (!result.ok) {
+      addLog(`항로 설정 실패: ${result.reason}`);
+      return;
+    }
+    setPaused(false);
+    addLog(`${selected.name} 항로 결재 완료: ${formatMinutes(result.travel.duration)}, 연료 ${result.travel.fuelCost.toFixed(1)} 예상.`);
+  };
+
+  const handleResolve = (optionId) => {
+    applyNavigationEncounter(optionId, currentMinute);
+  };
+
+  const handleEmergencyRefuel = () => {
+    refuel(25);
+    addLog("긴급 구조 보급 수신: 항해 연료 +25.");
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-4 xl:h-full xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
+      <section className="xl:overflow-y-auto">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="section-title"><Radar size={18} />{sector.name} 노드 지도</div>
+            <p className="mt-2 text-sm leading-6 text-slate-400">노드 선택 → 항로 결재 → 시간 경과 → 도착 조우 결재로 이어지는 Phase 8 항해 루프입니다.</p>
+          </div>
+          <span className="hud-chip hud-chip-accent">Fuel {Math.round(fuel)}%</span>
+        </div>
+        <div className="mt-3">
+          <StarMap
+            zones={zones}
+            currentZoneId={currentNodeId}
+            selectedZoneId={selectedNodeId}
+            discoveredZoneIds={discovered}
+            route={route}
+            activeTravel={travel ? { ...travel, fromZoneId: travel.fromId, toZoneId: travel.toId } : null}
+            currentMinute={currentMinute}
+            onSelect={handleSelect}
+            sectorName={sector.name}
+            exploredCount={discovered.length}
+            totalCount={nodes.length}
+          />
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <Info label="현재 노드" value={current?.name ?? "-"} />
+          <Info label="발견" value={`${discovered.length}/${nodes.length}`} />
+          <Info label="영입 후보" value={`${recruitCandidates.length}명`} />
+          <Info label="상태" value={pendingEncounter ? "조우 대기" : travel ? "항해 중" : driftState ? "표류" : "정박"} tone={pendingEncounter || driftState ? "text-red-300" : travel ? "text-amber-300" : ""} />
+        </div>
+      </section>
+
+      <aside className="space-y-4">
+        <EncounterCard encounter={pendingEncounter} onResolve={handleResolve} />
+
+        {travel && (
+          <section>
+            <div className="section-title"><Clock3 size={18} />항해 상황판</div>
+            <div className="mt-4 rounded border border-amber-300/35 bg-amber-300/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-amber-100">{travelFrom?.name} → {travelTo?.name}</div>
+                  <div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(travel.completeAt)}</div>
+                </div>
+                <span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span>
+              </div>
+              <div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(travel.completeAt - currentMinute)))} />
+                <Info label="예상 연료" value={`${travel.fuelCost.toFixed(1)}`} />
+              </div>
+            </div>
+          </section>
+        )}
+
+        {driftState && (
+          <section className="rounded border border-red-400/45 bg-red-400/10 p-4">
+            <div className="section-title"><Fuel size={18} />표류 상태</div>
+            <p className="mt-2 text-sm leading-6 text-slate-300">연료가 고갈되어 이동이 정지했습니다. 데드락 방지를 위해 긴급 구조 보급을 받을 수 있습니다.</p>
+            <button className="primary-button mt-4 w-full" onClick={handleEmergencyRefuel}>긴급 보급 수신</button>
+          </section>
+        )}
+
+        {!pendingEncounter && !travel && !driftState && selected && (
+          <section>
+            <div className="section-title"><Route size={18} />목적지 결재</div>
+            <div className="mt-4 rounded border border-cyan-400/30 bg-cyan-400/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-black text-slate-50">{NODE_TYPE_ICONS[selected.type]} {selected.name}</div>
+                  <div className="mt-1 text-sm text-slate-400">{NODE_TYPE_LABELS[selected.type]} · 위험 {selected.danger} · 자원 {selected.richness}</div>
+                </div>
+                <span className={`hud-chip ${dangerChipClass(selected.danger)}`}>위험 {selected.danger}</span>
+              </div>
+              {isCurrent ? <p className="mt-3 text-sm text-slate-400">현재 위치입니다. 연결된 노드를 선택해 다음 항로를 결재하세요.</p> : <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="거리" value={`${plannedDistance.toFixed(1)}u`} /><Info label="예상 시간" value={formatMinutes(Math.max(18, Math.round(plannedDistance * 11)))} /></div>}
+              <button className="primary-button mt-4 w-full" disabled={isCurrent || fuel <= 0} onClick={handlePlan}><Rocket size={16} />이 경로로 항해</button>
+            </div>
+          </section>
+        )}
+
+        <section>
+          <div className="section-title">항해 로그</div>
+          <div className="mt-3 grid gap-2">
+            {navLog.slice(0, 8).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-300">{entry}</div>)}
+          </div>
+        </section>
+      </aside>
+    </div>
+  );
 }
