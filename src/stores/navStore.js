@@ -49,14 +49,7 @@ function nextSeed(seed, index) {
 }
 
 function createDriftState(currentMinute, reason = "fuel_empty") {
-  return {
-    reason,
-    startedAt: currentMinute,
-    lastTickAt: currentMinute,
-    rescueEta: currentMinute + DRIFT.RESCUE_CHECK_MINUTES,
-    severity: 1,
-    pressure: 0,
-  };
+  return { reason, startedAt: currentMinute, lastTickAt: currentMinute, rescueEta: currentMinute + DRIFT.RESCUE_CHECK_MINUTES, severity: 1, pressure: 0 };
 }
 
 function driftSeverity(minutesDrifting) {
@@ -189,7 +182,7 @@ export const useNavStore = create(
           const state = get();
           if (state.pendingEncounter) return { mode: "encounter", priority: "critical", title: state.pendingEncounter.title, desc: state.pendingEncounter.description, meta: state.pendingEncounter.typeLabel };
           if (state.travel) return { mode: "travel", priority: "medium", title: "항해 진행 중", desc: `${state.travel.fromId} → ${state.travel.toId}`, meta: `${Math.round(state.travel.progress ?? 0)}%` };
-          if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 상태", desc: `연료가 없어 이동할 수 없습니다. 표류 ${Math.round(Math.max(0, Date.now() % 1))} · 압박 ${Math.round(state.driftState.pressure ?? 0)}%`, meta: `severity ${state.driftState.severity ?? 1}` };
+          if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 상태", desc: `연료가 없어 이동할 수 없습니다. 압박 ${Math.round(state.driftState.pressure ?? 0)}%`, meta: `severity ${state.driftState.severity ?? 1}` };
           const current = state.sector.nodes.find((node) => node.id === state.currentNodeId);
           const next = (current?.connections ?? []).map((id) => state.sector.nodes.find((node) => node.id === id)).filter(Boolean)[0];
           return { mode: "idle", priority: "medium", title: "다음 목적지 선택", desc: next ? `${next.name} 항로 결재 가능` : "연결 노드를 찾을 수 없습니다.", meta: `${Math.round(state.fuel)} fuel` };
