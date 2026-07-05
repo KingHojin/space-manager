@@ -42,14 +42,64 @@ function mergeUnlocked(persistedState) {
 
 export const useShipStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       modules,
       installed: initialInstalled,
       unlockedModuleIds: initialUnlockedIds,
+      installationQueue: [],
       unlockModule: (moduleId) =>
         set((state) => ({
           unlockedModuleIds: Array.from(new Set([...(state.unlockedModuleIds ?? initialUnlockedIds), moduleId])),
         })),
+      startInstallation: ({ slot, moduleId, completeAt, cost, duration }) =>
+        set((state) => ({
+          installationQueue: [
+            ...state.installationQueue.filter((task) => task.slot !== slot),
+            { id: crypto.randomUUID(), type: "equip", slot, moduleId, completeAt, cost, duration, startedAt: completeAt - duration },
+          ],
+        })),
+      startUpgrade: ({ moduleId, completeAt, cost, duration }) =>
+        set((state) => ({
+          installationQueue: [
+            ...state.installationQueue,
+            { id: crypto.randomUUID(), type: "upgrade", moduleId, completeAt, cost, duration, startedAt: completeAt - duration },
+          ],
+        })),
+      completeReadyInstallations: (currentMinute) => {
+        const ready = get().installationQueue.filter((task) => task.completeAt <= currentMinute);
+        if (ready.length === 0) return [];
+        const logs = [];
+        set((state) => {
+          let nextInstalled = { ...state.installed };
+          let nextModules = state.modules;
+          ready.forEach((task) => {
+            const module = state.modules.find((entry) => entry.id === task.moduleId);
+            if (!module) return;
+            if (task.type === "equip") {
+              nextInstalled = { ...nextInstalled, [task.slot]: task.moduleId };
+              logs.push(`${task.slot} 슬롯에 ${module.name} 장착 완료.`);
+            }
+            if (task.type === "upgrade") {
+              nextModules = nextModules.map((entry) => {
+                if (entry.id !== task.moduleId) return entry;
+                const nextStats = {};
+                Object.entries(entry.stats).forEach(([key, value]) => {
+                  nextStats[key] = Math.round(value * 1.12 + (value >= 0 ? 1 : -1));
+                });
+                logs.push(`${entry.name} 모듈 Lv.${entry.level + 1} 개선 완료.`);
+                return { ...entry, level: entry.level + 1, stats: nextStats };
+              });
+            }
+          });
+          clearInstalledCache();
+          return {
+            installed: nextInstalled,
+            modules: nextModules,
+            installationQueue: state.installationQueue.filter((task) => task.completeAt > currentMinute),
+          };
+        });
+        return logs;
+      },
       equipModule: (slot, moduleId) =>
         set((state) => {
           const unlocked = state.unlockedModuleIds ?? initialUnlockedIds;
@@ -90,6 +140,7 @@ export const useShipStore = create(
         modules: mergeModules(persistedState?.modules),
         installed: mergeInstalled(persistedState?.installed),
         unlockedModuleIds: mergeUnlocked(persistedState),
+        installationQueue: persistedState?.installationQueue ?? [],
       }),
     },
   ),
