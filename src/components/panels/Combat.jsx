@@ -1,5 +1,6 @@
 import { Crosshair, Shield, Skull, Zap } from "lucide-react";
 import { useMemo, useState } from "react";
+import BattleScene from "../common/BattleScene";
 import {
   calculateCombatPower,
   createCombatState,
@@ -30,10 +31,12 @@ export default function Combat() {
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const resources = useGameStore((state) => state.resources);
+  const shipName = useGameStore((state) => state.shipName);
   const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
   const cards = useInventoryStore((state) => state.cards);
   const activeCardIds = useInventoryStore((state) => state.activeCardIds);
+  const addItem = useInventoryStore((state) => state.addItem);
   const activeCards = useMemo(
     () => cards.filter((card) => activeCardIds.includes(card.instanceId)),
     [cards, activeCardIds],
@@ -64,6 +67,7 @@ export default function Combat() {
     const result = resolveCombatRound({ directive, combat, power });
     setCombat(result.combat);
     addResources(result.resourceChanges);
+    if (result.loot) addItem(result.loot.itemId, result.loot.qty);
 
     const lead = crew[Math.floor(Math.random() * crew.length)];
     if (lead) {
@@ -81,6 +85,7 @@ export default function Combat() {
   const enemy = combat?.enemy;
   const enemyHull = enemy ? Math.round((enemy.hullNow / enemy.hull) * 100) : 0;
   const enemyShield = enemy ? Math.round((enemy.shieldNow / enemy.shield) * 100) : 0;
+  const eventLine = feed[0] ?? "함교가 다음 지시를 기다립니다.";
 
   return (
     <div className="grid gap-4 lg:h-full lg:grid-cols-[0.85fr_1.15fr]">
@@ -112,7 +117,7 @@ export default function Combat() {
             <div className="mt-4 space-y-3">
               <Gauge label="적 방어막" value={enemyShield} />
               <Gauge label="적 선체" value={enemyHull} />
-              <div className="text-xs text-slate-500">보상 ₢ {enemy.reward} · 교전력 {enemy.power}</div>
+              <div className="text-xs text-slate-500">보상 ₢ {enemy.reward} · 교전력 {enemy.power} · 전리품 {enemy.lootItemId ?? "-"}</div>
             </div>
           )}
           <button className="primary-button mt-4 w-full" onClick={startEncounter}>
@@ -134,13 +139,42 @@ export default function Combat() {
         </div>
       </section>
       <section>
-        <div className="section-title">FM식 전투 중계</div>
-        <div className="mt-4 max-h-[32rem] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 lg:h-[calc(100%-2.5rem)] lg:max-h-none">
-          {feed.map((line, index) => (
-            <div key={`${line}-${index}`} className="border-b border-slate-800 py-3 text-sm text-slate-300 last:border-b-0">
-              {line}
+        <div className="grid gap-4 lg:h-full lg:grid-rows-[auto_minmax(0,1fr)]">
+          <BattleScene
+            mode="combat"
+            title="함대 교전 장면"
+            leftName={shipName}
+            leftSub={`전투력 ${power} · 활성 카드 ${activeCards.length}`}
+            rightName={enemy?.name ?? "미확인 적 함대"}
+            rightSub={enemy ? `위협도 ${enemy.risk} · 교전력 ${enemy.power}` : "새 교전을 생성하면 목표가 표시됩니다."}
+            status={combat?.status ?? "standby"}
+            directive={combat?.lastDirective ?? "standby"}
+            eventLine={eventLine}
+            intensity={combat?.lastDamage ?? 0}
+            leftTone="cyan"
+            rightTone={combat?.status === "won" ? "slate" : "red"}
+            leftStats={[
+              { label: "선체", value: `${Math.round(resources.hull)}%`, percent: resources.hull },
+              { label: "연료", value: `${Math.round(resources.fuel)}%`, percent: resources.fuel },
+              { label: "피해", value: combat?.lastTaken ? `-${combat.lastTaken}%` : "대기" },
+            ]}
+            rightStats={[
+              { label: "방어막", value: enemy ? `${enemyShield}%` : "-", percent: enemy ? enemyShield : 0 },
+              { label: "선체", value: enemy ? `${enemyHull}%` : "-", percent: enemy ? enemyHull : 0 },
+              { label: "최근 피해", value: combat?.lastDamage ? `${combat.lastDamage}` : "대기" },
+            ]}
+          />
+
+          <div>
+            <div className="section-title">FM식 전투 중계</div>
+            <div className="mt-4 max-h-[32rem] overflow-auto rounded border border-slate-700 bg-slate-950 p-4 lg:h-[calc(100%-2.5rem)] lg:max-h-none">
+              {feed.map((line, index) => (
+                <div key={`${line}-${index}`} className="border-b border-slate-800 py-3 text-sm text-slate-300 last:border-b-0">
+                  {line}
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
         </div>
       </section>
     </div>
