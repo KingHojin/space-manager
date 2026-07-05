@@ -114,22 +114,36 @@ Behavior:
 
 PR C still does not apply reward/resource outputs. It only stores the resolved result so later PRs can apply it through existing systems.
 
+## PR D implemented
+
+Updated `src/components/panels/Exploration.jsx` to connect the Phase 15 card flow.
+
+Behavior:
+
+- when an active mission reaches its destination and no ordinary navigation event is pending, Exploration generates one mission card
+- resolved history prevents the same mission from continuously generating new required cards
+- pending mission cards render with `MissionEncounterCard`
+- selecting an option resolves the pending card into history
+- active mission completion is blocked while a mission card is pending
+- route planning panel is hidden while a mission card is pending
+
+PR D still does not apply option outputs. Resource deltas, reward previews, linked tactical states, and crew-risk outputs are logged as recorded but are not applied yet.
+
 ## Scope
 
-Current Phase 15 work is foundation, UI, and state only.
+Current Phase 15 work is foundation, UI, state, and Exploration display flow.
 
-- Navigation behavior is not changed yet.
-- Automatic mission arrival behavior is not changed yet.
-- Payout is not applied yet.
+- Mission card output application is not connected yet.
+- Payout from card options is not applied yet.
 - Existing formulas are not changed.
 
 ## Next PRs
 
 Recommended sequence:
 
-1. PR D: connect mission arrival in Exploration to mission encounter display and resolution.
-2. PR E: apply option outputs through existing reward/resource/log systems.
-3. PR F: optionally trigger enRoute mission encounters during travel.
+1. PR E: apply option outputs through existing reward/resource/log systems.
+2. PR F: connect linked tactical outcomes where appropriate.
+3. PR G: optionally trigger enRoute mission cards during travel.
 
 ## Local check
 
@@ -143,10 +157,10 @@ npm run dev
 
 Manual checks:
 
-1. Accept a mission in a dev run.
-2. Call `generateMissionEncounterForVessel({ vesselId })`.
-3. Confirm `pendingMissionEncountersByVesselId[vesselId]` is populated.
-4. Call `resolveMissionEncounter({ vesselId, optionId })`.
-5. Confirm pending is cleared and resolved history is updated.
-6. Confirm fail/abandon clears pending state.
-7. Confirm no automatic navigation behavior changes from PR C alone.
+1. Accept a mission.
+2. Travel to the mission destination.
+3. Confirm a mission card appears on arrival.
+4. Confirm mission completion is blocked while the card is pending.
+5. Select a card option.
+6. Confirm the card disappears and the mission can be completed.
+7. Confirm option outputs are only logged/recorded and not applied yet.
