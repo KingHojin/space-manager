@@ -20,6 +20,8 @@ const services = [
   { id: "full", label: "종합 출항 패키지", desc: "연료, 산소, 선체를 한 번에 정비합니다.", icon: Store, cost: 720, changes: { fuel: 45, oxygen: 35, hull: 32 } },
 ];
 
+const rarityRank = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+
 export default function Market() {
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
@@ -41,6 +43,11 @@ export default function Market() {
   const completeContract = useContractStore((state) => state.completeContract);
   const reputation = useFactionStore((state) => state.reputation);
   const addReputation = useFactionStore((state) => state.addReputation);
+
+  const canCraft = (module) => {
+    const rule = getModuleRule(module);
+    return resources.credits >= rule.purchaseCredits && hasRequiredItems(items, rule.items);
+  };
 
   const buyService = (service) => {
     if (!docked) {
@@ -105,7 +112,10 @@ export default function Market() {
     addLog(`의뢰 완료: ${contract.title}. 크레딧 +${contract.rewardCredits}, 평판 +${contract.rep}.`);
   };
 
-  const moduleShop = modules.filter((module) => !unlockedModuleIds.includes(module.id)).slice(0, 12);
+  const moduleShop = [...modules]
+    .filter((module) => !unlockedModuleIds.includes(module.id))
+    .sort((a, b) => Number(canCraft(b)) - Number(canCraft(a)) || (rarityRank[a.rarity] ?? 9) - (rarityRank[b.rarity] ?? 9))
+    .slice(0, 16);
 
   return (
     <section className="space-y-5">
