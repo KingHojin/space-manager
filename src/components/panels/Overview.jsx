@@ -1,4 +1,4 @@
-import { Archive, Briefcase, ChevronDown, Compass, Cross, Crosshair, GitBranch, Package, Radar, Rocket, Search, Shield, Sparkles, Users, Wrench } from "lucide-react";
+import { Archive, Briefcase, ChevronDown, Compass, Cross, Crosshair, GitBranch, Package, Rocket, Sparkles, Users, Wrench } from "lucide-react";
 import { RESOURCES } from "../../data/constants";
 import { contracts } from "../../data/contracts";
 import { getFactionById } from "../../data/factions";
@@ -37,10 +37,11 @@ function RoleIcon({ role, size = 14 }) {
 export default function Overview({ onNavigate, onOpenModal }) {
   const zones = getAllZones();
   const sector = sectors[0];
-  const { currentZoneId, selectedZoneId, discoveredZoneIds, route, selectZone } = useExplorationStore();
+  const { currentZoneId, selectedZoneId, discoveredZoneIds, route, activeTravel, selectZone } = useExplorationStore();
   const focusedZone = getZoneById(selectedZoneId) ?? getZoneById(currentZoneId);
   const shipName = useGameStore((state) => state.shipName);
   const resources = useGameStore((state) => state.resources);
+  const currentMinute = useGameStore((state) => state.currentMinute);
   const logs = useGameStore((state) => state.logs);
   const modules = useShipStore((state) => state.getInstalledModules());
   const dust = useInventoryStore((state) => state.dust);
@@ -75,6 +76,8 @@ export default function Overview({ onNavigate, onOpenModal }) {
             selectedZoneId={selectedZoneId}
             discoveredZoneIds={discoveredZoneIds}
             route={route}
+            activeTravel={activeTravel}
+            currentMinute={currentMinute}
             onSelect={(zone) => selectZone(zone.id === currentZoneId ? null : zone.id)}
             sectorName={sector.name}
             exploredCount={discoveredZoneIds.length}
@@ -85,14 +88,6 @@ export default function Overview({ onNavigate, onOpenModal }) {
             <div className="mt-1 font-bold text-slate-100">오리온 익스팬스</div>
             <div className="mt-2 text-xs text-slate-400">탐사율 {discoveredRatio}%</div>
             <div className="hud-gauge mt-2"><span className="hud-gauge-fill" style={{ width: `${discoveredRatio}%` }} /></div>
-          </div>
-          <div className="absolute left-3 top-3 flex flex-col gap-2 sm:top-32">
-            {[Search, Radar, Briefcase, Shield].map((Icon, index) => (
-              <button key={index} className="relative grid h-10 w-10 place-items-center rounded-full border border-slate-600/70 bg-slate-950/80 text-cyan-100 backdrop-blur">
-                <Icon size={17} />
-                {index === 2 && activeContracts.length > 0 && <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full bg-sky-500 px-1 text-[0.6rem] font-bold text-white">{activeContracts.length}</span>}
-              </button>
-            ))}
           </div>
         </div>
       </section>
