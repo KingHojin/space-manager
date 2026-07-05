@@ -26,9 +26,9 @@ export default function Collector() {
           우주 집진기
         </div>
         <div className="mt-5 rounded border border-cyan-400/30 bg-cyan-400/10 p-5">
-          <div className="text-sm text-cyan-100">보유 우주 먼지</div>
+          <div className="hud-label">보유 우주 먼지</div>
           <div className="mt-2 font-mono text-5xl font-bold text-white tabular-nums">{number(dust, 1)}</div>
-          <div className="mt-2 text-sm text-slate-400">먼지 조각 {shards}</div>
+          <span className="hud-chip mt-2">먼지 조각 {shards}</span>
         </div>
         <div className="mt-4 grid gap-2">
           <button className="primary-button" onClick={() => handleDraw(1)}>

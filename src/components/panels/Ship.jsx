@@ -17,7 +17,7 @@ export default function Ship() {
             const module = modules.find((entry) => entry.id === installed[slot]);
             return (
               <div key={slot} className={`ship-slot ship-slot-${slot.replace("-", "")}`}>
-                <span>{slot}</span>
+                <span className="hud-label">{slot}</span>
                 <strong>{module?.name}</strong>
               </div>
             );
@@ -32,7 +32,7 @@ export default function Ship() {
             return (
               <div key={slot} className="flex items-center justify-between rounded border border-slate-700/70 bg-slate-950/60 p-3">
                 <div>
-                  <div className="text-sm text-slate-500">{slot}</div>
+                  <div className="hud-label">{slot}</div>
                   <div className="font-semibold text-slate-100">{module?.name}</div>
                 </div>
                 <Badge rarity={module?.rarity}>{module?.rarity}</Badge>

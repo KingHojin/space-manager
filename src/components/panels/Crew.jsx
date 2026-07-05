@@ -30,8 +30,12 @@ export default function Crew() {
               {Object.keys(statLabel).map((key) => (
                 <td key={key} className="font-mono tabular-nums">{member.stats[key]}</td>
               ))}
-              <td>{member.morale}</td>
-              <td>{member.injury}</td>
+              <td>
+                <span className="hud-chip">{member.morale}</span>
+              </td>
+              <td>
+                <span className={`hud-chip ${member.injury === "정상" ? "hud-chip-success" : "hud-chip-danger"}`}>{member.injury}</span>
+              </td>
             </tr>
           ))}
         </tbody>

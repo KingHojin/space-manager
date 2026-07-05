@@ -48,12 +48,12 @@ export const SHIP_GRADES = {
 export const MODULE_SLOTS = ["engine", "weapon-a", "weapon-b", "shield", "cargo", "special"];
 
 export const MENU_ITEMS = [
-  { id: "overview", label: "개요" },
-  { id: "exploration", label: "탐험" },
-  { id: "combat", label: "전투" },
-  { id: "hunting", label: "사냥" },
-  { id: "ship", label: "함선" },
-  { id: "crew", label: "승무원" },
-  { id: "collector", label: "우주 집진기" },
-  { id: "market", label: "시장" },
+  { id: "overview", label: "개요", sub: "작전 현황판" },
+  { id: "exploration", label: "탐험", sub: "성계 탐사" },
+  { id: "combat", label: "전투", sub: "전술 상황" },
+  { id: "hunting", label: "사냥", sub: "생물 사냥" },
+  { id: "ship", label: "함선", sub: "모듈 & 업그레이드" },
+  { id: "crew", label: "승무원", sub: "대원 관리" },
+  { id: "collector", label: "우주 집진기", sub: "자원 수집" },
+  { id: "market", label: "시장", sub: "거래 & 환전" },
 ];
