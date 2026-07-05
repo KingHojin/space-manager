@@ -145,6 +145,17 @@ function crewMarkerTransform(point) {
   return `translate(calc(${point.x} * var(--ship-map-w) / 100), calc(${point.y} * var(--ship-map-h) / 100)) translate(-50%, -50%)`;
 }
 
+function deriveBarkTrigger(activity, animState) {
+  const text = `${activity?.detail ?? ""} ${activity?.action ?? ""} ${activity?.station ?? ""}`;
+  if (/표류/.test(text)) return "onDrift";
+  if (/연료/.test(text)) return "onLowFuel";
+  if (animState === "treat") return "onTreat";
+  if (animState === "down") return "onDown";
+  if (animState === "rest") return "onRest";
+  if (activity?.intent === "crisis-response" || animState === "panic") return "onCrisis";
+  return null;
+}
+
 export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], compact = false, onCrewClick }) {
   const isPaused = useGameStore((state) => state.isPaused);
   const motionByCrewId = useCrewMotionStore((state) => state.motionByCrewId);
@@ -163,7 +174,8 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
 
   const motionTargets = useMemo(() => roomAssignments.map(({ member, activity, roomId, slotIndex }) => {
     const point = roomAnchorPoint(roomId, member.id, slotIndex);
-    return { crewId: member.id, roomId, targetX: point.x, targetY: point.y, animState: deriveTargetAnimState(activity, member), updatedAt: activity?.updatedAt ?? 0 };
+    const animState = deriveTargetAnimState(activity, member);
+    return { crewId: member.id, roomId, targetX: point.x, targetY: point.y, animState, barkTrigger: deriveBarkTrigger(activity, animState), updatedAt: activity?.updatedAt ?? 0 };
   }), [roomAssignments]);
 
   useEffect(() => {
@@ -174,7 +186,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
     <section className="overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew C</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
       <div ref={mapRef} className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
         <div className="absolute inset-x-[8%] top-[6%] h-[90%] rounded-[42%] border border-cyan-300/20 bg-gradient-to-b from-slate-900/80 to-slate-950/90" />
@@ -213,8 +225,10 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const idleAction = motion?.idleAction ?? "stand";
           const meta = animMeta(animState, idleAction);
           const moving = animState === "walk";
+          const barkText = motion?.bark?.text;
           return (
             <button key={member.id} className="absolute left-0 top-0 z-20" style={{ transform: crewMarkerTransform(point), willChange: moving ? "transform" : "auto" }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"} · ${meta.label}`}>
+              {!compact && barkText && <span className={`crew-bark-bubble crew-bark-${motion.bark.trigger ?? "default"}`} aria-hidden="true">{barkText}</span>}
               <span className={`crew-marker-core crew-marker-${animState} crew-idle-${idleAction} relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>
                 <span className={`crew-marker-avatar ${motion?.facing === "left" ? "crew-marker-facing-left" : ""}`}>{member.name.slice(0, 1)}</span>
                 <span className={`crew-marker-state-badge crew-marker-state-${animState}`}>{meta.symbol}</span>

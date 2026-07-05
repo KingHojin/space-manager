@@ -18,11 +18,11 @@ Implemented first:
 - animation-state placeholders and visual states
 - low-frequency idle actions
 - rAF pause/culling refinements
-- future bark hooks
+- bark bubbles and trigger data
 
 ### Layer B — Inner Life
 
-Gameplay-affecting state. Not implemented in PR A, PR B, or PR C.
+Gameplay-affecting state. Not implemented in PR A, PR B, PR C, or PR D.
 
 Planned later:
 
@@ -107,19 +107,69 @@ Planned later:
 - CSS-only idle micro animations were added.
 - No gameplay values or crew AI decisions are changed.
 
-## What PR A/B/C intentionally do not do
+## PR D implemented
 
-- No bark speech bubbles yet.
-- No personality, mood, or social relations yet.
+### Files
+
+- `src/data/barks.js`
+- `src/stores/crewMotionStore.js`
+- `src/components/ship/ShipInterior.jsx`
+- `src/crewMotion.css`
+- `docs/PHASE_13_LIVING_CREW.md`
+
+### Behavior
+
+- Added trigger-based bark data:
+  - `onIdle`
+  - `onChat`
+  - `onWork`
+  - `onRest`
+  - `onTreat`
+  - `onCrisis`
+  - `onDown`
+  - `onLowFuel`
+  - `onDrift`
+- Bark data is presentation-only and can carry optional future fields such as `archetype`, but no personality/archetype logic is implemented.
+- `crewMotionStore` now tracks:
+  - `bark: { text, until, trigger } | null`
+  - per-crew bark cooldown
+  - low-frequency bark roll timing
+  - a small global visible-bark cap through active motion state inspection
+- Bark timers use `performance.now()`.
+- Idle actions can trigger `onIdle` or `onChat` barks at low frequency.
+- State entry can lightly trigger `onWork`, `onRest`, `onTreat`, `onCrisis`, `onDown`, `onLowFuel`, or `onDrift` barks.
+- Existing rAF pause/culling still controls bark roll/expiry work because bark updates live inside `crewMotionStore.tick`.
+- `ShipInterior` renders small non-interactive speech bubbles above crew markers.
+- Compact mode omits bark bubbles to reduce clutter.
+- Bark bubbles use absolute positioning and do not intercept crew marker clicks.
+- CSS includes a small pop animation and `prefers-reduced-motion` fallback.
+- No job speed, crisis resolution, injury, resource, save, or crew AI decision values are changed.
+
+## Layer A completed state
+
+Layer A now covers the visible-life package:
+
+- smooth movement
+- facing
+- visible work/rest/treat/panic/down states
+- idle micro-actions
+- viewport/tab/pause culling
+- trigger-based bark bubbles
+
+## What PR A/B/C/D intentionally do not do
+
+- No personality, mood, or social relations.
 - No job speed modifiers.
 - No panic/problem behavior.
 - No save migration.
+- No persisted crew motion/bark state.
 
 ## Local check
 
 Connector cannot run local commands. Verify locally:
 
 ```bash
+npm install
 npm run build
 npm run dev
 ```
@@ -132,13 +182,17 @@ Manual checks:
 4. Confirm crew markers move smoothly instead of teleporting.
 5. Confirm walk/work/rest/treat/panic/down have distinct visual expressions.
 6. Confirm idle crew occasionally show look/stretch/coffee/chat without log spam.
-7. Scroll ShipInterior out of view and confirm rAF work stops via visible culling.
-8. Switch browser tab away and confirm rAF work stops.
-9. Pause the game and confirm motion stops.
-10. Resume and confirm motion continues.
-11. Confirm no gameplay values change from motion/visuals alone.
+7. Confirm idle or chat barks appear occasionally, not constantly.
+8. Trigger or wait for crisis response and confirm short crisis barks can appear.
+9. Confirm treatment/rest/down barks are rare and not visually noisy.
+10. Confirm no more than a small number of bark bubbles appear at once.
+11. Confirm compact mode does not clutter the map with bark bubbles.
+12. Scroll ShipInterior out of view and confirm rAF work stops via visible culling.
+13. Switch browser tab away and confirm rAF work stops.
+14. Pause the game and confirm motion and bark roll/expiry work stops.
+15. Resume and confirm motion and bark display continue.
+16. Confirm no gameplay values change from motion/visuals alone.
 
 ## Next PRs
 
-- PR D: bark bubbles and trigger data.
-- PR E onward: Layer B personality/mood/social.
+- PR E onward: Layer B personality/mood/social, only after explicitly opening gameplay-affecting design work.
