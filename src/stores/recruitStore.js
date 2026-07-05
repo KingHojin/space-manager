@@ -26,20 +26,7 @@ function rollRarity(pity) {
 }
 
 function instantiateCrew(template) {
-  return {
-    id: `recruit-${template.templateId}-${createRngSeed()}`,
-    templateId: template.templateId,
-    name: template.name,
-    role: template.role,
-    morale: "보통",
-    injury: "healthy",
-    fatigue: 0,
-    experience: 0,
-    trait: template.trait,
-    rarity: template.rarity,
-    portrait: template.portrait,
-    stats: { ...template.baseStats },
-  };
+  return { id: `recruit-${template.templateId}-${createRngSeed()}`, templateId: template.templateId, name: template.name, role: template.role, morale: "보통", injury: "healthy", fatigue: 0, experience: 0, trait: template.trait, rarity: template.rarity, portrait: template.portrait, stats: { ...template.baseStats } };
 }
 
 function currentCapacity() {
@@ -81,8 +68,9 @@ export const useRecruitStore = create(
       pull: (count = 1) => {
         const safeCount = count === 10 ? 10 : 1;
         const cost = safeCount === 10 ? RECRUIT_COST.ten : RECRUIT_COST.single;
+        const crew = useCrewStore.getState().crew ?? [];
+        if (crew.length >= currentCapacity()) return { ok: false, reason: "capacity" };
         if (!useGameStore.getState().spendCredits(cost)) return { ok: false, reason: "credits" };
-
         const results = [];
         let pity = get().pity ?? 0;
         let refund = 0;
@@ -127,15 +115,7 @@ export const useRecruitStore = create(
     }),
     {
       name: "space-manager-recruit",
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState ?? {}),
-        currency: persistedState?.currency ?? 0,
-        pity: persistedState?.pity ?? 0,
-        pullHistory: persistedState?.pullHistory ?? [],
-        candidatePool: persistedState?.candidatePool ?? [],
-        lastResults: persistedState?.lastResults ?? [],
-      }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), currency: persistedState?.currency ?? 0, pity: persistedState?.pity ?? 0, pullHistory: persistedState?.pullHistory ?? [], candidatePool: persistedState?.candidatePool ?? [], lastResults: persistedState?.lastResults ?? [] }),
     },
   ),
 );
