@@ -11,6 +11,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, summarizeSituations } from "../../systems/commandCenter";
+import { summarizeCrewAI } from "../../systems/crewAI";
 import { formatGameDate } from "../../systems/gameClock";
 import { getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
@@ -57,6 +58,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const crew = useCrewStore((state) => state.crew);
   const trainingQueue = useCrewStore((state) => state.trainingQueue ?? []);
   const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
+  const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);
@@ -73,6 +75,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
   const injuredCrewCount = crew.filter((member) => member.alive && member.injury && member.injury !== "정상").length;
   const tiredCrewCount = crew.filter((member) => member.alive && (member.fatigue ?? 0) >= 70).length;
+  const crewAiSummary = summarizeCrewAI(crewActivities);
   const situations = getSituationCards({
     resources,
     activeTravel,
@@ -93,7 +96,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
   const commandCards = [
     { id: "exploration", icon: Compass, title: "항로 설정", desc: activeTravel ? "항해 중 이벤트 대응" : "새 목적지 지정", badge: activeTravel ? `${Math.round(travelProgress)}%` : `${discoveredRatio}%` },
-    { id: "crew", icon: Users, title: "승무원 운영", desc: `피로 ${tiredCrewCount} · 부상 ${injuredCrewCount}`, badge: `${crew.filter((member) => member.alive).length}명` },
+    { id: "crew", icon: Users, title: "승무원 운영", desc: `AI 활동 ${crewAiSummary.total} · 피로 ${tiredCrewCount}`, badge: `${crew.filter((member) => member.alive).length}명` },
     { id: "ship", icon: Wrench, title: "함선 정비", desc: `작업 큐 ${queuedWorkCount}건`, badge: `${Math.round(resources.hull)}%` },
     { id: "market", icon: Briefcase, title: "계약/보급", desc: activeContracts.length ? "진행 중 의뢰 확인" : "새 의뢰 수락", badge: activeContracts.length ? `${activeContracts.length}건` : `신규 ${nextContracts.length}` },
   ];
@@ -181,7 +184,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
             <StatusTile label="결재 큐" value={`${situationSummary.total}건`} />
             <StatusTile label="긴급" value={`${situationSummary.critical}건`} />
             <StatusTile label="작업 큐" value={`${queuedWorkCount}건`} />
-            <StatusTile label="스킬" value={`${skillPoints}P`} />
+            <StatusTile label="승무원 AI" value={`${crewAiSummary.high + crewAiSummary.emergency}/${crewAiSummary.total}`} />
           </div>
         </div>
       </section>
@@ -230,20 +233,27 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
         <section>
-          <div className="section-title"><Users size={18} />승무원 자율 행동</div>
+          <div className="flex items-center justify-between gap-3">
+            <div className="section-title"><Users size={18} />승무원 AI 행동</div>
+            <span className="hud-chip hud-chip-accent">자동 배정</span>
+          </div>
           <div className="mt-3 grid gap-2">
-            {crew.slice(0, 5).map((member, index) => (
-              <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}>
-                <div className="flex min-w-0 items-center gap-2">
-                  <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span>
-                  <div className="min-w-0">
-                    <div className="truncate font-semibold text-slate-100">{member.name}</div>
-                    <div className="truncate text-xs text-slate-400">{member.role} · {getCrewActivity(member, currentMinute, index)}</div>
+            {crew.slice(0, 5).map((member, index) => {
+              const activity = crewActivities.find((entry) => entry.memberId === member.id);
+              const actionText = activity ? `${activity.station} · ${activity.action}` : getCrewActivity(member, currentMinute, index);
+              return (
+                <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onNavigate?.("crew")}>
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="grid h-8 w-8 shrink-0 place-items-center rounded border border-cyan-400/20 bg-cyan-400/10">{ROLE_ICON_LABEL[member.role] ?? "👤"}</span>
+                    <div className="min-w-0">
+                      <div className="truncate font-semibold text-slate-100">{member.name}</div>
+                      <div className="truncate text-xs text-slate-400">{member.role} · {actionText}</div>
+                    </div>
                   </div>
-                </div>
-                <span className={(member.fatigue ?? 0) > 65 ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span>
-              </button>
-            ))}
+                  <span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "text-xs font-bold text-amber-300" : "text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span>
+                </button>
+              );
+            })}
           </div>
         </section>
 
