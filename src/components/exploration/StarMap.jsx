@@ -1,3 +1,7 @@
+import { useMemo, useRef } from "react";
+import { Canvas, useFrame } from "@react-three/fiber";
+import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+
 const DANGER_TONES = {
   low: { solid: "#38bdf8", glow: "rgb(56 189 248 / 0.6)", bg20: "rgb(56 189 248 / 0.2)" },
   mid: { solid: "#fbbf24", glow: "rgb(251 191 36 / 0.6)", bg20: "rgb(251 191 36 / 0.2)" },
@@ -10,7 +14,76 @@ function dangerTone(danger) {
   return DANGER_TONES.low;
 }
 
-const BOUNDARY_POINTS = "10,50 30,14 62,10 92,22 94,66 70,84 30,86 8,72";
+function positionFromZone(zone) {
+  const x = ((zone.pos?.x ?? 50) - 50) / 8;
+  const z = ((zone.pos?.y ?? 50) - 50) / 8;
+  const y = Math.sin((zone.distance ?? 0) * 0.8) * 0.45 + ((zone.richness ?? 1) - 3) * 0.08;
+  return [x, y, z];
+}
+
+function StarNode({ zone, discovered, current, selected, onSelect }) {
+  const ref = useRef(null);
+  const tone = dangerTone(zone.danger);
+  const position = positionFromZone(zone);
+  const radius = current ? 0.17 : selected ? 0.15 : 0.11;
+
+  useFrame((_, delta) => {
+    if (ref.current) ref.current.rotation.y += delta * (current ? 1.6 : 0.55);
+  });
+
+  if (!discovered) {
+    return (
+      <group position={position}>
+        <mesh>
+          <sphereGeometry args={[0.045, 12, 12]} />
+          <meshBasicMaterial color="#475569" transparent opacity={0.55} />
+        </mesh>
+        <Html distanceFactor={8} center>
+          <div className="pointer-events-none select-none rounded border border-slate-700/60 bg-slate-950/80 px-1.5 py-0.5 text-[0.6rem] text-slate-500">?</div>
+        </Html>
+      </group>
+    );
+  }
+
+  return (
+    <group position={position}>
+      <mesh ref={ref} onClick={() => onSelect(zone)}>
+        <sphereGeometry args={[radius, 24, 24]} />
+        <meshStandardMaterial color={tone.solid} emissive={tone.solid} emissiveIntensity={current ? 1.7 : 0.8} roughness={0.4} />
+      </mesh>
+      {(current || selected) && (
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[0.28, 0.31, 42]} />
+          <meshBasicMaterial color={current ? "#fbbf24" : "#67e8f9"} transparent opacity={0.72} side={2} />
+        </mesh>
+      )}
+      <Html distanceFactor={7.5} center>
+        <button
+          type="button"
+          onClick={() => onSelect(zone)}
+          className={`min-w-20 rounded border px-2 py-1 text-left text-[0.65rem] shadow-lg backdrop-blur ${current ? "border-amber-300/60 bg-amber-300/15 text-amber-100" : selected ? "border-cyan-300/70 bg-cyan-300/15 text-cyan-100" : "border-slate-600/70 bg-slate-950/75 text-slate-100"}`}
+        >
+          <div className="truncate font-semibold">{zone.name}</div>
+          <div className="mt-0.5 flex gap-1 text-[0.55rem] text-slate-400">
+            <span>위험 {zone.danger}</span>
+            <span>자원 {zone.richness}</span>
+          </div>
+        </button>
+      </Html>
+    </group>
+  );
+}
+
+function GridPlane() {
+  const lines = [];
+  for (let i = -6; i <= 6; i += 1) {
+    lines.push(
+      <Line key={`x-${i}`} points={[[-6, -0.55, i], [6, -0.55, i]]} color="#164e63" transparent opacity={0.25} lineWidth={0.5} />,
+      <Line key={`z-${i}`} points={[[i, -0.55, -6], [i, -0.55, 6]]} color="#164e63" transparent opacity={0.25} lineWidth={0.5} />,
+    );
+  }
+  return <group>{lines}</group>;
+}
 
 export default function StarMap({
   zones,
@@ -26,134 +99,48 @@ export default function StarMap({
   const current = zones.find((zone) => zone.id === currentZoneId);
   const routeZones = route.map((zoneId) => zones.find((zone) => zone.id === zoneId)).filter((zone) => zone?.pos);
   const explorationRatio = totalCount > 0 ? (exploredCount / totalCount) * 100 : 0;
+  const routePoints = routeZones.map(positionFromZone);
+  const discoveredSet = useMemo(() => new Set(discoveredZoneIds), [discoveredZoneIds]);
 
   return (
     <div className="starmap-bg relative h-[22rem] w-full overflow-hidden rounded border border-slate-700/70 sm:h-[26rem] xl:h-[30rem]">
-      <svg className="absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-        <polygon
-          points={BOUNDARY_POINTS}
-          fill="rgb(56 189 248 / 0.03)"
-          stroke="rgb(56 189 248 / 0.18)"
-          strokeDasharray="1.5 1.5"
-          strokeWidth="1"
-          vectorEffect="non-scaling-stroke"
-        />
-        {routeZones.length >= 2 && (
-          <polyline
-            points={routeZones.map((zone) => `${zone.pos.x},${zone.pos.y}`).join(" ")}
-            fill="none"
-            stroke="#38bdf8"
-            strokeOpacity="0.55"
-            strokeWidth="1.5"
-            strokeDasharray="4 4"
-            vectorEffect="non-scaling-stroke"
-          />
-        )}
+      <Canvas dpr={[1, 2]} camera={{ position: [0, 5.4, 7.8], fov: 48 }} gl={{ antialias: true }}>
+        <ambientLight intensity={0.35} />
+        <pointLight position={[4, 6, 4]} intensity={1.35} />
+        <Stars radius={70} depth={35} count={1200} factor={2.2} fade speed={0.4} />
+        <GridPlane />
         {current?.pos && (
-          <circle
-            cx={current.pos.x}
-            cy={current.pos.y}
-            r="14"
-            fill="rgb(56 189 248 / 0.04)"
-            stroke="rgb(56 189 248 / 0.25)"
-            strokeDasharray="2 3"
-            strokeWidth="1"
-            vectorEffect="non-scaling-stroke"
-          />
+          <mesh position={positionFromZone(current)} rotation={[Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[1.1, 1.13, 64]} />
+            <meshBasicMaterial color="#38bdf8" transparent opacity={0.18} side={2} />
+          </mesh>
         )}
-      </svg>
+        {routePoints.length >= 2 && <Line points={routePoints} color="#38bdf8" lineWidth={2} transparent opacity={0.65} dashed dashSize={0.25} gapSize={0.16} />}
+        {zones.map((zone) => (
+          <StarNode
+            key={zone.id}
+            zone={zone}
+            discovered={discoveredSet.has(zone.id)}
+            current={zone.id === currentZoneId}
+            selected={selectedZoneId === zone.id && zone.id !== currentZoneId}
+            onSelect={onSelect}
+          />
+        ))}
+        <OrbitControls enablePan={false} minDistance={5.5} maxDistance={11} maxPolarAngle={Math.PI / 2.05} />
+      </Canvas>
 
-      <div className="pointer-events-none absolute left-3 top-3">
-        <div className="hud-label">GALAXY SECTOR</div>
+      <div className="pointer-events-none absolute left-3 top-3 rounded border border-slate-700/70 bg-slate-950/70 p-3 backdrop-blur">
+        <div className="hud-label">3D GALAXY SECTOR</div>
         <div className="font-bold text-slate-100">{sectorName}</div>
-        <div className="mt-1 w-24">
-          <div className="hud-gauge">
-            <span className="hud-gauge-fill" style={{ width: `${explorationRatio}%` }} />
-          </div>
+        <div className="mt-2 w-28">
+          <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${explorationRatio}%` }} /></div>
         </div>
-        <div className="mt-0.5 text-[0.65rem] text-slate-400">
-          {exploredCount}/{totalCount}
-        </div>
+        <div className="mt-1 text-[0.65rem] text-slate-400">{exploredCount}/{totalCount} discovered</div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 right-3 hud-label">스캐너 범위 15 LY</div>
-
-      <div className="pointer-events-none absolute left-[8%] top-[38%] select-none text-xl font-bold tracking-[0.3em] text-slate-500/25">
-        {sectorName}
-      </div>
-
-      <div className="absolute inset-0">
-        {zones.map((zone) => {
-          if (!zone.pos) return null;
-          const discovered = discoveredZoneIds.includes(zone.id);
-          const isCurrent = zone.id === currentZoneId;
-          const isSelected = selectedZoneId === zone.id && !isCurrent;
-          const tone = dangerTone(zone.danger);
-
-          return (
-            <div
-              key={zone.id}
-              className="absolute -translate-x-1/2 -translate-y-1/2"
-              style={{ left: `${zone.pos.x}%`, top: `${zone.pos.y}%` }}
-            >
-              {discovered ? (
-                <button
-                  type="button"
-                  title={zone.name}
-                  onClick={() => onSelect(zone)}
-                  className="flex flex-col items-center gap-0.5 p-1"
-                  style={{ minWidth: 28, minHeight: 28 }}
-                >
-                  <div className="relative flex h-12 w-12 items-center justify-center">
-                    {isCurrent && (
-                      <>
-                        <span className="absolute h-12 w-12 rounded-full border border-amber-300/30" />
-                        <span
-                          className="absolute h-[30px] w-[30px] rounded-full border border-dashed border-amber-300/70"
-                          style={{ animation: "starmap-spin 12s linear infinite" }}
-                        />
-                      </>
-                    )}
-                    {isSelected && (
-                      <span
-                        className="absolute h-[26px] w-[26px] rounded-full border border-cyan-300/80"
-                        style={{ boxShadow: "0 0 10px 2px rgb(103 232 249 / 0.35)" }}
-                      />
-                    )}
-                    <span
-                      className="relative z-10 h-[10px] w-[10px] rounded-full"
-                      style={{ background: tone.solid, boxShadow: `0 0 8px 2px ${tone.glow}` }}
-                    />
-                  </div>
-                  <span className="flex items-center gap-1">
-                    <span
-                      className="text-[0.7rem] font-semibold text-slate-100"
-                      style={{ textShadow: "0 1px 4px rgb(0 0 0 / 0.9)" }}
-                    >
-                      {zone.name}
-                    </span>
-                    {zone.danger >= 3 && (
-                      <span
-                        className="h-2 w-2 rotate-45"
-                        style={{ border: `1px solid ${tone.solid}`, background: tone.bg20 }}
-                      />
-                    )}
-                  </span>
-                  {isCurrent && <span className="hud-chip hud-chip-accent">현재 위치</span>}
-                </button>
-              ) : (
-                <div
-                  className="flex flex-col items-center justify-center gap-0.5 p-1"
-                  style={{ minWidth: 28, minHeight: 28 }}
-                  title="미확인 구역"
-                >
-                  <span className="h-[6px] w-[6px] rounded-full bg-slate-600/50" />
-                  <span className="text-[0.6rem] text-slate-600">?</span>
-                </div>
-              )}
-            </div>
-          );
-        })}
+      <div className="pointer-events-none absolute bottom-3 right-3 rounded border border-cyan-400/20 bg-slate-950/70 px-3 py-2 text-right backdrop-blur">
+        <div className="hud-label">드래그 회전 · 휠 줌</div>
+        <div className="text-xs text-cyan-100">스캐너 범위 15 LY</div>
       </div>
     </div>
   );
