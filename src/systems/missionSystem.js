@@ -36,6 +36,12 @@ function pickWeighted(entries, rng) {
   return entries[entries.length - 1]?.value ?? null;
 }
 
+function reputationRequirementForRisk(riskId) {
+  if (riskId === "extreme") return 5;
+  if (riskId === "high") return 2;
+  return 0;
+}
+
 function reachableNodes(sector, currentNodeId) {
   const nodes = sector?.nodes ?? [];
   if (!currentNodeId) return nodes;
@@ -98,6 +104,7 @@ export function instantiateMission(template, { destination = null, seed = DEFAUL
     risk: risk.id,
     riskLabel: risk.label,
     riskWeight: risk.weight,
+    reputationRequired: reputationRequirementForRisk(risk.id),
     distance: distance.id,
     distanceLabel: distance.label,
     durationHint: distance.durationHint,
@@ -144,10 +151,15 @@ export function normalizeMissionRecord(mission) {
   if (!mission?.id) return null;
   const template = getMissionTemplate(mission.templateId);
   const status = Object.values(MISSION_STATUS).includes(mission.status) ? mission.status : MISSION_STATUS.offered;
+  const fallbackRisk = MISSION_RISK[mission.risk ?? template?.risk] ?? MISSION_RISK.low;
   return {
     ...(template ? instantiateMission(template, { destination: null, seed: mission.id, index: 0, currentMinute: mission.offeredAt ?? 0 }) : {}),
     ...mission,
     status,
+    risk: mission.risk ?? fallbackRisk.id,
+    riskLabel: mission.riskLabel ?? fallbackRisk.label,
+    riskWeight: mission.riskWeight ?? fallbackRisk.weight,
+    reputationRequired: mission.reputationRequired ?? reputationRequirementForRisk(fallbackRisk.id),
     tags: Array.isArray(mission.tags) ? mission.tags : template?.tags ?? [],
     encounterTags: Array.isArray(mission.encounterTags) ? mission.encounterTags : template?.encounterTags ?? [],
     reward: mission.reward ?? template?.reward ?? {},
@@ -155,12 +167,13 @@ export function normalizeMissionRecord(mission) {
   };
 }
 
-export function canAcceptMission({ mission, activeMissions = [], vesselId }) {
+export function canAcceptMission({ mission, activeMissions = [], vesselId, availableReputation = 0 }) {
   const normalized = normalizeMissionRecord(mission);
   if (!normalized) return { ok: false, reason: "notFound" };
   if (normalized.status !== MISSION_STATUS.offered) return { ok: false, reason: "notOffered" };
   if (!vesselId) return { ok: false, reason: "missingVesselId" };
   if (activeMissions.some((entry) => entry.vesselId === vesselId && entry.status === MISSION_STATUS.active)) return { ok: false, reason: "vesselBusy" };
+  if ((normalized.reputationRequired ?? 0) > availableReputation) return { ok: false, reason: "reputationLocked", required: normalized.reputationRequired, available: availableReputation, mission: normalized };
   return { ok: true, mission: normalized };
 }
 
