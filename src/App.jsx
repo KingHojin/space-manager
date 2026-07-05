@@ -11,6 +11,7 @@ import Ship from "./components/panels/Ship";
 import Crew from "./components/panels/Crew";
 import Collector from "./components/panels/Collector";
 import Market from "./components/panels/Market";
+import SkillTree from "./components/panels/SkillTree";
 import OverlayModal from "./components/modals/OverlayModal";
 import StatsModal from "./components/modals/StatsModal";
 import InventoryModal from "./components/modals/InventoryModal";
@@ -21,19 +22,20 @@ import SaveLoadModal from "./components/modals/SaveLoadModal";
 import { useGameClock } from "./systems/gameClock";
 
 const panels = {
-  overview: { title: "작전 개요", component: Overview },
-  exploration: { title: "탐험", component: Exploration },
+  overview: { title: "홈", component: Overview },
+  exploration: { title: "지도", component: Exploration },
   combat: { title: "전투", component: Combat },
   hunting: { title: "사냥", component: Hunting },
   ship: { title: "함선", component: Ship },
   crew: { title: "승무원", component: Crew },
-  collector: { title: "우주 집진기", component: Collector },
+  collector: { title: "컬렉션", component: Collector },
   market: { title: "시장", component: Market },
+  skilltree: { title: "스킬트리", component: SkillTree },
 };
 
 const modals = {
   stats: { title: "스탯", component: StatsModal },
-  inventory: { title: "아이템", component: InventoryModal },
+  inventory: { title: "인벤토리", component: InventoryModal },
   map: { title: "성계 지도", component: MapModal },
   cards: { title: "카드", component: CardsModal },
   log: { title: "로그", component: LogModal },
@@ -47,6 +49,7 @@ export default function App() {
   const Panel = panels[activePanel].component;
   const modal = useMemo(() => (activeModal ? modals[activeModal] : null), [activeModal]);
   const ModalContent = modal?.component;
+  const showPanelTitle = activePanel !== "overview";
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
@@ -56,12 +59,14 @@ export default function App() {
           <Sidebar activePanel={activePanel} onChange={setActivePanel} onOpenModal={setActiveModal} />
         </div>
         <main className="grid min-h-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)_auto] bg-slate-900">
-          <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
-            <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
-          </div>
+          {showPanelTitle && (
+            <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
+              <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
+            </div>
+          )}
           <div className="min-h-0 overflow-auto p-3 sm:p-4">
-            <Panel onNavigate={setActivePanel} />
+            <Panel onNavigate={setActivePanel} onOpenModal={setActiveModal} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
         </main>
