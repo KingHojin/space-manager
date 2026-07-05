@@ -10,6 +10,11 @@ export const items = [
   { id: "machine-fang", name: "기계 송곳니", rarity: "common", qty: 0, type: "salvage" },
   { id: "bio-fiber", name: "생체 섬유", rarity: "common", qty: 0, type: "biology" },
   { id: "emergency-oxygen-pack", name: "응급 산소 팩", rarity: "common", qty: 2, type: "consumable" },
+  { id: "salvage-scrap", name: "폐자재", rarity: "common", qty: 0, type: "mission-reward" },
+  { id: "chart-data", name: "항로 데이터", rarity: "common", qty: 0, type: "mission-reward" },
+  { id: "ore-sample", name: "광석 샘플", rarity: "common", qty: 0, type: "mission-reward" },
+  { id: "research-data", name: "연구 데이터", rarity: "common", qty: 0, type: "mission-reward" },
+  { id: "trade-voucher", name: "거래권", rarity: "common", qty: 0, type: "mission-reward" },
 
   { id: "ion-core", name: "이온 코어", rarity: "uncommon", qty: 3, type: "module-part" },
   { id: "cryo-sample", name: "냉각 샘플", rarity: "uncommon", qty: 2, type: "science" },
@@ -20,6 +25,9 @@ export const items = [
   { id: "quantum-circuit", name: "양자 회로", rarity: "uncommon", qty: 0, type: "module-part" },
   { id: "federation-permit", name: "연방 허가증", rarity: "uncommon", qty: 0, type: "intel" },
   { id: "hibernation-capsule", name: "동면 캡슐", rarity: "uncommon", qty: 1, type: "consumable" },
+  { id: "reputation-token", name: "평판 증표", rarity: "uncommon", qty: 0, type: "mission-reward" },
+  { id: "blueprint-fragment", name: "설계도 조각", rarity: "uncommon", qty: 0, type: "mission-reward" },
+  { id: "recruit-signal", name: "영입 신호", rarity: "uncommon", qty: 0, type: "mission-reward" },
 
   { id: "nanite-gel", name: "나노머신 겔", rarity: "rare", qty: 2, type: "consumable" },
   { id: "ancient-relay", name: "고대 중계기", rarity: "rare", qty: 1, type: "artifact" },
@@ -31,6 +39,7 @@ export const items = [
   { id: "tactical-ai-chip", name: "전술 AI 칩", rarity: "rare", qty: 0, type: "module-part" },
   { id: "black-market-token", name: "암시장 토큰", rarity: "rare", qty: 0, type: "intel" },
   { id: "ancient-coordinate", name: "고대 좌표 조각", rarity: "rare", qty: 0, type: "navigation" },
+  { id: "artifact-cache", name: "유물 캐시", rarity: "rare", qty: 0, type: "mission-reward" },
 
   { id: "phase-crystal", name: "위상 수정", rarity: "epic", qty: 0, type: "artifact" },
   { id: "void-map", name: "공허 성도", rarity: "epic", qty: 0, type: "navigation" },
