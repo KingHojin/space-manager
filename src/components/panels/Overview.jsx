@@ -1,5 +1,6 @@
 import {
   Activity,
+  Briefcase,
   Compass,
   Cross,
   Crosshair,
@@ -13,10 +14,14 @@ import {
   Wrench,
 } from "lucide-react";
 import { DUST, RESOURCES } from "../../data/constants";
+import { contracts } from "../../data/contracts";
 import { creatures } from "../../data/creatures";
+import { factions } from "../../data/factions";
 import { getAllZones, getZoneById } from "../../data/sectors";
+import { useContractStore } from "../../stores/contractStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
+import { useFactionStore } from "../../stores/factionStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import PlanetCanvas from "../three/PlanetCanvas";
@@ -45,7 +50,7 @@ const quickTiles = [
   { id: "combat", label: "전투", desc: "라운드 교전 중계", icon: Crosshair, border: "border-red-500/40 hover:border-red-400/70", iconColor: "text-red-400" },
   { id: "hunting", label: "사냥", desc: "생물체 추적", icon: PawPrint, border: "border-emerald-500/40 hover:border-emerald-400/70", iconColor: "text-emerald-400" },
   { id: "collector", label: "우주 집진기", desc: "카드 획득", icon: Sparkles, border: "border-violet-500/40 hover:border-violet-400/70", iconColor: "text-violet-400" },
-  { id: "market", label: "시장", desc: "보급 & 정비", icon: Store, border: "border-amber-500/40 hover:border-amber-400/70", iconColor: "text-amber-400" },
+  { id: "market", label: "시장", desc: "보급·의뢰·상점", icon: Store, border: "border-amber-500/40 hover:border-amber-400/70", iconColor: "text-amber-400" },
 ];
 
 export default function Overview({ onNavigate }) {
@@ -61,12 +66,18 @@ export default function Overview({ onNavigate }) {
   const items = useInventoryStore((state) => state.items);
   const cards = useInventoryStore((state) => state.cards);
   const crew = useCrewStore((state) => state.crew);
+  const acceptedIds = useContractStore((state) => state.acceptedIds);
+  const completedIds = useContractStore((state) => state.completedIds);
+  const reputation = useFactionStore((state) => state.reputation);
+  const activeContracts = contracts.filter((contract) => acceptedIds.includes(contract.id));
   const dangerZoneCount = allZones.filter((z) => discoveredZoneIds.includes(z.id) && z.danger >= 4).length;
   const hiddenCount = allZones.length - discoveredZoneIds.length;
   const unscannedDiscovered = discoveredZoneIds.filter((id) => !scannedZoneIds.includes(id)).length;
   const tiredCrew = crew.filter((member) => (member.fatigue ?? 0) >= 60).length;
   const damaged = resources.hull < 70 || resources.fuel < 35 || resources.oxygen < 35;
+  const bestFaction = [...factions].sort((a, b) => (reputation[b.id] ?? 0) - (reputation[a.id] ?? 0))[0];
   const missionList = [
+    activeContracts.length > 0 ? `진행 중 계약 ${activeContracts.length}건 처리` : "시장 의뢰 게시판에서 계약 수락 가능",
     damaged ? "시장 또는 아이템으로 함선 핵심 자원을 회복" : "현재 자원 안정권 유지 중",
     unscannedDiscovered > 0 ? `발견됐지만 미스캔 구역 ${unscannedDiscovered}곳 조사` : `새 구역 탐색: 남은 미발견 ${hiddenCount}곳`,
     dust >= DUST.SINGLE_DRAW_COST ? "우주 집진기 카드 뽑기 가능" : `우주 먼지 ${DUST.SINGLE_DRAW_COST - Math.floor(dust)} 더 수집`,
@@ -89,6 +100,7 @@ export default function Overview({ onNavigate }) {
                 <span className="hud-chip hud-chip-warn">위험 {zone?.danger}</span>
                 <span className="hud-chip hud-chip-success">자원 {zone?.richness}</span>
                 <span className="hud-chip hud-chip-accent">탐사 {discoveredZoneIds.length}/{allZones.length}</span>
+                <span className="hud-chip">계약 {activeContracts.length} / 완료 {completedIds.length}</span>
               </div>
             </div>
             <button className="primary-button self-start" onClick={() => onNavigate?.("exploration")}>탐험 열기</button>
@@ -130,10 +142,20 @@ export default function Overview({ onNavigate }) {
         <div className="section-title"><Activity size={18} />실시간 목표</div>
         <div className="mt-4 grid gap-2 text-sm text-slate-300">
           {missionList.map((mission, index) => (
-            <div key={mission} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">
-              {index + 1}. {mission}
-            </div>
+            <div key={mission} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">{index + 1}. {mission}</div>
           ))}
+        </div>
+      </section>
+
+      <section>
+        <div className="section-title"><Briefcase size={18} />계약 & 세력</div>
+        <div className="mt-4 grid gap-2 text-sm text-slate-300">
+          <div className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">우호 세력: {bestFaction?.name ?? "없음"} ({reputation[bestFaction?.id] ?? 0})</div>
+          {activeContracts.length === 0 ? (
+            <div className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">진행 중 계약 없음. 시장에서 의뢰를 수락하세요.</div>
+          ) : (
+            activeContracts.slice(0, 3).map((contract) => <div key={contract.id} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2">{contract.title}</div>)
+          )}
         </div>
       </section>
 
@@ -169,9 +191,7 @@ export default function Overview({ onNavigate }) {
       <section className="xl:col-span-2">
         <div className="section-title"><Sparkles size={18} />최근 이벤트</div>
         <div className="mt-4 grid gap-2">
-          {logs.slice(0, 5).map((log, index) => (
-            <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">{log}</div>
-          ))}
+          {logs.slice(0, 5).map((log, index) => <div key={`${log}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-sm text-slate-300">{log}</div>)}
         </div>
       </section>
     </div>

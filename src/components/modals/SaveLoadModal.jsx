@@ -1,7 +1,15 @@
 import { useState } from "react";
 import { useGameStore } from "../../stores/gameStore";
 
-const saveKeys = ["space-manager-game", "space-manager-ship", "space-manager-crew", "space-manager-inventory", "space-manager-exploration"];
+const saveKeys = [
+  "space-manager-game",
+  "space-manager-ship",
+  "space-manager-crew",
+  "space-manager-inventory",
+  "space-manager-exploration",
+  "space-manager-factions",
+  "space-manager-contracts",
+];
 
 export default function SaveLoadModal() {
   const [payload, setPayload] = useState("");
@@ -12,7 +20,7 @@ export default function SaveLoadModal() {
 
   const exportSave = () => {
     const data = Object.fromEntries(saveKeys.map((key) => [key, localStorage.getItem(key)]));
-    setPayload(JSON.stringify({ version: 1, exportedAt: new Date().toISOString(), data }, null, 2));
+    setPayload(JSON.stringify({ version: 2, exportedAt: new Date().toISOString(), data }, null, 2));
     addLog("저장 데이터 내보내기 완료.");
   };
 
@@ -45,7 +53,7 @@ export default function SaveLoadModal() {
         <button className="secondary-button" onClick={newGame}>새 게임</button>
       </div>
       <p className="text-sm text-slate-400">
-        모든 핵심 상태는 자동 저장됩니다. 다른 브라우저로 옮길 때는 내보내기 텍스트를 복사한 뒤 가져오기에 붙여넣으면 됩니다.
+        모든 핵심 상태는 자동 저장됩니다. 세력 평판과 계약 진행도까지 함께 내보내기/가져오기에 포함됩니다.
       </p>
       <textarea
         className="min-h-48 rounded border border-slate-700 bg-slate-950 p-3 font-mono text-xs text-slate-200 outline-none focus:border-cyan-400"

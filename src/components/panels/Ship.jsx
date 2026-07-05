@@ -5,15 +5,24 @@ import { useGameStore } from "../../stores/gameStore";
 import { useShipStore } from "../../stores/shipStore";
 
 export default function Ship() {
-  const { modules, installed, equipModule, upgradeModule } = useShipStore();
+  const { modules, installed, unlockedModuleIds, equipModule, upgradeModule } = useShipStore();
   const addLog = useGameStore((state) => state.addLog);
+  const unlocked = unlockedModuleIds ?? [];
 
   const equip = (slot, module) => {
+    if (!unlocked.includes(module.id)) {
+      addLog(`${module.name} 모듈은 아직 보유하지 않았습니다. 시장에서 구매하세요.`);
+      return;
+    }
     equipModule(slot, module.id);
     addLog(`${slot} 슬롯에 ${module.name} 장착.`);
   };
 
   const upgrade = (module) => {
+    if (!unlocked.includes(module.id)) {
+      addLog(`${module.name} 개선 실패: 보유하지 않은 모듈입니다.`);
+      return;
+    }
     upgradeModule(module.id);
     addLog(`${module.name} 모듈을 Lv.${module.level + 1}로 개선했습니다.`);
   };
@@ -57,8 +66,9 @@ export default function Ship() {
                 <div className="mt-3 grid gap-2">
                   {slotModules.map((module) => {
                     const equipped = module.id === activeId;
+                    const owned = unlocked.includes(module.id);
                     return (
-                      <div key={module.id} className="rounded border border-slate-700/70 bg-slate-900/70 p-3">
+                      <div key={module.id} className={`rounded border p-3 ${owned ? "border-slate-700/70 bg-slate-900/70" : "border-slate-800 bg-slate-950/40 opacity-70"}`}>
                         <div className="flex flex-wrap items-start justify-between gap-2">
                           <div className="min-w-0">
                             <div className="font-semibold text-slate-100">
@@ -72,13 +82,16 @@ export default function Ship() {
                               ))}
                             </div>
                           </div>
-                          <Badge rarity={module.rarity}>{module.rarity}</Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge rarity={module.rarity}>{module.rarity}</Badge>
+                            <span className={`hud-chip ${owned ? "hud-chip-success" : ""}`}>{owned ? "보유" : "미보유"}</span>
+                          </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-2">
-                          <button className="secondary-button" disabled={equipped} onClick={() => equip(slot, module)}>
-                            {equipped ? "장착 중" : "장착"}
+                          <button className="secondary-button" disabled={equipped || !owned} onClick={() => equip(slot, module)}>
+                            {equipped ? "장착 중" : owned ? "장착" : "구매 필요"}
                           </button>
-                          <button className="secondary-button" onClick={() => upgrade(module)}>
+                          <button className="secondary-button" disabled={!owned} onClick={() => upgrade(module)}>
                             개선
                           </button>
                         </div>

@@ -7,6 +7,8 @@ const initialInstalled = modules.reduce((acc, module) => {
   return acc;
 }, {});
 
+const initialUnlockedIds = modules.filter((module) => module.defaultInstalled).map((module) => module.id);
+
 let installedModulesCache = null;
 let installedModulesCacheKey = null;
 
@@ -28,15 +30,31 @@ function mergeInstalled(savedInstalled = {}) {
   return next;
 }
 
+function mergeUnlocked(persistedState) {
+  return Array.from(
+    new Set([
+      ...initialUnlockedIds,
+      ...Object.values(persistedState?.installed ?? {}),
+      ...((persistedState?.unlockedModuleIds) ?? []),
+    ]),
+  );
+}
+
 export const useShipStore = create(
   persist(
     (set) => ({
       modules,
       installed: initialInstalled,
+      unlockedModuleIds: initialUnlockedIds,
+      unlockModule: (moduleId) =>
+        set((state) => ({
+          unlockedModuleIds: Array.from(new Set([...(state.unlockedModuleIds ?? initialUnlockedIds), moduleId])),
+        })),
       equipModule: (slot, moduleId) =>
         set((state) => {
+          const unlocked = state.unlockedModuleIds ?? initialUnlockedIds;
           const module = state.modules.find((entry) => entry.id === moduleId && entry.slot === slot);
-          if (!module) return state;
+          if (!module || !unlocked.includes(moduleId)) return state;
           clearInstalledCache();
           return { installed: { ...state.installed, [slot]: moduleId } };
         }),
@@ -71,6 +89,7 @@ export const useShipStore = create(
         ...(persistedState ?? {}),
         modules: mergeModules(persistedState?.modules),
         installed: mergeInstalled(persistedState?.installed),
+        unlockedModuleIds: mergeUnlocked(persistedState),
       }),
     },
   ),
