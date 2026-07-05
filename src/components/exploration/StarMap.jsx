@@ -1,12 +1,17 @@
 import { useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Html, Line, OrbitControls, Stars } from "@react-three/drei";
+import { formatGameDate } from "../../systems/gameClock";
 
 const DANGER_TONES = {
   low: { solid: "#38bdf8", glow: "rgb(56 189 248 / 0.6)", bg20: "rgb(56 189 248 / 0.2)" },
   mid: { solid: "#fbbf24", glow: "rgb(251 191 36 / 0.6)", bg20: "rgb(251 191 36 / 0.2)" },
   high: { solid: "#f87171", glow: "rgb(248 113 113 / 0.6)", bg20: "rgb(248 113 113 / 0.2)" },
 };
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
 
 function dangerTone(danger) {
   if (danger >= 5) return DANGER_TONES.high;
@@ -19,6 +24,50 @@ function positionFromZone(zone) {
   const z = ((zone.pos?.y ?? 50) - 50) / 8;
   const y = Math.sin((zone.distance ?? 0) * 0.8) * 0.45 + ((zone.richness ?? 1) - 3) * 0.08;
   return [x, y, z];
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
+}
+
+function travelProgress(activeTravel, currentMinute) {
+  if (!activeTravel) return 0;
+  return clamp(((currentMinute - activeTravel.startedAt) / Math.max(1, activeTravel.duration)) * 100, 0, 100);
+}
+
+function TravelShip({ fromZone, toZone, progress }) {
+  const ref = useRef(null);
+  const start = positionFromZone(fromZone);
+  const end = positionFromZone(toZone);
+  const t = clamp(progress / 100, 0, 1);
+  const position = [lerp(start[0], end[0], t), lerp(start[1], end[1], t) + 0.24, lerp(start[2], end[2], t)];
+  const heading = Math.atan2(end[0] - start[0], end[2] - start[2]);
+
+  useFrame((state) => {
+    if (!ref.current) return;
+    ref.current.position.y = Math.sin(state.clock.elapsedTime * 5) * 0.04;
+    ref.current.rotation.z = Math.sin(state.clock.elapsedTime * 3) * 0.08;
+  });
+
+  return (
+    <group position={position} rotation={[0, heading, 0]}>
+      <group ref={ref}>
+        <mesh rotation={[Math.PI / 2, 0, 0]}>
+          <coneGeometry args={[0.13, 0.34, 4]} />
+          <meshStandardMaterial color="#facc15" emissive="#facc15" emissiveIntensity={1.4} roughness={0.25} />
+        </mesh>
+        <mesh position={[0, -0.02, -0.24]}>
+          <sphereGeometry args={[0.055, 12, 12]} />
+          <meshBasicMaterial color="#22d3ee" transparent opacity={0.8} />
+        </mesh>
+      </group>
+      <Html distanceFactor={7} center position={[0, 0.42, 0]}>
+        <div className="pointer-events-none rounded border border-amber-300/50 bg-slate-950/85 px-2 py-1 text-[0.62rem] font-semibold text-amber-100 shadow-lg backdrop-blur">
+          항해 {Math.round(progress)}%
+        </div>
+      </Html>
+    </group>
+  );
 }
 
 function StarNode({ zone, discovered, current, selected, onSelect }) {
@@ -91,15 +140,21 @@ export default function StarMap({
   selectedZoneId,
   discoveredZoneIds,
   route,
+  activeTravel,
+  currentMinute,
   onSelect,
   sectorName,
   exploredCount,
   totalCount,
 }) {
   const current = zones.find((zone) => zone.id === currentZoneId);
+  const travelFrom = activeTravel ? zones.find((zone) => zone.id === activeTravel.fromZoneId) : null;
+  const travelTo = activeTravel ? zones.find((zone) => zone.id === activeTravel.toZoneId) : null;
+  const progress = travelProgress(activeTravel, currentMinute);
   const routeZones = route.map((zoneId) => zones.find((zone) => zone.id === zoneId)).filter((zone) => zone?.pos);
   const explorationRatio = totalCount > 0 ? (exploredCount / totalCount) * 100 : 0;
   const routePoints = routeZones.map(positionFromZone);
+  const travelPoints = travelFrom && travelTo ? [positionFromZone(travelFrom), positionFromZone(travelTo)] : [];
   const discoveredSet = useMemo(() => new Set(discoveredZoneIds), [discoveredZoneIds]);
 
   return (
@@ -116,6 +171,8 @@ export default function StarMap({
           </mesh>
         )}
         {routePoints.length >= 2 && <Line points={routePoints} color="#38bdf8" lineWidth={2} transparent opacity={0.65} dashed dashSize={0.25} gapSize={0.16} />}
+        {travelPoints.length === 2 && <Line points={travelPoints} color="#facc15" lineWidth={3} transparent opacity={0.88} dashed dashSize={0.32} gapSize={0.12} />}
+        {travelFrom && travelTo && <TravelShip fromZone={travelFrom} toZone={travelTo} progress={progress} />}
         {zones.map((zone) => (
           <StarNode
             key={zone.id}
@@ -138,10 +195,13 @@ export default function StarMap({
         <div className="mt-1 text-[0.65rem] text-slate-400">{exploredCount}/{totalCount} discovered</div>
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 right-3 rounded border border-cyan-400/20 bg-slate-950/70 px-3 py-2 text-right backdrop-blur">
-        <div className="hud-label">드래그 회전 · 휠 줌</div>
-        <div className="text-xs text-cyan-100">스캐너 범위 15 LY</div>
-      </div>
+      {activeTravel && (
+        <div className="pointer-events-none absolute bottom-3 right-3 rounded border border-amber-300/40 bg-slate-950/80 px-3 py-2 text-right backdrop-blur">
+          <div className="hud-label">항해 중</div>
+          <div className="text-xs font-semibold text-amber-100">{travelFrom?.name} → {travelTo?.name}</div>
+          <div className="mt-1 text-[0.65rem] text-slate-400">도착 {formatGameDate(activeTravel.completeAt)}</div>
+        </div>
+      )}
     </div>
   );
 }
