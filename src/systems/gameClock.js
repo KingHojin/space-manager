@@ -20,7 +20,7 @@ export const formatGameDate = (totalMinutes) => {
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
 
-function processTimedJobs() {
+export function processTimedJobs() {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
