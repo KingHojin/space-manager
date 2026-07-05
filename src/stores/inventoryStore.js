@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DUST } from "../data/constants";
-import { items } from "../data/items";
+import { items as baseItems } from "../data/items";
 import { drawCards } from "../systems/gachaEngine";
 
 export const useInventoryStore = create(
@@ -9,11 +9,31 @@ export const useInventoryStore = create(
     (set, get) => ({
       dust: 40,
       shards: 0,
-      items,
+      items: baseItems,
       cards: [],
       activeCardIds: [],
       lastDraw: [],
-      addDust: (amount) => set((state) => ({ dust: state.dust + amount })),
+      addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
+      addItem: (itemId, qty = 1) =>
+        set((state) => {
+          const existing = state.items.find((item) => item.id === itemId);
+          if (existing) {
+            return {
+              items: state.items.map((item) => (item.id === itemId ? { ...item, qty: Math.max(0, (item.qty ?? 0) + qty) } : item)),
+            };
+          }
+          const template = baseItems.find((item) => item.id === itemId) ?? {
+            id: itemId,
+            name: itemId,
+            rarity: "common",
+            type: "misc",
+          };
+          return { items: [...state.items, { ...template, qty: Math.max(0, qty) }] };
+        }),
+      removeItem: (itemId, qty = 1) =>
+        set((state) => ({
+          items: state.items.map((item) => (item.id === itemId ? { ...item, qty: Math.max(0, (item.qty ?? 0) - qty) } : item)),
+        })),
       draw: (count) => {
         const cost = count >= 10 ? DUST.TEN_DRAW_COST : DUST.SINGLE_DRAW_COST;
         if (get().dust < cost) return { ok: false, message: "우주 먼지가 부족합니다." };
