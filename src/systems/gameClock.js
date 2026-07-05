@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { rollEvent } from "./eventEngine";
-import { rollTravelEncounter } from "./travelSystem";
+import { getTravelEncounterChance, rollTravelEncounter, shouldRollTravelEncounter } from "./travelSystem";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
@@ -21,24 +21,40 @@ export const formatGameDate = (totalMinutes) => {
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
 
+function applyCrewRisk(risk) {
+  if (!risk) return;
+  const crew = useCrewStore.getState().crew.filter((member) => member.alive);
+  if (crew.length === 0) return;
+  const target = crew[Math.floor(Math.random() * crew.length)];
+  const injury = risk === "major" ? "중상" : "경상";
+  useCrewStore.getState().applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
+  useGameStore.getState().addLog(`승무원 피해: ${target.name} ${injury}.`);
+}
+
 function processTravel(currentMinute) {
   const exploration = useExplorationStore.getState();
   const activeTravel = exploration.activeTravel;
   if (!activeTravel) return;
 
-  const checkpoint = activeTravel.encounters?.find((entry) => !entry.resolved && entry.minute <= currentMinute);
-  if (checkpoint) {
-    let summary = "항로 구간 통과: 이상 신호 없음.";
-    if (Math.random() <= checkpoint.chance) {
+  if (shouldRollTravelEncounter(activeTravel, currentMinute)) {
+    const chance = getTravelEncounterChance(activeTravel);
+    let summary = null;
+    let happened = false;
+
+    if (Math.random() <= chance) {
       const outcome = rollTravelEncounter(activeTravel, currentMinute);
       if (outcome.resources) useGameStore.getState().addResources(outcome.resources);
       if (outcome.dust) useInventoryStore.getState().addDust(outcome.dust);
       if (outcome.item) useInventoryStore.getState().addItem(outcome.item.id, outcome.item.qty ?? 1);
       if (outcome.reveal) useExplorationStore.getState().revealRandomZone();
+      if (outcome.crewRisk) applyCrewRisk(outcome.crewRisk);
       summary = `항해 인카운터: ${outcome.title} — ${outcome.message}`;
+      if (outcome.combatHint) summary += " 전투 메뉴에서 추적 교전으로 확장 가능.";
       useGameStore.getState().addLog(summary);
+      happened = true;
     }
-    useExplorationStore.getState().resolveTravelEncounter(checkpoint.id, summary);
+
+    useExplorationStore.getState().registerTravelRoll(summary, currentMinute, happened);
   }
 
   if (currentMinute >= activeTravel.completeAt) {
