@@ -57,10 +57,14 @@ export const useGameStore = create(
         }));
         return true;
       },
-      spendFuel: (amount) =>
+      spendFuel: (amount) => {
+        const fuel = get().resources.fuel;
+        if (fuel < amount) return false;
         set((state) => ({
           resources: { ...state.resources, fuel: Math.max(0, state.resources.fuel - amount) },
-        })),
+        }));
+        return true;
+      },
       repairHull: (amount) =>
         set((state) => ({
           resources: { ...state.resources, hull: Math.min(100, state.resources.hull + amount) },
