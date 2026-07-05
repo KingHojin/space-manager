@@ -19,6 +19,7 @@ function normalizeCrew(member) {
   return {
     ...base,
     ...member,
+    alive: member.alive ?? base.alive ?? true,
     fatigue: member.fatigue ?? base.fatigue ?? 0,
     experience: member.experience ?? base.experience ?? 0,
     trait: member.trait ?? base.trait ?? "일반 대원",
@@ -33,30 +34,56 @@ function mergeCrew(savedCrew = []) {
   return [...mergedBase, ...extras];
 }
 
+function applyTraining(member, statKey) {
+  if (!member.alive) return member;
+  return {
+    ...member,
+    fatigue: clamp((member.fatigue ?? 0) + 12, 0, 100),
+    experience: (member.experience ?? 0) + 8,
+    morale: shiftMorale(member.morale, 1),
+    stats: {
+      ...member.stats,
+      [statKey]: (member.stats[statKey] ?? 0) + 1,
+    },
+  };
+}
+
 export const useCrewStore = create(
   persist(
-    (set) => ({
-      crew: initialCrew,
+    (set, get) => ({
+      crew: initialCrew.map((member) => ({ ...member, alive: true })),
+      trainingQueue: [],
+      startTraining: ({ memberId, statKey, completeAt, cost, duration }) =>
+        set((state) => ({
+          trainingQueue: [
+            ...state.trainingQueue.filter((task) => task.memberId !== memberId),
+            { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, startedAt: completeAt - duration },
+          ],
+        })),
+      completeReadyTraining: (currentMinute) => {
+        const ready = get().trainingQueue.filter((task) => task.completeAt <= currentMinute);
+        if (ready.length === 0) return [];
+        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
+        set((state) => ({
+          trainingQueue: state.trainingQueue.filter((task) => task.completeAt > currentMinute),
+          crew: state.crew.map((member) => {
+            const task = readyByMember.get(member.id);
+            return task ? applyTraining(member, task.statKey) : member;
+          }),
+        }));
+        return ready.map((task) => {
+          const member = get().crew.find((entry) => entry.id === task.memberId);
+          return `${member?.name ?? "승무원"} 역할 훈련 완료.`;
+        });
+      },
       trainMember: (memberId, statKey) =>
         set((state) => ({
-          crew: state.crew.map((member) => {
-            if (member.id !== memberId) return member;
-            return {
-              ...member,
-              fatigue: clamp((member.fatigue ?? 0) + 12, 0, 100),
-              experience: (member.experience ?? 0) + 8,
-              morale: shiftMorale(member.morale, 1),
-              stats: {
-                ...member.stats,
-                [statKey]: (member.stats[statKey] ?? 0) + 1,
-              },
-            };
-          }),
+          crew: state.crew.map((member) => (member.id === memberId ? applyTraining(member, statKey) : member)),
         })),
       restMember: (memberId) =>
         set((state) => ({
           crew: state.crew.map((member) =>
-            member.id === memberId
+            member.id === memberId && member.alive
               ? { ...member, fatigue: clamp((member.fatigue ?? 0) - 28, 0, 100), morale: shiftMorale(member.morale, 1) }
               : member,
           ),
@@ -64,7 +91,7 @@ export const useCrewStore = create(
       treatMember: (memberId) =>
         set((state) => ({
           crew: state.crew.map((member) =>
-            member.id === memberId
+            member.id === memberId && member.alive
               ? { ...member, injury: "정상", fatigue: clamp((member.fatigue ?? 0) + 8, 0, 100), morale: shiftMorale(member.morale, 1) }
               : member,
           ),
@@ -72,13 +99,28 @@ export const useCrewStore = create(
       applyCrewOutcome: ({ memberId, fatigue = 0, morale = 0, injury = null, experience = 0 }) =>
         set((state) => ({
           crew: state.crew.map((member) =>
-            member.id === memberId
+            member.id === memberId && member.alive
               ? {
                   ...member,
                   fatigue: clamp((member.fatigue ?? 0) + fatigue, 0, 100),
                   morale: shiftMorale(member.morale, morale),
                   injury: injury ?? member.injury,
                   experience: (member.experience ?? 0) + experience,
+                }
+              : member,
+          ),
+        })),
+      applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) =>
+        set((state) => ({
+          trainingQueue: injury === "전사" ? state.trainingQueue.filter((task) => task.memberId !== memberId) : state.trainingQueue,
+          crew: state.crew.map((member) =>
+            member.id === memberId && member.alive
+              ? {
+                  ...member,
+                  alive: injury !== "전사",
+                  injury,
+                  fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16), 0, 100),
+                  morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale),
                 }
               : member,
           ),
@@ -90,6 +132,7 @@ export const useCrewStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         crew: mergeCrew(persistedState?.crew),
+        trainingQueue: persistedState?.trainingQueue ?? [],
       }),
     },
   ),
