@@ -4,6 +4,18 @@ import { canWorkWithInjury, normalizeInjury } from "../systems/injurySystem";
 
 const WALK_SPEED_PER_SECOND = 22;
 const ARRIVAL_EPSILON = 0.45;
+const IDLE_ROLL_MIN_MS = 4500;
+const IDLE_ROLL_SPREAD_MS = 6500;
+
+const DEFAULT_IDLE_ACTIONS = ["stand", "look", "stretch"];
+const ROOM_IDLE_ACTIONS = {
+  living: ["stand", "look", "stretch", "coffee", "chat"],
+  medbay: ["stand", "look"],
+  bridge: ["stand", "look", "stretch"],
+  ops: ["stand", "look"],
+  engineering: ["stand", "look", "stretch"],
+  cargo: ["stand", "look", "stretch"],
+};
 
 function stepToward(current, target, maxStep) {
   const dx = target.x - current.x;
@@ -14,9 +26,21 @@ function stepToward(current, target, maxStep) {
   return { x: current.x + dx * ratio, y: current.y + dy * ratio, arrived: false };
 }
 
+function nextIdleRollAt(nowMs) {
+  return nowMs + IDLE_ROLL_MIN_MS + Math.random() * IDLE_ROLL_SPREAD_MS;
+}
+
 function facingFrom(currentX, nextX, fallback = "right") {
   if (Math.abs(nextX - currentX) < 0.05) return fallback;
   return nextX >= currentX ? "right" : "left";
+}
+
+function pickIdleAction(motion, allMotions) {
+  const roomId = motion.currentRoomId ?? motion.targetRoomId;
+  const roomActions = ROOM_IDLE_ACTIONS[roomId] ?? DEFAULT_IDLE_ACTIONS;
+  const hasNearbyIdleCrew = Object.values(allMotions).some((entry) => entry.crewId !== motion.crewId && (entry.currentRoomId ?? entry.targetRoomId) === roomId && entry.animState === "idle");
+  const pool = roomActions.filter((action) => action !== "chat" || hasNearbyIdleCrew);
+  return pool[Math.floor(Math.random() * pool.length)] ?? "stand";
 }
 
 function deriveTargetAnimState(activity, member) {
@@ -32,6 +56,7 @@ function deriveTargetAnimState(activity, member) {
 }
 
 function createMotionFromTarget(target) {
+  const nowMs = performance.now();
   return {
     crewId: target.crewId,
     x: target.targetX,
@@ -43,7 +68,8 @@ function createMotionFromTarget(target) {
     facing: "right",
     animState: target.animState ?? "idle",
     targetAnimState: target.animState ?? "idle",
-    idleAction: "stand",
+    idleAction: target.animState === "idle" ? "stand" : null,
+    nextIdleRollAt: nextIdleRollAt(nowMs),
     bark: null,
     waypointIndex: 0,
     waypoints: [],
@@ -68,10 +94,12 @@ export const useCrewMotionStore = create((set, get) => ({
           return;
         }
         if (sameTarget(existing, target)) {
+          const animState = existing.waypoints?.length > 0 ? "walk" : target.animState;
           next[target.crewId] = {
             ...existing,
             targetAnimState: target.animState,
-            animState: existing.waypoints?.length > 0 ? "walk" : target.animState,
+            animState,
+            idleAction: animState === "idle" ? existing.idleAction ?? "stand" : null,
             updatedAt: target.updatedAt ?? existing.updatedAt,
           };
           return;
@@ -86,6 +114,7 @@ export const useCrewMotionStore = create((set, get) => ({
           targetRoomId: target.roomId,
           targetAnimState: target.animState,
           animState: "walk",
+          idleAction: null,
           facing: facingFrom(existing.x, waypoints[0]?.x ?? target.targetX, existing.facing),
           waypoints,
           waypointIndex: 0,
@@ -99,7 +128,7 @@ export const useCrewMotionStore = create((set, get) => ({
       return { motionByCrewId: next };
     });
   },
-  tick: (deltaMs = 0) => {
+  tick: (deltaMs = 0, nowMs = performance.now()) => {
     if (deltaMs <= 0) return;
     const maxStep = WALK_SPEED_PER_SECOND * (deltaMs / 1000);
     set((state) => {
@@ -108,6 +137,11 @@ export const useCrewMotionStore = create((set, get) => ({
       Object.entries(state.motionByCrewId).forEach(([crewId, motion]) => {
         const waypoint = motion.waypoints?.[motion.waypointIndex ?? 0];
         if (!waypoint) {
+          if (motion.animState === "idle" && nowMs >= (motion.nextIdleRollAt ?? 0)) {
+            changed = true;
+            next[crewId] = { ...motion, idleAction: pickIdleAction(motion, state.motionByCrewId), nextIdleRollAt: nextIdleRollAt(nowMs) };
+            return;
+          }
           next[crewId] = motion;
           return;
         }
@@ -117,6 +151,8 @@ export const useCrewMotionStore = create((set, get) => ({
         let waypoints = remainingWaypoints;
         let animState = "walk";
         let currentRoomId = motion.currentRoomId;
+        let idleAction = null;
+        let idleRollAt = motion.nextIdleRollAt ?? nextIdleRollAt(nowMs);
         if (stepped.arrived) {
           waypointIndex += 1;
           if (waypointIndex >= remainingWaypoints.length) {
@@ -124,6 +160,8 @@ export const useCrewMotionStore = create((set, get) => ({
             waypointIndex = 0;
             animState = motion.targetAnimState ?? "idle";
             currentRoomId = motion.targetRoomId;
+            idleAction = animState === "idle" ? "stand" : null;
+            idleRollAt = nextIdleRollAt(nowMs);
           }
         }
         changed = true;
@@ -134,6 +172,8 @@ export const useCrewMotionStore = create((set, get) => ({
           currentRoomId,
           facing: facingFrom(motion.x, stepped.x, motion.facing),
           animState,
+          idleAction,
+          nextIdleRollAt: idleRollAt,
           waypoints,
           waypointIndex,
         };

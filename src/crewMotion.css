@@ -63,12 +63,38 @@
   filter: grayscale(0.75) saturate(0.75);
 }
 
+.crew-marker-idle.crew-idle-look .crew-marker-avatar {
+  animation: crew-idle-look 1400ms ease-in-out 1;
+}
+
+.crew-marker-idle.crew-idle-stretch .crew-marker-avatar {
+  animation: crew-idle-stretch 1200ms ease-in-out 1;
+}
+
+.crew-marker-idle.crew-idle-coffee {
+  box-shadow: 0 0 10px rgb(52 211 153 / 0.22);
+}
+
+.crew-marker-idle.crew-idle-coffee .crew-marker-avatar {
+  animation: crew-idle-coffee 1500ms ease-in-out 1;
+}
+
+.crew-marker-idle.crew-idle-chat {
+  box-shadow: 0 0 10px rgb(168 85 247 / 0.28);
+}
+
+.crew-marker-idle.crew-idle-chat .crew-marker-state-badge {
+  border-color: rgb(168 85 247 / 0.55);
+  color: rgb(216 180 254);
+}
+
 .crew-marker-state-walk,
 .crew-marker-state-work {
   border-color: rgb(56 189 248 / 0.55);
   color: rgb(125 211 252);
 }
 
+.crew-marker-state-idle,
 .crew-marker-state-rest {
   border-color: rgb(148 163 184 / 0.45);
   color: rgb(203 213 225);
@@ -112,8 +138,26 @@
   75% { transform: translate(1px, 1px) rotate(-2deg); }
 }
 
+@keyframes crew-idle-look {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  65% { transform: translateX(2px); }
+}
+
+@keyframes crew-idle-stretch {
+  0%, 100% { transform: scaleY(1); }
+  45% { transform: scaleY(1.22) translateY(-1px); }
+}
+
+@keyframes crew-idle-coffee {
+  0%, 100% { transform: translateY(0); }
+  35% { transform: translateY(-1px) rotate(-5deg); }
+  70% { transform: translateY(0) rotate(0); }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .crew-marker-core {
+  .crew-marker-core,
+  .crew-marker-avatar {
     animation: none !important;
   }
 }
