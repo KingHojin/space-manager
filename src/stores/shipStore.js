@@ -3,6 +3,16 @@ import { persist } from "zustand/middleware";
 import { modules } from "../data/modules";
 import { normalizePriority } from "../systems/priorities";
 
+const STARTER_VESSEL_ID = "vessel-starter";
+const initialVesselsById = {
+  [STARTER_VESSEL_ID]: {
+    id: STARTER_VESSEL_ID,
+    name: "개척선 알파",
+    callsign: "ALPHA",
+    role: "starter",
+  },
+};
+
 const initialInstalled = modules.reduce((acc, module) => {
   if (!acc[module.slot] || module.defaultInstalled) acc[module.slot] = module.id;
   return acc;
@@ -41,6 +51,12 @@ function mergeUnlocked(persistedState) {
   );
 }
 
+function mergeVessels(persistedState) {
+  const vesselsById = { ...initialVesselsById, ...(persistedState?.vesselsById ?? {}) };
+  const activeVesselId = persistedState?.activeVesselId && vesselsById[persistedState.activeVesselId] ? persistedState.activeVesselId : STARTER_VESSEL_ID;
+  return { vesselsById, activeVesselId };
+}
+
 function normalizeWorkTask(task) {
   const fallback = task.type === "equip" ? "high" : "normal";
   return { ...task, priority: normalizePriority(task.priority ?? fallback) };
@@ -49,10 +65,13 @@ function normalizeWorkTask(task) {
 export const useShipStore = create(
   persist(
     (set, get) => ({
+      activeVesselId: STARTER_VESSEL_ID,
+      vesselsById: initialVesselsById,
       modules,
       installed: initialInstalled,
       unlockedModuleIds: initialUnlockedIds,
       installationQueue: [],
+      selectVessel: (vesselId) => set((state) => (state.vesselsById?.[vesselId] ? { activeVesselId: vesselId } : state)),
       unlockModule: (moduleId) =>
         set((state) => ({
           unlockedModuleIds: Array.from(new Set([...(state.unlockedModuleIds ?? initialUnlockedIds), moduleId])),
@@ -119,17 +138,25 @@ export const useShipStore = create(
           .filter(Boolean);
         return installedModulesCache;
       },
+      getActiveVessel: () => {
+        const state = get();
+        return state.vesselsById?.[state.activeVesselId] ?? null;
+      },
     }),
     {
       name: "space-manager-ship",
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState ?? {}),
-        modules: mergeModules(persistedState?.modules),
-        installed: mergeInstalled(persistedState?.installed),
-        unlockedModuleIds: mergeUnlocked(persistedState),
-        installationQueue: (persistedState?.installationQueue ?? []).map(normalizeWorkTask),
-      }),
+      merge: (persistedState, currentState) => {
+        const fleet = mergeVessels(persistedState);
+        return {
+          ...currentState,
+          ...(persistedState ?? {}),
+          ...fleet,
+          modules: mergeModules(persistedState?.modules),
+          installed: mergeInstalled(persistedState?.installed),
+          unlockedModuleIds: mergeUnlocked(persistedState),
+          installationQueue: (persistedState?.installationQueue ?? []).map(normalizeWorkTask),
+        };
+      },
     },
   ),
 );
