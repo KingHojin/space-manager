@@ -74,6 +74,10 @@ export default function SkillTree() {
   const selectedLevel = levels[selected.id] ?? 0;
   const selectedReady = canUpgrade(selected, levels, availablePoints);
   const visibleBranches = filter === "all" ? skillBranches : skillBranches.filter((branch) => branch.id === filter);
+  const mobileBranch = skillBranches.find((branch) => branch.id === (filter === "all" ? selected.branch : filter)) ?? skillBranches[0];
+  const mobileBranchSkills = getSkillsByBranch(mobileBranch.id);
+  const MobileBranchIcon = branchIcons[mobileBranch.id];
+  const mobileTone = branchTone[mobileBranch.id];
 
   const totals = useMemo(() => {
     return skillBranches.map((branch) => {
@@ -117,7 +121,51 @@ export default function SkillTree() {
         </div>
       </section>
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
+      <div className="grid gap-4 md:hidden">
+        <section>
+          <div className="flex items-center justify-between gap-3">
+            <div className="section-title">
+              <MobileBranchIcon size={18} />
+              모바일 트리 · {mobileBranch.label}
+            </div>
+            <span className="hud-chip hud-chip-accent">탭 선택</span>
+          </div>
+          <p className="mt-2 text-xs leading-5 text-slate-400">
+            모바일에서는 한 계열씩 세로로 보여줍니다. 위 필터에서 계열을 고르면 해당 트리만 크게 확인할 수 있습니다.
+          </p>
+          <div className="mt-4 grid gap-3">
+            {mobileBranchSkills.map((skill, index) => {
+              const level = levels[skill.id] ?? 0;
+              const locked = skill.requires && (levels[skill.requires] ?? 0) <= 0;
+              const active = skill.id === selected.id;
+              const maxed = level >= skill.maxLevel;
+              return (
+                <button
+                  key={skill.id}
+                  className={`relative rounded border p-3 text-left transition ${active ? mobileTone.active : locked ? "border-slate-700 bg-slate-950 text-slate-600" : level > 0 ? `${mobileTone.border} bg-slate-900/80 ${mobileTone.text}` : "border-slate-600 bg-slate-900/70 text-slate-300"}`}
+                  onClick={() => selectSkill(skill.id)}
+                >
+                  {index > 0 && <span className={`absolute -top-3 left-7 h-3 w-px ${locked ? "bg-slate-700" : mobileTone.line}`} />}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 gap-3">
+                      <div className={`grid h-11 w-11 shrink-0 place-items-center rounded-xl border ${active ? "border-current" : mobileTone.border} bg-slate-950/50`}>
+                        {locked ? <Lock size={17} /> : <span className="text-xs font-bold">{level}/{skill.maxLevel}</span>}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="font-bold text-slate-50">{skill.name}</div>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{skill.desc}</p>
+                      </div>
+                    </div>
+                    {maxed && <span className="hud-chip hud-chip-success shrink-0">완성</span>}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+      </div>
+
+      <div className="hidden gap-4 md:grid xl:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
         <section>
           <div className="grid min-w-[46rem] grid-cols-6 gap-3 xl:min-w-0">
             {visibleBranches.map((branch) => {
@@ -160,28 +208,25 @@ export default function SkillTree() {
         </section>
 
         <section>
-          <div className="section-title">선택된 스킬</div>
-          <div className="mt-4 rounded border border-emerald-400/30 bg-emerald-400/10 p-4">
-            <div className="grid h-20 w-20 place-items-center rounded-full border border-emerald-300/60 bg-emerald-400/10 text-emerald-200">
-              <Radar size={36} />
-            </div>
-            <div className="mt-4 text-2xl font-bold text-slate-50">{selected.name}</div>
-            <div className="mt-1 flex flex-wrap gap-2">
-              <span className="hud-chip hud-chip-success">Lv {selectedLevel} / {selected.maxLevel}</span>
-              <span className="hud-chip">{skillBranches.find((branch) => branch.id === selected.branch)?.label}</span>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-slate-300">{selected.desc}</p>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            <DetailBlock title="현재 효과" items={selected.bonus.map((bonus) => `${bonus} · Lv ${selectedLevel}`)} />
-            <DetailBlock title="필요 조건" items={[`사용 포인트 ${selected.cost}`, selected.requires ? `선행 스킬: ${getSkillById(selected.requires)?.name ?? selected.requires}` : "선행 스킬 없음"]} />
-          </div>
-
-          <button className="primary-button mt-4 w-full" disabled={!selectedReady} onClick={handleUpgrade}>강화</button>
-          <button className="secondary-button mt-2 w-full" onClick={() => addLog(`${selected.name} 상세 효과를 확인했습니다.`)}>효과 확인</button>
+          <SkillDetail
+            selected={selected}
+            selectedLevel={selectedLevel}
+            selectedReady={selectedReady}
+            handleUpgrade={handleUpgrade}
+            addLog={addLog}
+          />
         </section>
       </div>
+
+      <section className="md:hidden">
+        <SkillDetail
+          selected={selected}
+          selectedLevel={selectedLevel}
+          selectedReady={selectedReady}
+          handleUpgrade={handleUpgrade}
+          addLog={addLog}
+        />
+      </section>
 
       <section>
         <div className="section-title">함선 & 승무원 시너지</div>
@@ -230,6 +275,33 @@ export default function SkillTree() {
         </div>
       </section>
     </div>
+  );
+}
+
+function SkillDetail({ selected, selectedLevel, selectedReady, handleUpgrade, addLog }) {
+  return (
+    <>
+      <div className="section-title">선택된 스킬</div>
+      <div className="mt-4 rounded border border-emerald-400/30 bg-emerald-400/10 p-4">
+        <div className="grid h-20 w-20 place-items-center rounded-full border border-emerald-300/60 bg-emerald-400/10 text-emerald-200">
+          <Radar size={36} />
+        </div>
+        <div className="mt-4 text-2xl font-bold text-slate-50">{selected.name}</div>
+        <div className="mt-1 flex flex-wrap gap-2">
+          <span className="hud-chip hud-chip-success">Lv {selectedLevel} / {selected.maxLevel}</span>
+          <span className="hud-chip">{skillBranches.find((branch) => branch.id === selected.branch)?.label}</span>
+        </div>
+        <p className="mt-4 text-sm leading-6 text-slate-300">{selected.desc}</p>
+      </div>
+
+      <div className="mt-4 space-y-3">
+        <DetailBlock title="현재 효과" items={selected.bonus.map((bonus) => `${bonus} · Lv ${selectedLevel}`)} />
+        <DetailBlock title="필요 조건" items={[`사용 포인트 ${selected.cost}`, selected.requires ? `선행 스킬: ${getSkillById(selected.requires)?.name ?? selected.requires}` : "선행 스킬 없음"]} />
+      </div>
+
+      <button className="primary-button mt-4 w-full" disabled={!selectedReady} onClick={handleUpgrade}>강화</button>
+      <button className="secondary-button mt-2 w-full" onClick={() => addLog(`${selected.name} 상세 효과를 확인했습니다.`)}>효과 확인</button>
+    </>
   );
 }
 
