@@ -8,6 +8,7 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, summarizeSituations } from "../../systems/commandCenter";
@@ -60,6 +61,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const trainingQueue = useCrewStore((state) => state.trainingQueue ?? []);
   const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
   const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
+  const rooms = useShipInteriorStore((state) => state.rooms);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);
@@ -234,7 +236,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]">
         <div className="grid gap-3">
-          <ShipInterior crew={crew} activities={crewActivities ?? []} compact onCrewClick={() => onNavigate?.("crew")} />
+          <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} compact onCrewClick={() => onNavigate?.("crew")} />
           <section>
             <div className="flex items-center justify-between gap-3">
               <div className="section-title"><Users size={18} />승무원 AI 행동</div>
