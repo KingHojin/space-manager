@@ -1,7 +1,7 @@
 import { Activity, AlertTriangle, Flame, ShieldAlert, Thermometer, ZapOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ROOMS, ROUTES } from "../../data/shipRooms";
-import { roomAnchorPoint, roomCenter, roomForCrewActivity } from "../../data/shipInteriorLayout";
+import { DISPLAY_ROOMS, DISPLAY_ROUTES } from "../../data/shipRooms";
+import { displayRoomCenter, roomAnchorPoint, roomForCrewActivity } from "../../data/shipInteriorLayout";
 import { calculateRoomModifiers } from "../../data/roomModules";
 import { CRISIS_CATALOG } from "../../systems/crisisSystem";
 import { getPriorityConfig } from "../../systems/priorities";
@@ -63,13 +63,13 @@ function roomConditionBadge(room) {
 }
 
 function RouteLine({ from, to, active }) {
-  const start = roomCenter(from);
-  const end = roomCenter(to);
+  const start = displayRoomCenter(from);
+  const end = displayRoomCenter(to);
   const midX = (start.x + end.x) / 2;
   const midY = (start.y + end.y) / 2;
   const width = Math.hypot(end.x - start.x, end.y - start.y);
   const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
-  return <span className={`absolute h-[2px] origin-center rounded-full ${active ? "bg-cyan-200/50" : "bg-cyan-300/12"}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
+  return <span className={`ship-corridor-line absolute h-[2px] origin-center rounded-full ${active ? "ship-corridor-line-active" : ""}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
 }
 
 function useShipMapSize() {
@@ -186,31 +186,38 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
     <section className="overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
-      <div ref={mapRef} className={`relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 bg-slate-950/80 ${compact ? "h-[240px]" : "h-[420px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
-        <div className="absolute inset-x-[8%] top-[6%] h-[90%] rounded-[42%] border border-cyan-300/20 bg-gradient-to-b from-slate-900/80 to-slate-950/90" />
-        {ROUTES.map(([from, to]) => <RouteLine key={`${from}-${to}`} from={from} to={to} active={activeRooms.has(from) && activeRooms.has(to)} />)}
-        <div className="absolute left-[49%] top-[18%] h-[58%] w-[2px] bg-cyan-300/10" />
-        <div className="absolute left-[22%] top-[50%] h-[2px] w-[56%] bg-cyan-300/10" />
-        <div className="absolute left-[22%] top-[66%] h-[2px] w-[56%] bg-cyan-300/10" />
-        {ROOMS.map((room) => {
+      <div ref={mapRef} className={`ship-interior-map relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 ${compact ? "h-[260px]" : "h-[460px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
+        <div className="ship-hull-shell absolute inset-x-[6%] top-[4%] h-[92%] rounded-[44%]" />
+        <div className="ship-hull-spine absolute left-[49%] top-[13%] h-[73%] w-[2px]" />
+        <div className="ship-hull-deck absolute left-[18%] top-[23%] h-[2px] w-[64%]" />
+        <div className="ship-hull-deck absolute left-[16%] top-[50%] h-[2px] w-[68%]" />
+        <div className="ship-hull-deck absolute left-[18%] top-[62%] h-[2px] w-[64%]" />
+        <div className="ship-engine-glow absolute bottom-[4%] left-[35%] h-[7%] w-[30%] rounded-full" />
+        {DISPLAY_ROUTES.map(([from, to]) => <RouteLine key={`${from}-${to}`} from={from} to={to} active={activeRooms.has(from) && activeRooms.has(to)} />)}
+        {DISPLAY_ROOMS.map((room) => {
           const Icon = room.icon;
-          const assigned = roomAssignments.filter((entry) => entry.roomId === room.id);
-          const roomState = rooms[room.id];
-          const modifiers = calculateRoomModifiers(roomState);
-          const crisis = roomState?.activeCrisisId ? crisisById.get(roomState.activeCrisisId) : null;
+          const operational = !room.decorative;
+          const assigned = operational ? roomAssignments.filter((entry) => entry.roomId === room.id) : [];
+          const roomState = operational ? rooms[room.id] : null;
+          const modifiers = operational ? calculateRoomModifiers(roomState) : null;
+          const crisis = operational && roomState?.activeCrisisId ? crisisById.get(roomState.activeCrisisId) : null;
           const crisisConfig = crisis ? CRISIS_CATALOG[crisis.type] : null;
           const CrisisIcon = crisis ? CRISIS_ICONS[crisis.type] ?? AlertTriangle : null;
-          const badge = crisis ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" } : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
+          const badge = !operational
+            ? { label: room.tag ?? "AUX", tone: "bg-slate-400/10 text-slate-300 border-slate-500/30" }
+            : crisis
+              ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" }
+              : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
           return (
-            <div key={room.id} className={`absolute rounded-xl border p-2 ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
+            <div key={room.id} className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
-              <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>
-              {!compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers.slots ?? 1)}</span>}
+              {operational && <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>}
+              {operational && !compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers?.slots ?? 1)}</span>}
               {badge && <span className={`absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}`}>{badge.label}</span>}
               {crisis && <span className="absolute right-1 top-6 rounded border border-red-300/45 bg-red-400/20 px-1 text-[9px] font-black text-red-50">{Math.round(crisis.progress ?? 0)}%</span>}
-              {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
+              {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : operational && roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
             </div>
           );
         })}
