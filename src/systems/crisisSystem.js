@@ -1,4 +1,5 @@
 import { ROOM_IDS, ROUTES } from "../data/shipRooms";
+import { canWorkWithInjury, injuryWorkSpeedMultiplier, normalizeInjury } from "./injurySystem";
 
 export const CRISIS_TYPES = ["overheat", "fire", "power_loss", "hull_breach", "intruder"];
 
@@ -121,8 +122,10 @@ export function getCrisisLabel(crisis) {
 
 export function canCrewRespondToCrisis(member) {
   if (!member?.alive) return false;
-  if (member.injury && member.injury !== "정상") return false;
+  if (!canWorkWithInjury(member.injury)) return false;
   if ((member.fatigue ?? 0) >= 85) return false;
+  const traits = normalizeInjury(member.injury).permanentTraits;
+  if (traits.includes("trauma") && Math.random() < 0.08) return false;
   return true;
 }
 
@@ -141,6 +144,7 @@ export function scoreCrisisForMember(member, crisis) {
   if (crisis.assignedCrewId === member.id) score += 35;
   score += statBoost;
   score -= (member.fatigue ?? 0) * 0.35;
+  score *= injuryWorkSpeedMultiplier(member.injury);
   return score;
 }
 
@@ -149,7 +153,7 @@ export function crisisResponseRatePerMinute(member, crisis) {
   const severityMultiplier = 1 + (crisis.severity - 1) * 0.35;
   const fitMultiplier = config.fitRoles.includes(member?.role) ? 1.35 : 0.85;
   const fatigueMultiplier = clamp(1 - (member?.fatigue ?? 0) / 220, 0.55, 1);
-  return (100 / (config.baseMinutes * severityMultiplier)) * fitMultiplier * fatigueMultiplier;
+  return (100 / (config.baseMinutes * severityMultiplier)) * fitMultiplier * fatigueMultiplier * injuryWorkSpeedMultiplier(member?.injury);
 }
 
 export function shouldSpawnInternalCrisis({ room, currentMinute = 0, deltaMinutes = 0 }) {
