@@ -1,12 +1,15 @@
 import { useState } from "react";
-import { Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
+import { Clock3, Fuel, Radar, Rocket, Route, ScanLine } from "lucide-react";
 import { MODULE_SLOTS, RESOURCES, SHIP_GRADES } from "../../data/constants";
 import { getAllZones, getZoneById, sectors } from "../../data/sectors";
+import { formatMinutes } from "../../data/moduleRecipes";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
 import { resolveScanEvent } from "../../systems/explorationEvents";
+import { formatGameDate } from "../../systems/gameClock";
+import { calculateTravelPlan, getTravelProgress } from "../../systems/travelSystem";
 import StarMap from "../exploration/StarMap";
 import PlanetCanvas from "../three/PlanetCanvas";
 
@@ -30,8 +33,6 @@ const RARITY_BORDER_CLASS = {
   legendary: "border-amber-300/60",
 };
 
-const FUEL_PER_DISTANCE = 1.4;
-
 export default function Exploration() {
   const [lastOutcome, setLastOutcome] = useState(null);
   const zones = getAllZones();
@@ -42,24 +43,30 @@ export default function Exploration() {
     discoveredZoneIds,
     scannedZoneIds,
     route,
+    activeTravel,
+    travelLog,
     selectZone,
-    moveToZone,
+    startTravel,
     scanZone,
     revealRandomZone,
   } = useExplorationStore();
-  const { resources, spendFuel, addLog, addResources, shipName, shipGrade } = useGameStore();
+  const { resources, spendFuel, addLog, addResources, shipName, shipGrade, currentMinute, setPaused } = useGameStore();
   const items = useInventoryStore((state) => state.items);
   const addDust = useInventoryStore((state) => state.addDust);
   const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const { modules, installed } = useShipStore();
+  const installedModules = Object.values(installed).map((id) => modules.find((entry) => entry.id === id)).filter(Boolean);
   const current = getZoneById(currentZoneId);
   const focused = getZoneById(selectedZoneId) ?? current;
   const isViewingCurrent = focused.id === current.id;
-  const fuelCost = Math.round(focused.distance * FUEL_PER_DISTANCE);
-  const canAffordMove = resources.fuel >= fuelCost;
+  const routePlan = current && focused && !isViewingCurrent ? calculateTravelPlan({ fromZone: current, toZone: focused, modules: installedModules, currentMinute }) : null;
+  const canStartTravel = Boolean(routePlan) && !activeTravel && resources.fuel >= routePlan.fuelCost;
   const grade = SHIP_GRADES[shipGrade];
   const probeQty = items.find((item) => item.id === "survey-probe")?.qty ?? 0;
+  const activeProgress = getTravelProgress(activeTravel, currentMinute);
+  const activeDestination = getZoneById(activeTravel?.toZoneId);
+  const activeOrigin = getZoneById(activeTravel?.fromZoneId);
 
   const handleSelect = (zone) => {
     if (!discoveredZoneIds.includes(zone.id)) return;
@@ -67,15 +74,23 @@ export default function Exploration() {
   };
 
   const handleSetCourse = () => {
-    spendFuel(fuelCost);
-    moveToZone(focused.id);
-    addLog(`${focused.name} 구역으로 이동했습니다. 연료 ${fuelCost} 소모.`);
+    if (!routePlan || activeTravel) return;
+    if (!spendFuel(routePlan.fuelCost)) {
+      addLog(`${focused.name} 항해 실패: 연료가 부족합니다.`);
+      return;
+    }
+    startTravel(routePlan);
     setLastOutcome(null);
-    selectZone(null);
+    setPaused(false);
+    addLog(`${focused.name} 항해 시작: ${routePlan.distanceLy} LY, 연료 -${routePlan.fuelCost}, 소요 ${formatMinutes(routePlan.duration)}, 도착 ${formatGameDate(routePlan.completeAt)}.`);
   };
 
   const handleScan = () => {
     if (!current) return;
+    if (activeTravel) {
+      addLog("항해 중에는 현재 구역 스캔을 실행할 수 없습니다.");
+      return;
+    }
     const scannedBefore = scannedZoneIds.includes(current.id);
     const outcome = resolveScanEvent({ zone: current, scannedBefore });
     const resourceChanges = { ...(outcome.resources ?? {}) };
@@ -146,6 +161,8 @@ export default function Exploration() {
             selectedZoneId={selectedZoneId}
             discoveredZoneIds={discoveredZoneIds}
             route={route}
+            activeTravel={activeTravel}
+            currentMinute={currentMinute}
             onSelect={handleSelect}
             sectorName={sector.name}
             exploredCount={discoveredZoneIds.length}
@@ -155,6 +172,32 @@ export default function Exploration() {
         <div className="hud-label mt-2">스캔 {scannedZoneIds.length}</div>
       </section>
       <aside className="space-y-4">
+        {activeTravel && (
+          <section>
+            <div className="section-title"><Clock3 size={18} />항해 상황판</div>
+            <div className="mt-4 rounded border border-amber-300/35 bg-amber-300/10 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-amber-100">{activeOrigin?.name} → {activeDestination?.name}</div>
+                  <div className="mt-1 text-xs text-slate-400">{activeTravel.distanceLy} LY · 도착 {formatGameDate(activeTravel.completeAt)}</div>
+                </div>
+                <span className="hud-chip hud-chip-warn">항해 중</span>
+              </div>
+              <div className="mt-3">
+                <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">진행률</span><span className="hud-value">{Math.round(activeProgress)}%</span></div>
+                <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${activeProgress}%` }} /></div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+                <Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(activeTravel.completeAt - currentMinute)))} />
+                <Info label="인카운터" value={`${activeTravel.encounters.filter((entry) => entry.resolved).length}/${activeTravel.encounters.length}`} />
+              </div>
+              <div className="mt-3 grid gap-1.5">
+                {travelLog.slice(0, 3).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/50 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
+              </div>
+            </div>
+          </section>
+        )}
+
         <section>
           <div className="section-title">
             <ScanLine size={18} />
@@ -178,25 +221,27 @@ export default function Exploration() {
                   <Info label="스캔 상태" value={scannedZoneIds.includes(current.id) ? "완료" : "미완료"} />
                 ) : (
                   <>
-                    <Info label="이동 거리" value={`${focused.distance}`} />
-                    <Info label="예상 연료" value={`-${fuelCost}`} />
+                    <Info label="항로 거리" value={`${routePlan?.distanceLy ?? 0} LY`} />
+                    <Info label="소요 시간" value={routePlan ? formatMinutes(routePlan.duration) : "-"} />
+                    <Info label="도착 예정" value={routePlan ? formatGameDate(routePlan.completeAt) : "-"} />
+                    <Info label="예상 연료" value={`-${routePlan?.fuelCost ?? 0}`} />
                   </>
                 )}
               </div>
             </div>
           </div>
           {isViewingCurrent ? (
-            <button className="primary-button mt-4 w-full" onClick={handleScan}>
-              현재 구역 스캔 & 이벤트 판정
+            <button className="primary-button mt-4 w-full" onClick={handleScan} disabled={Boolean(activeTravel)}>
+              {activeTravel ? "항해 중 스캔 불가" : "현재 구역 스캔 & 이벤트 판정"}
             </button>
           ) : (
             <button
               className="primary-button mt-4 flex w-full items-center justify-center gap-2"
               onClick={handleSetCourse}
-              disabled={!canAffordMove}
+              disabled={!canStartTravel}
             >
               <Fuel size={16} />
-              항로 설정 (연료 -{fuelCost}){!canAffordMove && " · 연료 부족"}
+              {activeTravel ? "항해 진행 중" : canStartTravel ? `항해 시작 (연료 -${routePlan.fuelCost})` : `항해 불가${resources.fuel < (routePlan?.fuelCost ?? 0) ? " · 연료 부족" : ""}`}
             </button>
           )}
         </section>
@@ -270,7 +315,7 @@ function Info({ label, value }) {
   return (
     <div className="flex items-center justify-between border-b border-slate-800 pb-2">
       <span className="hud-label">{label}</span>
-      <span className="hud-value">{value}</span>
+      <span className="hud-value text-right">{value}</span>
     </div>
   );
 }
