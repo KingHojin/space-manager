@@ -78,7 +78,7 @@ export default function Market() {
     }
     rule.items.forEach((requirement) => removeItem(requirement.id, requirement.qty));
     advanceMinutes(rule.craftMinutes);
-    processTimedJobs();
+    processTimedJobs(rule.craftMinutes);
     unlockModule(module.id);
     addLog(`모듈 제작 완료: ${module.name}. 비용 ₢${rule.purchaseCredits}, 소요 ${formatMinutes(rule.craftMinutes)}, 완료 ${formatGameDate(currentMinute + rule.craftMinutes)}.`);
   };

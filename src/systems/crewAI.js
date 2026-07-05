@@ -1,4 +1,8 @@
+import { ROOMS } from "../data/shipRooms";
 import { comparePriorityTasks, getPriorityConfig, normalizePriority } from "./priorities";
+import { pickRoomJobsForIdleCrew } from "./roomJobs";
+
+const ROOM_LABELS = Object.fromEntries(ROOMS.map((room) => [room.id, room.label]));
 
 export const CREW_AI_INTERVAL = 12;
 
@@ -77,33 +81,79 @@ function roleCrisisAssignment(member, snapshot) {
   return null;
 }
 
+function roomJobPriority(room) {
+  if (room.load > 75 || room.condition < 35) return "high";
+  return "normal";
+}
+
 export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, currentMinute = 0 }) {
-  return crew.map((member, index) => {
+  const roomJobCandidates = [];
+  const fixedActivities = new Map();
+
+  crew.forEach((member, index) => {
     if (!member.alive) {
-      return { memberId: member.id, station: "명예 전당", action: "작전 제외", intent: "inactive", priority: "low", detail: "전사", updatedAt: currentMinute };
+      fixedActivities.set(member.id, { memberId: member.id, station: "명예 전당", action: "작전 제외", intent: "inactive", priority: "low", detail: "전사", updatedAt: currentMinute });
+      return;
     }
 
     const queueTask = assignedQueueTask(member, queues);
     if (queueTask?.queueType === "treatment") {
       const priority = normalizePriority(queueTask.priority ?? "high");
-      return { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? member.injury} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
+      fixedActivities.set(member.id, { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? member.injury} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute });
+      return;
     }
     if (queueTask?.queueType === "training") {
       const priority = normalizePriority(queueTask.priority ?? "normal");
-      return { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
+      fixedActivities.set(member.id, { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute });
+      return;
     }
 
     if (member.injury && member.injury !== "정상") {
       const priority = member.injury === "중상" ? "emergency" : "high";
-      return { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: member.injury, updatedAt: currentMinute };
+      fixedActivities.set(member.id, { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: member.injury, updatedAt: currentMinute });
+      return;
     }
 
     if ((member.fatigue ?? 0) >= 85) {
-      return { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", updatedAt: currentMinute };
+      fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", updatedAt: currentMinute });
+      return;
     }
 
     const crisis = roleCrisisAssignment(member, snapshot);
-    if (crisis) return { memberId: member.id, ...crisis, updatedAt: currentMinute };
+    if (crisis) {
+      fixedActivities.set(member.id, { memberId: member.id, ...crisis, updatedAt: currentMinute });
+      return;
+    }
+
+    roomJobCandidates.push({ member, index });
+  });
+
+  const roomAssignments = pickRoomJobsForIdleCrew({
+    idleMembers: roomJobCandidates.map((candidate) => candidate.member),
+    rooms: snapshot.rooms ?? {},
+    currentMinute,
+    context: snapshot,
+  });
+
+  return crew.map((member, index) => {
+    if (fixedActivities.has(member.id)) return fixedActivities.get(member.id);
+
+    const roomAssignment = roomAssignments.get(member.id);
+    if (roomAssignment) {
+      const room = (snapshot.rooms ?? {})[roomAssignment.roomId];
+      const roomLabel = ROOM_LABELS[roomAssignment.roomId] ?? roomAssignment.roomId;
+      return {
+        memberId: member.id,
+        station: roomLabel,
+        action: roomAssignment.action,
+        intent: "room-job",
+        priority: room ? roomJobPriority(room) : "normal",
+        detail: "방 작업",
+        roomId: roomAssignment.roomId,
+        jobId: roomAssignment.jobId,
+        updatedAt: currentMinute,
+      };
+    }
 
     const roleDefault = ROLE_DEFAULTS[member.role];
     if (roleDefault && (member.fatigue ?? 0) < 65) {

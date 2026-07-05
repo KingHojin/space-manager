@@ -7,6 +7,7 @@ import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
+import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
 export const formatGameDate = (totalMinutes) => {
@@ -82,11 +83,38 @@ function processCrewAI(currentMinute) {
     pendingTravelEvent: exploration.pendingTravelEvent,
     pendingCombatEncounter: exploration.pendingCombatEncounter,
     installationQueue: useShipStore.getState().installationQueue ?? [],
+    rooms: useShipInteriorStore.getState().rooms,
   });
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
 
-export function processTimedJobs() {
+function applyRoomJobEffect(effect, roomId) {
+  if (!effect) return;
+  if (effect.crewFatigueAll) {
+    useCrewStore.getState().crew.forEach((member) => {
+      if (member.alive) useCrewStore.getState().applyCrewOutcome({ memberId: member.id, fatigue: effect.crewFatigueAll });
+    });
+  }
+  if (effect.hullDelta) {
+    useGameStore.getState().addResources({ hull: effect.hullDelta });
+  }
+}
+
+function processRoomJobs(currentMinute, deltaMinutes) {
+  const activities = useCrewStore.getState().crewActivities ?? [];
+  const roomActivities = {};
+  activities.forEach((activity) => {
+    if (activity.intent === "room-job" && activity.roomId) {
+      roomActivities[activity.roomId] = { memberId: activity.memberId, jobId: activity.jobId };
+    }
+  });
+
+  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities });
+  completedJobs.forEach((job) => applyRoomJobEffect(job.effect, job.roomId));
+  logs.forEach((message) => useGameStore.getState().addLog(`함선: ${message}`));
+}
+
+export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
@@ -94,6 +122,7 @@ export function processTimedJobs() {
   [...crewLogs, ...treatmentLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
   processTravel(currentMinute);
   processCrewAI(currentMinute);
+  processRoomJobs(currentMinute, deltaMinutes);
 }
 
 export const useGameClock = () => {
@@ -116,7 +145,7 @@ export const useGameClock = () => {
     const timer = window.setInterval(() => {
       const minutes = GAME_TIME.REAL_SECOND_TO_GAME_MINUTES * speed;
       useGameStore.getState().advanceMinutes(minutes);
-      processTimedJobs();
+      processTimedJobs(minutes);
 
       const zone = getZoneById(useExplorationStore.getState().currentZoneId);
       const collector = useShipStore.getState().modules.find((module) => module.id === "dust-collector");
