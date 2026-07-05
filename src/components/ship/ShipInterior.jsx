@@ -5,6 +5,7 @@ import { displayRoomCenter, roomAnchorPoint, roomForCrewActivity } from "../../d
 import { calculateRoomModifiers } from "../../data/roomModules";
 import { CRISIS_CATALOG } from "../../systems/crisisSystem";
 import { getPriorityConfig } from "../../systems/priorities";
+import { getRoomJob } from "../../systems/roomJobs";
 import { useGameStore } from "../../stores/gameStore";
 import { deriveTargetAnimState, useCrewMotionStore } from "../../stores/crewMotionStore";
 
@@ -60,6 +61,61 @@ function roomConditionBadge(room) {
   if (room.status === "점검 필요") return { label: "점검 필요", tone: "bg-amber-300/20 text-amber-100 border-amber-300/30" };
   if (room.status === "작업 중") return { label: "작업 중", tone: "bg-cyan-300/15 text-cyan-100 border-cyan-300/30" };
   return null;
+}
+
+function assignedNames(assignments = []) {
+  return assignments.map((entry) => entry.member?.name).filter(Boolean);
+}
+
+function roomJobDiagnostic(room, assignments = [], compact = false) {
+  if (!room) return null;
+  const job = getRoomJob(room.id);
+  const workers = assignedNames(assignments);
+  if (room.jobId) {
+    return {
+      label: compact ? `${workers.length || 1}명 작업` : `${job?.label ?? room.jobId} · ${Math.round(room.progress ?? 0)}%`,
+      tone: "bg-cyan-300/20 text-cyan-50 border-cyan-300/40",
+    };
+  }
+  if (room.status === "위험" || room.status === "점검 필요") {
+    return {
+      label: workers.length > 0 ? `출동 ${workers.length}명` : "대기열 확인",
+      tone: workers.length > 0 ? "bg-amber-300/20 text-amber-50 border-amber-300/40" : "bg-red-400/20 text-red-50 border-red-300/45",
+    };
+  }
+  return null;
+}
+
+function roomTooltip(roomDef, roomState, assignments = []) {
+  if (!roomState) return `${roomDef.label} (${roomDef.id})`;
+  const job = getRoomJob(roomDef.id);
+  const workers = assignedNames(assignments).join(", ") || "없음";
+  return [
+    `${roomDef.label} (${roomDef.id})`,
+    `상태: ${roomState.status ?? "미상"}`,
+    `condition: ${Math.round(roomState.condition ?? 0)} / load: ${Math.round(roomState.load ?? 0)}`,
+    `job: ${roomState.jobId ? `${job?.label ?? roomState.jobId} (${roomState.jobId})` : job?.id ?? "없음"}`,
+    `progress: ${Math.round(roomState.progress ?? 0)}%`,
+    `assigned: ${workers}`,
+  ].join("\n");
+}
+
+function buildRoomDiagnostics(rooms, roomAssignments) {
+  return DISPLAY_ROOMS
+    .filter((room) => !room.decorative)
+    .map((room) => {
+      const state = rooms[room.id];
+      const assigned = roomAssignments.filter((entry) => entry.roomId === room.id);
+      const job = getRoomJob(room.id);
+      const diagnostic = roomJobDiagnostic(state, assigned, false);
+      return { room, state, assigned, job, diagnostic };
+    })
+    .filter(({ state, assigned, diagnostic }) => diagnostic || state?.status === "위험" || state?.status === "점검 필요" || assigned.some((entry) => entry.activity?.intent === "room-job"))
+    .sort((a, b) => {
+      const priority = { 위기: 4, 위험: 3, "점검 필요": 2, "작업 중": 1, 안정: 0 };
+      return (priority[b.state?.status] ?? 0) - (priority[a.state?.status] ?? 0);
+    })
+    .slice(0, 6);
 }
 
 function RouteLine({ from, to, active }) {
@@ -171,6 +227,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
   const roomAssignments = useMemo(() => slotAssignments(aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomForCrewActivity(member, activityByMember.get(member.id)) }))), [aliveCrew, activityByMember]);
   const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
   const jobOwnerIds = new Set(Object.values(rooms).flatMap((room) => room.assignedMemberIds ?? (room.assignedMemberId ? [room.assignedMemberId] : [])).filter(Boolean));
+  const roomDiagnostics = useMemo(() => buildRoomDiagnostics(rooms, roomAssignments), [rooms, roomAssignments]);
 
   const motionTargets = useMemo(() => roomAssignments.map(({ member, activity, roomId, slotIndex }) => {
     const point = roomAnchorPoint(roomId, member.id, slotIndex);
@@ -186,7 +243,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
     <section className="overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{roomDiagnostics.length > 0 && <span className="hud-chip hud-chip-accent">작업 {roomDiagnostics.length}</span>}{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
       <div ref={mapRef} className={`ship-interior-map relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 ${compact ? "h-[260px]" : "h-[460px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
         <div className="ship-hull-shell absolute inset-x-[6%] top-[4%] h-[92%] rounded-[44%]" />
@@ -205,16 +262,19 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const crisis = operational && roomState?.activeCrisisId ? crisisById.get(roomState.activeCrisisId) : null;
           const crisisConfig = crisis ? CRISIS_CATALOG[crisis.type] : null;
           const CrisisIcon = crisis ? CRISIS_ICONS[crisis.type] ?? AlertTriangle : null;
+          const diagnostic = operational ? roomJobDiagnostic(roomState, assigned, compact) : null;
           const badge = !operational
             ? { label: room.tag ?? "AUX", tone: "bg-slate-400/10 text-slate-300 border-slate-500/30" }
             : crisis
               ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" }
               : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
           return (
-            <div key={room.id} className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
+            <div key={room.id} title={roomTooltip(room, roomState, assigned)} className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
+              {operational && !compact && <div className="mt-1 flex flex-wrap gap-1"><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">C{Math.round(roomState?.condition ?? 0)}</span><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">L{Math.round(roomState?.load ?? 0)}</span></div>}
               {operational && <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>}
               {operational && !compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers?.slots ?? 1)}</span>}
+              {!crisis && diagnostic && <span className={`absolute left-1 top-7 max-w-[calc(100%-0.5rem)] truncate rounded border px-1.5 py-0.5 text-[9px] font-black ${diagnostic.tone}`}>{diagnostic.label}</span>}
               {badge && <span className={`absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}`}>{badge.label}</span>}
               {crisis && <span className="absolute right-1 top-6 rounded border border-red-300/45 bg-red-400/20 px-1 text-[9px] font-black text-red-50">{Math.round(crisis.progress ?? 0)}%</span>}
               {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : operational && roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
@@ -234,7 +294,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const moving = animState === "walk";
           const barkText = motion?.bark?.text;
           return (
-            <button key={member.id} className="absolute left-0 top-0 z-20" style={{ transform: crewMarkerTransform(point), willChange: moving ? "transform" : "auto" }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"} · ${meta.label}`}>
+            <button key={member.id} className="absolute left-0 top-0 z-20" style={{ transform: crewMarkerTransform(point), willChange: moving ? "transform" : "auto" }} onClick={() => onCrewClick?.(member)} title={`${member.name} · ${activity?.station ?? "대기"} · ${activity?.action ?? "대기"} · ${activity?.roomId ?? roomId} · ${activity?.jobId ?? "no-job"} · ${meta.label}`}>
               {!compact && barkText && <span className={`crew-bark-bubble crew-bark-${motion.bark.trigger ?? "default"}`} aria-hidden="true">{barkText}</span>}
               <span className={`crew-marker-core crew-marker-${animState} crew-idle-${idleAction} relative grid h-7 w-7 place-items-center rounded-full border text-[11px] font-black shadow-lg ${markerTone(activity?.priority)} ${isJobOwner ? "ring-2 ring-cyan-300 ring-offset-1 ring-offset-slate-950" : ""} ${isCrisisResponder ? "ring-2 ring-red-300 ring-offset-1 ring-offset-slate-950" : ""}`}>
                 <span className={`crew-marker-avatar ${motion?.facing === "left" ? "crew-marker-facing-left" : ""}`}>{member.name.slice(0, 1)}</span>
@@ -246,7 +306,8 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           );
         })}
       </div>
-      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); const motion = motionByCrewId[member.id]; const animState = motion?.animState ?? deriveTargetAnimState(activity, member); const idleAction = motion?.idleAction ?? "stand"; const meta = animMeta(animState, idleAction); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}</div></div><span className={`hud-chip shrink-0 ${chipToneForAnim(animState, priority)}`}>{meta.label}</span></button>; })}</div>}
+      {!compact && roomDiagnostics.length > 0 && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomDiagnostics.map(({ room, state, assigned, job, diagnostic }) => <div key={room.id} className="rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2"><div className="flex items-center justify-between gap-2"><div className="font-semibold text-slate-100">{room.label}</div><span className={`hud-chip shrink-0 ${state?.status === "위험" ? "hud-chip-danger" : state?.status === "점검 필요" ? "hud-chip-warning" : "hud-chip-accent"}`}>{state?.status ?? "미상"}</span></div><div className="mt-1 text-xs text-slate-400">{job?.label ?? "room-job"} · C{Math.round(state?.condition ?? 0)} / L{Math.round(state?.load ?? 0)} · {diagnostic?.label ?? "관찰 중"}</div><div className="mt-1 truncate text-[11px] text-cyan-100">담당: {assignedNames(assigned).join(", ") || "아직 없음"}</div></div>)}</div>}
+      {!compact && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomAssignments.slice(0, 6).map(({ member, activity }) => { const priority = getPriorityConfig(activity?.priority ?? "normal"); const motion = motionByCrewId[member.id]; const animState = motion?.animState ?? deriveTargetAnimState(activity, member); const idleAction = motion?.idleAction ?? "stand"; const meta = animMeta(animState, idleAction); return <button key={member.id} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-left" onClick={() => onCrewClick?.(member)}><div className="min-w-0"><div className="truncate font-semibold text-slate-100">{member.name}</div><div className="mt-0.5 truncate text-xs text-slate-400">{activity?.station ?? "대기"} · {activity?.action ?? "대기"}{activity?.jobId ? ` · ${activity.jobId}` : ""}</div></div><span className={`hud-chip shrink-0 ${chipToneForAnim(animState, priority)}`}>{meta.label}</span></button>; })}</div>}
     </section>
   );
 }
