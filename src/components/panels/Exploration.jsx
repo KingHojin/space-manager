@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
@@ -8,6 +9,7 @@ import { useShipStore } from "../../stores/shipStore";
 import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
 import { applyMissionRewards } from "../../systems/missionRewards";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
+import MissionEncounterCard from "../ui/MissionEncounterCard";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
 import StarMap from "../exploration/StarMap";
 
@@ -39,24 +41,26 @@ function EncounterCard({ encounter, onResolve }) {
   );
 }
 
-function ActiveMissionPanel({ mission, currentNodeId, travel, pendingEncounter, onPlan, onComplete }) {
+function ActiveMissionPanel({ mission, currentNodeId, travel, pendingEncounter, pendingMissionEncounter, onPlan, onComplete }) {
   if (!mission) return null;
   const arrived = currentNodeId === mission.destinationNodeId;
   const travelingThisMission = travel?.missionId === mission.id;
-  const canComplete = arrived && !travel && !pendingEncounter;
+  const hasBlockingEncounter = Boolean(pendingEncounter || pendingMissionEncounter);
+  const canComplete = arrived && !travel && !hasBlockingEncounter;
   return (
     <section className="rounded border border-cyan-300/35 bg-cyan-300/10 p-4">
       <div className="grid gap-4 md:grid-cols-[11rem_minmax(0,1fr)]">
         <MissionPoster mission={mission} compact />
         <div className="min-w-0">
-          <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Briefcase size={18} />활성 임무</div><h3 className="mt-2 truncate text-xl font-black text-slate-50">{mission.title}</h3></div><span className="hud-chip hud-chip-accent shrink-0">{canComplete ? "완료 가능" : arrived ? "조우 처리" : travelingThisMission ? "항해 중" : "대기"}</span></div>
-          <MissionProgressSteps arrived={arrived} pendingEncounter={pendingEncounter} />
+          <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Briefcase size={18} />활성 임무</div><h3 className="mt-2 truncate text-xl font-black text-slate-50">{mission.title}</h3></div><span className="hud-chip hud-chip-accent shrink-0">{canComplete ? "완료 가능" : arrived ? pendingMissionEncounter ? "임무 카드" : "조우 처리" : travelingThisMission ? "항해 중" : "대기"}</span></div>
+          <MissionProgressSteps arrived={arrived} pendingEncounter={hasBlockingEncounter} />
           <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="목적지" value={mission.destinationName} /><Info label="위험" value={mission.riskLabel} /></div>
           <div className="mt-3"><RewardIconRow reward={mission.reward} /></div>
         </div>
       </div>
       {canComplete && <button className="primary-button mt-4 w-full" onClick={() => onComplete(mission)}><CheckCircle2 size={16} />임무 완료하고 보상 수령</button>}
       {arrived && pendingEncounter && <p className="mt-3 text-sm leading-6 text-amber-100">목적지 조우를 먼저 결재해야 임무를 완료할 수 있습니다.</p>}
+      {arrived && pendingMissionEncounter && <p className="mt-3 text-sm leading-6 text-amber-100">임무 조우 카드를 먼저 선택해야 임무를 완료할 수 있습니다.</p>}
       {!arrived && <button className="primary-button mt-4 w-full" disabled={Boolean(travel)} onClick={() => onPlan(mission)}><MapPin size={16} />임무 목적지 항로 결재</button>}
     </section>
   );
@@ -82,7 +86,11 @@ export default function Exploration() {
   const refuel = useNavStore((state) => state.refuel);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
+  const pendingMissionEncounter = useMissionStore((state) => state.pendingMissionEncountersByVesselId?.[activeVesselId]);
+  const resolvedMissionEncounters = useMissionStore((state) => state.resolvedMissionEncounters ?? []);
   const completeMission = useMissionStore((state) => state.completeMission);
+  const generateMissionEncounterForVessel = useMissionStore((state) => state.generateMissionEncounterForVessel);
+  const resolveMissionEncounter = useMissionStore((state) => state.resolveMissionEncounter);
 
   const nodes = sector.nodes ?? [];
   const zones = nodes.map(nodeToZone);
@@ -95,6 +103,15 @@ export default function Exploration() {
   const travelFrom = nodes.find((node) => node.id === travel?.fromId);
   const travelTo = nodes.find((node) => node.id === travel?.toId);
   const travelProgress = travel ? Math.max(0, Math.min(100, ((currentMinute - travel.startedAt) / Math.max(1, travel.duration)) * 100)) : 0;
+  const activeMissionArrived = Boolean(activeMission && currentNodeId === activeMission.destinationNodeId);
+  const missionAlreadyResolved = Boolean(activeMission && resolvedMissionEncounters.some((encounter) => encounter.missionId === activeMission.id));
+
+  useEffect(() => {
+    if (!activeVesselId || !activeMission || !activeMissionArrived) return;
+    if (travel || pendingEncounter || pendingMissionEncounter || missionAlreadyResolved) return;
+    const result = generateMissionEncounterForVessel({ vesselId: activeVesselId, timing: "arrival", currentMinute });
+    if (result.ok && result.generated) addLog(`임무 조우 카드 발생: ${result.encounter.title}`);
+  }, [activeVesselId, activeMission?.id, activeMissionArrived, travel, pendingEncounter, pendingMissionEncounter, missionAlreadyResolved, currentMinute, generateMissionEncounterForVessel, addLog]);
 
   const handleSelect = (zone) => {
     if (!discoveredSet.has(zone.id)) return;
@@ -119,6 +136,7 @@ export default function Exploration() {
   const handleCompleteMission = (mission) => {
     if (currentNodeId !== mission.destinationNodeId) return addLog("임무 완료 실패: 목적지에 도착하지 않았습니다.");
     if (pendingEncounter) return addLog("임무 완료 실패: 목적지 조우를 먼저 결재해야 합니다.");
+    if (pendingMissionEncounter) return addLog("임무 완료 실패: 임무 조우 카드를 먼저 선택해야 합니다.");
     const result = completeMission({ vesselId: activeVesselId, currentMinute });
     if (!result.ok) return addLog(`임무 완료 실패: ${result.reason}`);
     const payout = applyMissionRewards(result.reward);
@@ -128,6 +146,16 @@ export default function Exploration() {
   };
 
   const handleResolve = (optionId) => applyNavigationEncounter(optionId, currentMinute);
+  const handleResolveMissionEncounter = (optionId) => {
+    const result = resolveMissionEncounter({ vesselId: activeVesselId, optionId, currentMinute });
+    if (!result.ok) return addLog(`임무 조우 선택 실패: ${result.reason}`);
+    addLog(`임무 조우 선택: ${result.encounter.title} / ${result.option.label}.`);
+    result.logs.forEach((message) => addLog(`임무 조우: ${message}`));
+    if (Object.keys(result.resourceDelta ?? {}).length > 0) addLog("임무 조우 결과가 기록되었습니다. 실제 자원 반영은 다음 단계에서 처리됩니다.");
+    if (Object.keys(result.reward ?? {}).length > 0) addLog("임무 조우 보상 후보가 기록되었습니다. 실제 지급은 다음 단계에서 처리됩니다.");
+    if (result.combat) addLog("임무 조우에서 추가 전술 상황이 기록되었습니다. 실제 전투 연결은 다음 단계에서 처리됩니다.");
+    return null;
+  };
   const handleEmergencyRefuel = () => {
     refuel(25);
     addLog("긴급 구조 보급 수신: 항해 연료 +25.");
@@ -138,15 +166,16 @@ export default function Exploration() {
       <section className="xl:overflow-y-auto">
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Radar size={18} />{sector.name} 노드 지도</div><p className="mt-2 text-sm leading-6 text-slate-400">노드를 고르고, 항로와 조우를 시각적으로 확인합니다.</p></div><span className="hud-chip hud-chip-accent">Fuel {Math.round(fuel)}%</span></div>
         <div className="mt-3"><StarMap zones={zones} currentZoneId={currentNodeId} selectedZoneId={selectedNodeId} discoveredZoneIds={discovered} route={route} activeTravel={travel ? { ...travel, fromZoneId: travel.fromId, toZoneId: travel.toId } : null} currentMinute={currentMinute} onSelect={handleSelect} sectorName={sector.name} exploredCount={discovered.length} totalCount={nodes.length} /></div>
-        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"><Info label="현재 노드" value={current?.name ?? "-"} /><Info label="발견" value={`${discovered.length}/${nodes.length}`} /><Info label="영입 후보" value={`${recruitCandidates.length}명`} /><Info label="상태" value={pendingEncounter ? "조우 대기" : travel ? travel.missionId ? "임무 항해" : "항해 중" : driftState ? "표류" : "정박"} tone={pendingEncounter || driftState ? "text-red-300" : travel ? "text-amber-300" : ""} /></div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"><Info label="현재 노드" value={current?.name ?? "-"} /><Info label="발견" value={`${discovered.length}/${nodes.length}`} /><Info label="영입 후보" value={`${recruitCandidates.length}명`} /><Info label="상태" value={pendingEncounter ? "조우 대기" : pendingMissionEncounter ? "임무 카드" : travel ? travel.missionId ? "임무 항해" : "항해 중" : driftState ? "표류" : "정박"} tone={pendingEncounter || driftState ? "text-red-300" : pendingMissionEncounter || travel ? "text-amber-300" : ""} /></div>
       </section>
       <aside className="space-y-4">
         <EncounterCard encounter={pendingEncounter} onResolve={handleResolve} />
-        <ActiveMissionPanel mission={activeMission} currentNodeId={currentNodeId} travel={travel} pendingEncounter={pendingEncounter} onPlan={handlePlanMission} onComplete={handleCompleteMission} />
+        {pendingMissionEncounter && <MissionEncounterCard encounter={pendingMissionEncounter} disabled={Boolean(pendingEncounter)} onSelectOption={handleResolveMissionEncounter} />}
+        <ActiveMissionPanel mission={activeMission} currentNodeId={currentNodeId} travel={travel} pendingEncounter={pendingEncounter} pendingMissionEncounter={pendingMissionEncounter} onPlan={handlePlanMission} onComplete={handleCompleteMission} />
         {travel && <section><div className="section-title"><Clock3 size={18} />{travel.missionId ? "임무 항해 상황판" : "항해 상황판"}</div><div className="mission-travel-card mt-4 rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4"><div className="flex items-start justify-between gap-3"><div>{travel.missionTitle && <div className="mb-1 text-xs font-bold text-cyan-200">{travel.missionTitle}</div>}<div className="font-semibold text-amber-100">{travelFrom?.name} → {travelTo?.name}</div><div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(travel.completeAt)}</div></div><span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span></div><div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(travel.completeAt - currentMinute)))} /><Info label="예상 연료" value={`${travel.fuelCost.toFixed(1)}`} /></div></div></section>}
         {driftState && <section className="rounded border border-red-400/45 bg-red-400/10 p-4"><div className="section-title"><Fuel size={18} />표류 상태</div><p className="mt-2 text-sm leading-6 text-slate-300">연료가 고갈되어 이동이 정지했습니다.</p><button className="primary-button mt-4 w-full" onClick={handleEmergencyRefuel}>긴급 보급 수신</button></section>}
-        {!pendingEncounter && !travel && !driftState && selected && <section><div className="section-title"><Route size={18} />목적지 결재</div><div className="mt-4 rounded border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="flex items-start justify-between gap-3"><div><div className="text-lg font-black text-slate-50">{NODE_TYPE_ICONS[selected.type]} {selected.name}</div><div className="mt-1 text-sm text-slate-400">{NODE_TYPE_LABELS[selected.type]} · 위험 {selected.danger} · 자원 {selected.richness}</div></div><span className={`hud-chip ${dangerChipClass(selected.danger)}`}>위험 {selected.danger}</span></div>{isCurrent ? <p className="mt-3 text-sm text-slate-400">현재 위치입니다. 연결된 노드를 선택하세요.</p> : <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="거리" value={`${plannedDistance.toFixed(1)}u`} /><Info label="예상 시간" value={formatMinutes(Math.max(18, Math.round(plannedDistance * 11)))} /></div>}<button className="primary-button mt-4 w-full" disabled={isCurrent || fuel <= 0} onClick={handlePlan}><Rocket size={16} />이 경로로 항해</button></div></section>}
-        <section><div className="section-title">항해 로그</div><div className="mt-3 grid gap-2">{navLog.slice(0, 5).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-300">{entry}</div>)}</div></section>
+        {!pendingEncounter && !pendingMissionEncounter && !travel && !driftState && selected && <section><div className="section-title"><Route size={18} />목적지 결재</div><div className="mt-4 rounded border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="flex items-start justify-between gap-3"><div><div className="text-lg font-black text-slate-50">{NODE_TYPE_ICONS[selected.type]} {selected.name}</div><div className="mt-1 text-sm text-slate-400">{NODE_TYPE_LABELS[selected.type]} · 위험 {selected.danger} · 자원 {selected.richness}</div></div><span className={`hud-chip ${dangerChipClass(selected.danger)}`}>위험 {selected.danger}</span></div>{isCurrent ? <p className="mt-3 text-sm text-slate-400">현재 위치입니다. 연결된 노드를 선택하세요.</p> : <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="거리" value={`${plannedDistance.toFixed(1)}u`} /><Info label="예상 시간" value={formatMinutes(Math.max(18, Math.round(plannedDistance * 11)))} /></div>}<button className="primary-button mt-4 w-full" disabled={isCurrent || fuel <= 0} onClick={handlePlan}><Rocket size={16} />이 경로로 항해</button></div></section>}
+        <section><div className="section-title">항해 로그</div><div className="mt-3 grid gap-2">{navLog.slice(0, 5).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}</div></section>
       </aside>
     </div>
   );
