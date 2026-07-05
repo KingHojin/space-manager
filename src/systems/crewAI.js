@@ -44,6 +44,18 @@ function assignedQueueTask(member, queues) {
   return tasks[0] ?? null;
 }
 
+function queueActivity(member, queueTask, currentMinute) {
+  if (queueTask?.queueType === "treatment") {
+    const priority = normalizePriority(queueTask.priority ?? "high");
+    return { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? member.injury} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
+  }
+  if (queueTask?.queueType === "training") {
+    const priority = normalizePriority(queueTask.priority ?? "normal");
+    return { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
+  }
+  return null;
+}
+
 function pickCrisisAssignment(member, snapshot, claimedCrisisIds) {
   const activeCrises = snapshot.activeCrises ?? [];
   let bestCrisis = null;
@@ -128,7 +140,14 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
       return;
     }
 
+    const queueTask = assignedQueueTask(member, queues);
+
     if (member.injury && member.injury !== "정상") {
+      const queuedTreatment = queueTask?.queueType === "treatment" ? queueActivity(member, queueTask, currentMinute) : null;
+      if (queuedTreatment) {
+        fixedActivities.set(member.id, queuedTreatment);
+        return;
+      }
       const priority = member.injury === "중상" ? "emergency" : "high";
       fixedActivities.set(member.id, { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: member.injury, updatedAt: currentMinute });
       return;
@@ -145,15 +164,9 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
       return;
     }
 
-    const queueTask = assignedQueueTask(member, queues);
-    if (queueTask?.queueType === "treatment") {
-      const priority = normalizePriority(queueTask.priority ?? "high");
-      fixedActivities.set(member.id, { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? member.injury} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute });
-      return;
-    }
-    if (queueTask?.queueType === "training") {
-      const priority = normalizePriority(queueTask.priority ?? "normal");
-      fixedActivities.set(member.id, { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute });
+    const queuedActivity = queueActivity(member, queueTask, currentMinute);
+    if (queuedActivity) {
+      fixedActivities.set(member.id, queuedActivity);
       return;
     }
 
