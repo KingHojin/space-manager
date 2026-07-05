@@ -56,16 +56,62 @@ Phase 14 must stay compatible with later Fleet expansion. Mission state must not
   - `missionLog`
 - `acceptMission` requires a `vesselId` and stores active missions by vessel id.
 - The store can support multiple boards via `scopeId`, such as station/node/sector boards later.
-- No UI is wired yet.
+- No UI was wired in PR A.
 - No navigation is started by accepting a mission yet.
 - No rewards are actually paid out yet.
 - No combat, encounter, resource, ship, crew, job, or crisis numbers are changed.
+
+## PR B implemented — Mission Board UI
+
+### Files
+
+- `src/components/modals/MissionBoardModal.jsx`
+- `src/App.jsx`
+- `src/components/panels/Menu.jsx`
+- `src/components/layout/Sidebar.jsx`
+- `src/stores/shipStore.js`
+- `docs/PHASE_14_CONTRACT_MISSIONS.md`
+
+### Behavior
+
+- Added an `임무 게시판` modal.
+- Registered the modal in `App.jsx` as `missions`.
+- Added a main command-menu card for `임무`.
+- Added a desktop sidebar quick action for `임무`.
+- The mission board auto-generates a node-scoped board for the current navigation node:
+  - `scopeId = node:<currentNodeId>`
+  - default board size remains 3 missions
+  - board refresh still uses `missionStore.refreshBoard`
+- Mission cards show:
+  - title
+  - client
+  - category
+  - summary
+  - risk
+  - distance
+  - destination
+  - destination danger
+  - reward preview
+  - tags
+- Accepting a mission now calls `missionStore.acceptMission` and logs the result.
+- If the active vessel already has an active mission, the board shows the active mission card and disables accepting another mission.
+- Added an abandon button for the active mission.
+- PR B still does not start navigation automatically.
+- PR B still does not pay rewards.
+- PR B still does not modify combat, encounter, resource, crew, crisis, room job, or navigation formulas.
 
 ## Fleet-safety rule
 
 PR A intentionally does not use a global singleton ship id.
 
-Future UI should pass a real `vesselId` from whichever Fleet/ship selection model exists at that time. Until Fleet exists, the caller may use a temporary UI-level id, but the mission framework itself stays keyed by `vesselId`.
+PR B adds a small fleet-friendly identity layer to `shipStore`:
+
+- `activeVesselId`
+- `vesselsById`
+- `selectVessel`
+- `getActiveVessel`
+
+The current run has one starter vessel record, but mission state is still keyed by `vesselId`, not by a hardcoded unique ship assumption. Later Fleet work can add more vessel records without changing mission ownership shape.
 
 ## Current mission lifecycle
 
@@ -77,24 +123,15 @@ offered -> active -> completed
 
 Completion currently returns the reward preview object but does not apply it to inventory/resources. Actual payout should be implemented in a later PR where UI and mission travel rules are connected.
 
-## PR B target — Mission Board UI
+## PR C target — Accept Mission -> Navigation bridge
 
 Recommended next small PR:
 
-- Add a mission board panel/modal.
-- Show 3 offered missions.
-- Display risk, distance, client, destination, and reward preview.
-- Add a refresh button gated by current board expiry or explicit dev/debug refresh.
-- Still do not start travel automatically unless PR B explicitly includes that connection.
-
-## PR C target — Accept Mission -> Navigation bridge
-
-Recommended after UI:
-
 - On mission accept, select/plan route to mission destination.
-- Block accepting a second active mission for the same vessel.
-- Show active mission card in navigation overview.
+- Show active mission destination in the Exploration panel.
+- Add an active mission card near navigation status.
 - Keep the existing nav system as source of truth for travel.
+- Do not mark mission complete yet unless destination/objective rules are explicitly added.
 
 ## PR D target — Mission completion and payout
 
@@ -125,3 +162,17 @@ Manual checks for PR A:
 7. Confirm accepting another mission for the same vessel returns `vesselBusy`.
 8. Call `completeMission` and confirm it returns the reward preview without applying rewards.
 9. Confirm no navigation, resource, crew, crisis, or room job values change from PR A alone.
+
+Manual checks for PR B:
+
+1. Open the command menu and click `임무`.
+2. Confirm the mission board modal opens.
+3. Confirm 3 offered missions appear for the current node.
+4. Confirm each mission shows risk, distance, destination, client, tags, and reward preview.
+5. Click refresh and confirm the board updates without changing resources.
+6. Accept one mission and confirm it moves into the active mission card.
+7. Confirm accepting another mission for the same active vessel is blocked/disabled.
+8. Abandon the mission and confirm the board can accept a mission again.
+9. Confirm no travel starts automatically after accepting.
+10. Confirm no rewards are paid after accepting/abandoning.
+11. Confirm no combat, encounter, resource, crew, crisis, room job, or navigation formula values change from PR B alone.
