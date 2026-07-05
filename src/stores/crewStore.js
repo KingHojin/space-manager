@@ -2,6 +2,21 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialCrew } from "../data/crew";
 import { generateCrewActivities, CREW_AI_INTERVAL } from "../systems/crewAI";
+import {
+  applyInjury,
+  chooseTreatmentTarget,
+  getRoleCoverage,
+  improveInjuryOneStage,
+  injuryLabel,
+  injuryRank,
+  isHealthy,
+  isInjured,
+  normalizeInjury,
+  rollPermanentTrait,
+  shouldWorsenInjury,
+  treatmentRatePerHour,
+  worsenInjuryOneStage,
+} from "../systems/injurySystem";
 import { normalizePriority } from "../systems/priorities";
 
 const moraleOrder = ["나쁨", "보통", "좋음", "최상"];
@@ -16,6 +31,10 @@ function shiftMorale(current, delta) {
   return moraleOrder[clamp(safeIndex + delta, 0, moraleOrder.length - 1)];
 }
 
+function fatigueMultiplier(member) {
+  return normalizeInjury(member.injury).permanentTraits.includes("chronic_fatigue") ? 1.3 : 1;
+}
+
 function normalizeCrew(member) {
   const base = initialCrew.find((entry) => entry.id === member.id) ?? {};
   return {
@@ -25,6 +44,7 @@ function normalizeCrew(member) {
     fatigue: member.fatigue ?? base.fatigue ?? 0,
     experience: member.experience ?? base.experience ?? 0,
     trait: member.trait ?? base.trait ?? "일반 대원",
+    injury: normalizeInjury(member.injury ?? base.injury),
     stats: { ...(base.stats ?? {}), ...(member.stats ?? {}) },
   };
 }
@@ -44,7 +64,7 @@ function applyTraining(member, statKey) {
   if (!member.alive) return member;
   return {
     ...member,
-    fatigue: clamp((member.fatigue ?? 0) + 12, 0, 100),
+    fatigue: clamp((member.fatigue ?? 0) + 12 * fatigueMultiplier(member), 0, 100),
     experience: (member.experience ?? 0) + 8,
     morale: shiftMorale(member.morale, 1),
     stats: {
@@ -56,18 +76,66 @@ function applyTraining(member, statKey) {
 
 function applyTreatment(member, task) {
   if (!member.alive) return member;
+  const before = normalizeInjury(member.injury);
+  const after = improveInjuryOneStage(before);
   return {
     ...member,
-    injury: "정상",
+    injury: after,
     fatigue: clamp((member.fatigue ?? 0) + (task.fatiguePenalty ?? 10), 0, 100),
     morale: shiftMorale(member.morale, 1),
   };
 }
 
+function activityTreatmentTargets(crew, activities = []) {
+  const medicActivities = activities.filter((activity) => activity.intent === "medical-care");
+  if (medicActivities.length === 0) return new Map();
+  const target = chooseTreatmentTarget(crew);
+  if (!target) return new Map();
+  return new Map(medicActivities.map((activity) => [activity.memberId, target.id]));
+}
+
+function tickMemberInjury({ member, deltaMinutes, hasMedic, isQueuedTreatment, treatedBy }) {
+  if (!member.alive) return { member, log: null };
+  const injury = normalizeInjury(member.injury);
+  if (injury.state === "healthy") return { member: { ...member, injury }, log: null };
+
+  const isBeingTreated = Boolean(isQueuedTreatment || treatedBy);
+  const activeMedicCount = treatedBy ? 1 : 0;
+  const hours = deltaMinutes / 60;
+  let nextInjury = {
+    ...injury,
+    treatedBy: treatedBy ?? null,
+    untreatedMinutes: isBeingTreated ? 0 : (injury.untreatedMinutes ?? 0) + deltaMinutes,
+  };
+  let log = null;
+
+  const canNaturallyRecover = injury.state === "minor" || injury.state === "incapacitated";
+  const rate = isBeingTreated || canNaturallyRecover ? treatmentRatePerHour({ injury, hasMedic, activeMedicCount }) : 0;
+  if (rate > 0) {
+    nextInjury = { ...nextInjury, recoveryProgress: clamp((nextInjury.recoveryProgress ?? 0) + rate * hours, 0, 100) };
+  }
+
+  if (nextInjury.recoveryProgress >= 100) {
+    const beforeState = nextInjury.state;
+    nextInjury = improveInjuryOneStage(nextInjury);
+    if (beforeState === "critical" && nextInjury.state === "serious") {
+      const trait = rollPermanentTrait(nextInjury.permanentTraits);
+      if (trait) nextInjury = { ...nextInjury, permanentTraits: [...nextInjury.permanentTraits, trait] };
+    }
+    log = `${member.name} 부상 호전: ${injuryLabel(beforeState)} → ${injuryLabel(nextInjury)}.`;
+  } else if (shouldWorsenInjury({ injury: nextInjury, deltaMinutes, hasMedic, isBeingTreated })) {
+    const beforeState = nextInjury.state;
+    nextInjury = worsenInjuryOneStage(nextInjury);
+    log = `${member.name} 부상 악화: ${injuryLabel(beforeState)} → ${injuryLabel(nextInjury)}.`;
+  }
+
+  return { member: { ...member, injury: nextInjury }, log };
+}
+
 export const useCrewStore = create(
   persist(
     (set, get) => ({
-      crew: initialCrew.map((member) => ({ ...member, alive: true })),
+      crew: initialCrew.map((member) => normalizeCrew({ ...member, alive: true })),
       trainingQueue: [],
       treatmentQueue: [],
       crewActivities: [],
@@ -84,7 +152,7 @@ export const useCrewStore = create(
         set((state) => ({
           treatmentQueue: [
             ...state.treatmentQueue.filter((task) => task.memberId !== memberId),
-            { id: crypto.randomUUID(), memberId, injury, completeAt, cost, duration, fatiguePenalty, priority: normalizePriority(priority), startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), memberId, injury: injuryLabel(injury), completeAt, cost, duration, fatiguePenalty, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
       setTrainingPriority: (taskId, priority) =>
@@ -142,13 +210,45 @@ export const useCrewStore = create(
           treatmentQueue: state.treatmentQueue.filter((task) => task.completeAt > currentMinute),
           crew: state.crew.map((member) => {
             const task = readyByMember.get(member.id);
-            return task ? applyTreatment(member, task) : member;
+            return task && isInjured(member.injury) ? applyTreatment(member, task) : member;
           }),
         }));
         return ready.map((task) => {
           const member = get().crew.find((entry) => entry.id === task.memberId);
-          return `${member?.name ?? "승무원"} 의무실 치료 완료.`;
+          return `${member?.name ?? "승무원"} 의무실 치료 단계 완료.`;
         });
+      },
+      tickCrewHealth: ({ currentMinute = 0, deltaMinutes = 0 }) => {
+        if (deltaMinutes <= 0) return [];
+        const logs = [];
+        set((state) => {
+          const coverage = getRoleCoverage(state.crew);
+          const hasMedic = (coverage.counts.의무실 ?? 0) > 0;
+          const treatmentByMember = new Map((state.treatmentQueue ?? []).map((task) => [task.memberId, task]));
+          const targetByMedic = activityTreatmentTargets(state.crew, state.crewActivities ?? []);
+          const medicTargetIds = new Map([...targetByMedic.entries()].map(([medicId, targetId]) => [targetId, medicId]));
+
+          const crew = state.crew.map((member) => {
+            const result = tickMemberInjury({
+              member,
+              deltaMinutes,
+              hasMedic,
+              isQueuedTreatment: treatmentByMember.has(member.id),
+              treatedBy: medicTargetIds.get(member.id) ?? null,
+            });
+            if (result.log) logs.push(result.log);
+            return result.member;
+          });
+
+          return {
+            crew,
+            treatmentQueue: state.treatmentQueue.filter((task) => {
+              const member = crew.find((entry) => entry.id === task.memberId);
+              return member?.alive && isInjured(member.injury) && task.completeAt > currentMinute;
+            }),
+          };
+        });
+        return logs;
       },
       restMember: (memberId) =>
         set((state) => ({
@@ -164,9 +264,9 @@ export const useCrewStore = create(
             member.id === memberId && member.alive
               ? {
                   ...member,
-                  fatigue: clamp((member.fatigue ?? 0) + fatigue, 0, 100),
+                  fatigue: clamp((member.fatigue ?? 0) + fatigue * fatigueMultiplier(member), 0, 100),
                   morale: shiftMorale(member.morale, morale),
-                  injury: injury ?? member.injury,
+                  injury: injury ? applyInjury(member, injury) : normalizeInjury(member.injury),
                   experience: (member.experience ?? 0) + experience,
                 }
               : member,
@@ -181,13 +281,15 @@ export const useCrewStore = create(
               ? {
                   ...member,
                   alive: injury !== "전사",
-                  injury,
-                  fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16), 0, 100),
+                  injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury),
+                  fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100),
                   morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale),
                 }
               : member,
           ),
         })),
+      getRoleCoverage: () => getRoleCoverage(get().crew),
+      getTreatmentTarget: () => chooseTreatmentTarget(get().crew),
     }),
     {
       name: "space-manager-crew",
@@ -196,7 +298,7 @@ export const useCrewStore = create(
         ...(persistedState ?? {}),
         crew: mergeCrew(persistedState?.crew),
         trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")),
-        treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" ? "emergency" : "high")),
+        treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")),
         crewActivities: persistedState?.crewActivities ?? [],
         crewActivityLog: persistedState?.crewActivityLog ?? [],
         lastCrewAiAt: persistedState?.lastCrewAiAt ?? null,
