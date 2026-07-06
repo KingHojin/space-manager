@@ -65,7 +65,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     resources: scope.resources,
     activeTravel: scope.nav.travel,
     pendingTravelEvent: scope.nav.pendingEncounter,
-    pendingCombatEncounter: scope.nav.pendingCombatEncounter ?? scope.combat.combat ?? null,
+    pendingCombatEncounter: scope.nav.pendingCombatEncounter ?? (scope.combat.combat?.status === "engaged" ? scope.combat.combat : null),
     installationQueue: scope.shipLoadout.installationQueue,
     rooms: scope.interior.rooms,
     activeCrises: scope.interior.activeCrises,
