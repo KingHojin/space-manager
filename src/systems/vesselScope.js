@@ -44,6 +44,7 @@ export function getActiveVesselScope() {
       activities: crew.crewActivities ?? [],
       trainingQueue: crew.trainingQueue ?? [],
       treatmentQueue: crew.treatmentQueue ?? [],
+      recoveryQueue: crew.recoveryQueue ?? [],
       roleCoverage: crew.getRoleCoverage(),
     },
     shipLoadout: {
@@ -67,6 +68,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     pendingTravelEvent: scope.nav.pendingEncounter,
     pendingCombatEncounter: scope.nav.pendingCombatEncounter ?? (scope.combat.combat?.status === "engaged" ? scope.combat.combat : null),
     installationQueue: scope.shipLoadout.installationQueue,
+    modules: scope.shipLoadout.modules,
     rooms: scope.interior.rooms,
     activeCrises: scope.interior.activeCrises,
     roleCoverage: scope.crew.roleCoverage,
