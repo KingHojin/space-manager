@@ -2,6 +2,7 @@ import { useCombatStore } from "../stores/combatStore";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
+import { useJobStore } from "../stores/jobStore";
 import { useNavStore } from "../stores/navStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
@@ -19,6 +20,7 @@ export function getActiveVesselScope() {
   const exploration = useExplorationStore.getState();
   const interior = useShipInteriorStore.getState();
   const crew = useCrewStore.getState();
+  const jobs = useJobStore.getState();
   const combat = useCombatStore.getState().getCombatState(vesselId);
 
   return {
@@ -44,7 +46,7 @@ export function getActiveVesselScope() {
       activities: crew.crewActivities ?? [],
       trainingQueue: crew.trainingQueue ?? [],
       treatmentQueue: crew.treatmentQueue ?? [],
-      recoveryQueue: crew.recoveryQueue ?? [],
+      recoveryQueue: jobs.getLegacyRecoveryQueue(),
       roleCoverage: crew.getRoleCoverage(),
     },
     shipLoadout: {
@@ -52,7 +54,7 @@ export function getActiveVesselScope() {
       modules: ship.modules,
       installedModules: ship.getInstalledModules(),
       installationQueue: ship.installationQueue ?? [],
-      shipWorkQueue: ship.shipWorkQueue ?? [],
+      shipWorkQueue: jobs.getLegacyShipWorkQueue(),
     },
     combat,
   };
@@ -70,6 +72,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     pendingCombatEncounter: scope.nav.pendingCombatEncounter ?? (scope.combat.combat?.status === "engaged" ? scope.combat.combat : null),
     installationQueue: scope.shipLoadout.installationQueue,
     shipWorkQueue: scope.shipLoadout.shipWorkQueue,
+    recoveryQueue: scope.crew.recoveryQueue,
     modules: scope.shipLoadout.modules,
     rooms: scope.interior.rooms,
     activeCrises: scope.interior.activeCrises,
