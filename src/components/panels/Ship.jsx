@@ -6,7 +6,7 @@ import { JOB_DURATION, JOB_ECONOMY, MODULE_SLOTS } from "../../data/constants";
 import { formatMinutes, getModuleRule } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { explainBacklogReason } from "../../systems/jobScheduler";
-import { jobTypeLabel } from "../../systems/jobMigration";
+import { jobToLegacyModuleWork, jobTypeLabel } from "../../systems/jobMigration";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -135,12 +135,19 @@ function BacklogPanel({ jobs, rooms, crew, onUp, onDown, onCancel }) {
   );
 }
 
+function activeLegacyJobs(rawJobs, converter) {
+  return rawJobs.filter((job) => activeJobStatuses.has(job.status)).map(converter).filter(Boolean);
+}
+
 export default function Ship() {
-  const { modules, installed, unlockedModuleIds, installationQueue, startInstallation, startUpgrade } = useShipStore();
+  const { modules, installed, unlockedModuleIds, installationQueue } = useShipStore();
   const rawJobs = useJobStore((state) => state.jobs);
   const jobs = useMemo(() => rawJobs.filter((job) => activeJobStatuses.has(job.status)), [rawJobs]);
+  const moduleJobQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyModuleWork), [rawJobs]);
+  const moduleWorkQueue = useMemo(() => [...(installationQueue ?? []), ...moduleJobQueue], [installationQueue, moduleJobQueue]);
   const rooms = useJobStore((state) => state.rooms);
   const startShipWork = useJobStore((state) => state.enqueueShipWork);
+  const startModuleWork = useJobStore((state) => state.enqueueModuleWork);
   const nudgeJobPriority = useJobStore((state) => state.nudgeJobPriority);
   const cancelJob = useJobStore((state) => state.cancelJob);
   const crew = useCrewStore((state) => state.crew);
@@ -158,8 +165,8 @@ export default function Ship() {
   const salvageScrap = getItemQty(items, "salvage-scrap");
   const modulesById = useMemo(() => new Map(modules.map((module) => [module.id, module])), [modules]);
   const modulesBySlot = useMemo(() => MODULE_SLOTS.reduce((acc, slot) => ({ ...acc, [slot]: modules.filter((module) => module.slot === slot) }), {}), [modules]);
-  const slotTasks = useMemo(() => new Map(installationQueue.filter((task) => task.type === "equip").map((task) => [task.slot, task])), [installationQueue]);
-  const moduleTasks = useMemo(() => new Map(installationQueue.map((task) => [task.moduleId, task])), [installationQueue]);
+  const slotTasks = useMemo(() => new Map(moduleWorkQueue.filter((task) => task.type === "equip").map((task) => [task.slot, task])), [moduleWorkQueue]);
+  const moduleTasks = useMemo(() => new Map(moduleWorkQueue.map((task) => [task.moduleId, task])), [moduleWorkQueue]);
   const hullRepairTask = jobs.find((task) => task.type === "hull_repair") ?? null;
   const salvageProcessingTask = jobs.find((task) => task.type === "salvage") ?? null;
   const slotTask = (slot) => slotTasks.get(slot);
@@ -187,9 +194,8 @@ export default function Ship() {
     if (slotTask(slot)) return addLog(`${slot} 슬롯은 이미 장착 작업 중입니다.`);
     const rule = getModuleRule(module);
     if (!spendCredits(rule.installCredits)) return addLog(`${module.name} 장착 실패: 크레딧이 부족합니다.`);
-    const completeAt = currentMinute + rule.installMinutes;
-    startInstallation({ slot, moduleId: module.id, completeAt, cost: rule.installCredits, duration: rule.installMinutes });
-    return addLog(`${module.name} 장착 작업 지시: 비용 ₢${rule.installCredits}, 소요 ${formatMinutes(rule.installMinutes)}, 완료 ${formatGameDate(completeAt)}.`);
+    startModuleWork({ action: "equip", slot, moduleId: module.id, cost: rule.installCredits, duration: rule.installMinutes, priority: "high", createdAt: currentMinute, payload: { creditCost: rule.installCredits } });
+    return addLog(`${module.name} 장착 작업 대기열 등록: ${slot} 슬롯 · ₢${rule.installCredits} · ${formatMinutes(rule.installMinutes)}.`);
   };
 
   const upgrade = (module) => {
@@ -200,8 +206,8 @@ export default function Ship() {
     if (getItemQty(items, "tritanium") < materialQty) return addLog(`${module.name} 개선 실패: 트리타늄 ${materialQty}개가 필요합니다.`);
     if (!spendCredits(rule.upgradeCredits)) return addLog(`${module.name} 개선 실패: 크레딧이 부족합니다.`);
     removeItem("tritanium", materialQty);
-    startUpgrade({ moduleId: module.id, slot: module.slot, completeAt: currentMinute + rule.upgradeMinutes, cost: rule.upgradeCredits, duration: rule.upgradeMinutes });
-    return addLog(`${module.name} 개선 작업 지시: 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, 소요 ${formatMinutes(rule.upgradeMinutes)}.`);
+    startModuleWork({ action: "upgrade", slot: module.slot, moduleId: module.id, cost: rule.upgradeCredits, duration: rule.upgradeMinutes, priority: "normal", createdAt: currentMinute, payload: { creditCost: rule.upgradeCredits, inputItems: [{ itemId: "tritanium", qty: materialQty }] } });
+    return addLog(`${module.name} 개선 작업 대기열 등록: 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, ${formatMinutes(rule.upgradeMinutes)}.`);
   };
 
   const refundCancelledJob = (job) => {
@@ -213,8 +219,9 @@ export default function Ship() {
       addItem(itemId, refundQty);
       refundedItems.push(`${itemId} +${refundQty}`);
     });
-    if (job.type === "recovery" && job.cost > 0) {
-      const credits = Math.floor(job.cost * ratio);
+    const creditBase = job.payload?.creditCost ?? (job.type === "recovery" ? job.cost : 0);
+    if (creditBase > 0) {
+      const credits = Math.floor(creditBase * ratio);
       if (credits > 0) {
         addResources({ credits });
         refundedItems.push(`₢${credits}`);
