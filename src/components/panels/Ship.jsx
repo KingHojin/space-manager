@@ -1,21 +1,22 @@
-import { useMemo } from "react";
-import { Cpu, Hammer, Rocket, Shield, Sparkles, Wrench, Zap } from "lucide-react";
-import Badge from "../common/Badge";
-import RoomCustomization from "../ship/RoomCustomization";
-import { JOB_DURATION, JOB_ECONOMY, MODULE_SLOTS } from "../../data/constants";
-import { formatMinutes, getModuleRule } from "../../data/moduleRecipes";
+import { useMemo, useState } from "react";
+import { Cpu, Hammer, Rocket, Wrench, Zap } from "lucide-react";
+import ShipInterior from "../ship/ShipInterior";
+import RoomDetailPanel from "../ship/RoomDetailPanel";
+import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
+import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { computeJobRefund } from "../../systems/jobEconomy";
 import { explainBacklogReason } from "../../systems/jobScheduler";
 import { jobToLegacyModuleWork, jobTypeLabel } from "../../systems/jobMigration";
+import { reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
+import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
-const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary: 12 };
-const slotIcon = { engine: Rocket, "weapon-a": Zap, "weapon-b": Zap, shield: Shield, cargo: Cpu, special: Sparkles };
 const SCRAP_REPAIR_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
 const SCRAP_REPAIR_HULL = JOB_ECONOMY.hullRepair.hullDelta;
 const SCRAP_REPAIR_MINUTES = JOB_DURATION.hull_repair;
@@ -27,16 +28,7 @@ function getItemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
 }
 
-function moduleTone(module) {
-  if (!module) return "border-slate-700/70 bg-slate-950/60";
-  if (module.rarity === "legendary") return "border-amber-300/55 bg-amber-300/10";
-  if (module.rarity === "epic") return "border-violet-300/55 bg-violet-300/10";
-  if (module.rarity === "rare") return "border-sky-300/45 bg-sky-300/10";
-  if (module.rarity === "uncommon") return "border-emerald-300/40 bg-emerald-300/10";
-  return "border-slate-700/70 bg-slate-950/60";
-}
-
-function Progress({ task, currentMinute, label = "작업 진행" }) {
+export function Progress({ task, currentMinute, label = "작업 진행" }) {
   const rawProgress = task.progress !== undefined ? task.progress * 100 : ((currentMinute - (task.startedAt ?? currentMinute)) / Math.max(1, task.duration ?? 1)) * 100;
   const progress = Math.max(0, Math.min(100, Math.round(rawProgress)));
   const remaining = Math.max(0, Math.round((task.duration ?? 0) * (1 - progress / 100)));
@@ -47,35 +39,6 @@ function Progress({ task, currentMinute, label = "작업 진행" }) {
       <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div>
       <div className="mt-2 text-xs text-slate-400">남은 시간 {formatMinutes(remaining)} · 예상 완료 {completeAt ? formatGameDate(completeAt) : "대기 중"}</div>
     </div>
-  );
-}
-
-function SlotCard({ slot, module, task }) {
-  const Icon = slotIcon[slot] ?? Cpu;
-  return (
-    <div className={`rounded-2xl border p-3 ${moduleTone(module)} ${task ? "ring-1 ring-amber-300/40" : ""}`}>
-      <div className="relative grid h-28 place-items-center overflow-hidden rounded-xl border border-slate-600/40 bg-slate-950/60">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(125,211,252,0.18),transparent_55%)]" />
-        <Icon size={36} className="relative text-cyan-100" />
-        <span className="absolute left-2 top-2 hud-chip bg-slate-950/70">{slot}</span>
-        <span className="absolute right-2 top-2 hud-chip bg-slate-950/70">{task ? "작업" : `Lv.${module?.level ?? 1}`}</span>
-      </div>
-      <div className="mt-3 truncate font-black text-slate-50">{task ? "현장 작업 중" : module?.name ?? "미장착"}</div>
-      <div className="mt-2 flex flex-wrap gap-1.5">{module && Object.entries(module.stats).slice(0, 3).map(([key, value]) => <span key={key} className="mission-reward-icon">{key} {value > 0 ? "+" : ""}{value}</span>)}</div>
-      {task && <div className="mt-2 text-xs text-amber-100">완료 {task.completeAt ? formatGameDate(task.completeAt) : "대기 중"}</div>}
-    </div>
-  );
-}
-
-function ModuleCard({ slot, module, activeId, owned, equipped, rule, task, currentSlotTask, materialQty, canUpgrade, onEquip, onUpgrade, currentMinute }) {
-  return (
-    <article className={`mission-contract-card rounded-2xl border p-3 ${owned ? moduleTone(module) : "border-slate-800 bg-slate-950/40 opacity-70"}`}>
-      <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate font-black text-slate-100">{module.name}</div><div className="mt-1 text-xs text-slate-400">{slot} · Lv.{module.level}</div></div><Badge rarity={module.rarity}>{module.rarity}</Badge></div>
-      <div className="mt-3 grid grid-cols-3 gap-1.5">{Object.entries(module.stats).slice(0, 6).map(([key, value]) => <span key={key} className="mission-stat-tile text-[11px]">{key} {value > 0 ? "+" : ""}{value}</span>)}</div>
-      <div className="mt-3 flex flex-wrap gap-1.5 text-xs"><span className={`hud-chip ${owned ? "hud-chip-success" : ""}`}>{owned ? "보유" : "미보유"}</span>{equipped && <span className="hud-chip hud-chip-accent">장착 중</span>}{task && <span className="hud-chip hud-chip-warn">작업 중</span>}<span className="hud-chip">₢{rule.installCredits}</span><span className="hud-chip">{formatMinutes(rule.installMinutes)}</span><span className="hud-chip">Ti {materialQty}</span></div>
-      {task && <Progress task={task} currentMinute={currentMinute} />}
-      <div className="mt-4 grid grid-cols-2 gap-2"><button className="secondary-button justify-center" disabled={equipped || !owned || Boolean(currentSlotTask) || task || activeId === module.id} onClick={onEquip}>{equipped ? "장착 중" : owned ? "장착 지시" : "구매 필요"}</button><button className="secondary-button justify-center" disabled={!canUpgrade} onClick={onUpgrade}>개선 지시</button></div>
-    </article>
   );
 }
 
@@ -140,37 +103,39 @@ function activeLegacyJobs(rawJobs, converter) {
 }
 
 export default function Ship() {
-  const { modules, installed, unlockedModuleIds, installationQueue } = useShipStore();
+  const { modules, installed, installationQueue } = useShipStore();
+  const shipGrade = useGameStore((state) => state.shipGrade);
+  const crewInterior = useCrewStore((state) => state.crew);
+  const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
+  const interiorRooms = useShipInteriorStore((state) => state.rooms);
+  const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
+  const engineeringTier = interiorRooms.engineering?.tier ?? 1;
   const rawJobs = useJobStore((state) => state.jobs);
   const jobs = useMemo(() => rawJobs.filter((job) => activeJobStatuses.has(job.status)), [rawJobs]);
   const moduleJobQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyModuleWork), [rawJobs]);
   const moduleWorkQueue = useMemo(() => [...(installationQueue ?? []), ...moduleJobQueue], [installationQueue, moduleJobQueue]);
   const rooms = useJobStore((state) => state.rooms);
   const startShipWork = useJobStore((state) => state.enqueueShipWork);
-  const startModuleWork = useJobStore((state) => state.enqueueModuleWork);
   const nudgeJobPriority = useJobStore((state) => state.nudgeJobPriority);
   const cancelJob = useJobStore((state) => state.cancelJob);
   const crew = useCrewStore((state) => state.crew);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
-  const spendCredits = useGameStore((state) => state.spendCredits);
   const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
   const items = useInventoryStore((state) => state.items);
   const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
+  const [selectedRoomId, setSelectedRoomId] = useState(null);
 
-  const unlocked = unlockedModuleIds ?? [];
   const tritanium = getItemQty(items, "tritanium");
   const salvageScrap = getItemQty(items, "salvage-scrap");
   const modulesById = useMemo(() => new Map(modules.map((module) => [module.id, module])), [modules]);
-  const modulesBySlot = useMemo(() => MODULE_SLOTS.reduce((acc, slot) => ({ ...acc, [slot]: modules.filter((module) => module.slot === slot) }), {}), [modules]);
-  const slotTasks = useMemo(() => new Map(moduleWorkQueue.filter((task) => task.type === "equip").map((task) => [task.slot, task])), [moduleWorkQueue]);
-  const moduleTasks = useMemo(() => new Map(moduleWorkQueue.map((task) => [task.moduleId, task])), [moduleWorkQueue]);
+  const installedModules = useMemo(() => Object.values(installed).map((id) => modulesById.get(id)).filter(Boolean), [installed, modulesById]);
+  const powerCapacity = reactorCapacity(shipGrade, engineeringTier);
+  const powerDraw = totalPowerDraw(installedModules);
   const hullRepairTask = jobs.find((task) => task.type === "hull_repair") ?? null;
   const salvageProcessingTask = jobs.find((task) => task.type === "salvage") ?? null;
-  const slotTask = (slot) => slotTasks.get(slot);
-  const moduleTask = (moduleId) => moduleTasks.get(moduleId);
 
   const repairWithScrap = () => {
     if (resources.hull >= 100) return addLog("선체 정비 불필요: 이미 선체 상태가 양호합니다.");
@@ -189,43 +154,16 @@ export default function Ship() {
     return addLog(`잔해 분해 대기열 등록: 창고 슬롯 필요 · 폐자재 ${SALVAGE_PROCESS_COST}개 · ${formatMinutes(SALVAGE_PROCESS_MINUTES)}.`);
   };
 
-  const equip = (slot, module) => {
-    if (!unlocked.includes(module.id)) return addLog(`${module.name} 모듈은 아직 보유하지 않았습니다. 시장에서 구매하거나 제작하세요.`);
-    if (slotTask(slot)) return addLog(`${slot} 슬롯은 이미 장착 작업 중입니다.`);
-    const rule = getModuleRule(module);
-    if (!spendCredits(rule.installCredits)) return addLog(`${module.name} 장착 실패: 크레딧이 부족합니다.`);
-    startModuleWork({ action: "equip", slot, moduleId: module.id, cost: rule.installCredits, duration: rule.installMinutes, priority: "high", createdAt: currentMinute, payload: { creditCost: rule.installCredits } });
-    return addLog(`${module.name} 장착 작업 대기열 등록: ${slot} 슬롯 · ₢${rule.installCredits} · ${formatMinutes(rule.installMinutes)}.`);
-  };
-
-  const upgrade = (module) => {
-    if (!unlocked.includes(module.id)) return addLog(`${module.name} 개선 실패: 보유하지 않은 모듈입니다.`);
-    if (moduleTask(module.id)) return addLog(`${module.name} 개선 실패: 이미 작업 중입니다.`);
-    const rule = getModuleRule(module);
-    const materialQty = upgradeMaterialQty[module.rarity] ?? 2;
-    if (getItemQty(items, "tritanium") < materialQty) return addLog(`${module.name} 개선 실패: 트리타늄 ${materialQty}개가 필요합니다.`);
-    if (!spendCredits(rule.upgradeCredits)) return addLog(`${module.name} 개선 실패: 크레딧이 부족합니다.`);
-    removeItem("tritanium", materialQty);
-    startModuleWork({ action: "upgrade", slot: module.slot, moduleId: module.id, cost: rule.upgradeCredits, duration: rule.upgradeMinutes, priority: "normal", createdAt: currentMinute, payload: { creditCost: rule.upgradeCredits, inputItems: [{ itemId: "tritanium", qty: materialQty }] } });
-    return addLog(`${module.name} 개선 작업 대기열 등록: 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, ${formatMinutes(rule.upgradeMinutes)}.`);
-  };
-
   const refundCancelledJob = (job) => {
-    const ratio = JOB_ECONOMY.cancelRefundRatio ?? 0.5;
+    const { items: refundItems, credits } = computeJobRefund(job);
     const refundedItems = [];
-    (job.payload?.inputItems ?? []).forEach(({ itemId, qty }) => {
-      const refundQty = Math.max(1, Math.floor((qty ?? 0) * ratio));
-      if (!itemId || refundQty <= 0) return;
-      addItem(itemId, refundQty);
-      refundedItems.push(`${itemId} +${refundQty}`);
+    refundItems.forEach(({ itemId, qty }) => {
+      addItem(itemId, qty);
+      refundedItems.push(`${itemId} +${qty}`);
     });
-    const creditBase = job.payload?.creditCost ?? (job.type === "recovery" ? job.cost : 0);
-    if (creditBase > 0) {
-      const credits = Math.floor(creditBase * ratio);
-      if (credits > 0) {
-        addResources({ credits });
-        refundedItems.push(`₢${credits}`);
-      }
+    if (credits > 0) {
+      addResources({ credits });
+      refundedItems.push(`₢${credits}`);
     }
     return refundedItems;
   };
@@ -238,30 +176,31 @@ export default function Ship() {
   };
 
   return (
-    <div className="grid gap-4 xl:h-full xl:grid-cols-[0.95fr_1.05fr]">
+    <div className="grid gap-4">
       <section>
-        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함선 슬롯 도면</div><p className="mt-2 text-sm text-slate-400">작업은 이제 방 슬롯을 차지합니다. 동시에 다 못 하므로 backlog 우선순위를 조정해야 합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Ti {tritanium}</span><span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span><span className="hud-chip">작업 {jobs.length + installationQueue.length}</span></div></div>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="section-title"><Rocket size={18} />함선 도면</div>
+            <p className="mt-2 text-sm text-slate-400">방을 클릭하면 장비·방 개조·근무 현황을 확인할 수 있습니다. 장비는 소속된 방의 전력 예산을 함께 사용합니다.</p>
+          </div>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            <span className="hud-chip hud-chip-accent">Ti {tritanium}</span>
+            <span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span>
+            <span className={`hud-chip ${powerDraw > powerCapacity ? "hud-chip-danger" : ""}`}><Zap size={12} className="mr-1 inline" />동력 {powerDraw}/{powerCapacity}</span>
+            <span className="hud-chip">작업 {jobs.length + installationQueue.length}</span>
+          </div>
+        </div>
+        <div className="mt-4">
+          <ShipInterior crew={crewInterior} activities={crewActivities} rooms={interiorRooms} activeCrises={activeCrises} showEquipment onRoomClick={setSelectedRoomId} />
+        </div>
         <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} />
         <SalvageProcessingCard scrap={salvageScrap} tritanium={tritanium} task={salvageProcessingTask} currentMinute={currentMinute} onProcess={processSalvage} />
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">{MODULE_SLOTS.map((slot) => { const module = modulesById.get(installed[slot]); const task = slotTask(slot); return <SlotCard key={slot} slot={slot} module={module} task={task} />; })}</div>
       </section>
       <section className="grid gap-4">
         <RoomSlotPanel rooms={rooms} jobs={jobs} />
         <BacklogPanel jobs={jobs} rooms={rooms} crew={crew} onUp={(id) => nudgeJobPriority(id, -1)} onDown={(id) => nudgeJobPriority(id, 1)} onCancel={cancelQueuedJob} />
-        <div>
-          <div className="section-title"><Wrench size={18} />외부 모듈 교체 & 개선</div>
-          <div className="mt-4 grid gap-4">
-            {MODULE_SLOTS.map((slot) => {
-              const slotModules = modulesBySlot[slot] ?? [];
-              const activeId = installed[slot];
-              const active = modulesById.get(activeId);
-              const currentSlotTask = slotTask(slot);
-              return <div key={slot} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3"><div className="flex items-center justify-between gap-2"><div><div className="hud-label">{slot}</div><div className="font-black text-slate-100">현재: {active?.name ?? "미장착"}</div></div>{currentSlotTask ? <span className="hud-chip hud-chip-warn">작업 중</span> : active && <Badge rarity={active.rarity}>{active.rarity}</Badge>}</div>{currentSlotTask && <Progress task={currentSlotTask} currentMinute={currentMinute} />}<div className="mt-3 grid gap-3 md:grid-cols-2">{slotModules.map((module) => { const equipped = module.id === activeId; const owned = unlocked.includes(module.id); const rule = getModuleRule(module); const task = moduleTask(module.id); const materialQty = upgradeMaterialQty[module.rarity] ?? 2; const canUpgrade = owned && !task && resources.credits >= rule.upgradeCredits && getItemQty(items, "tritanium") >= materialQty; return <ModuleCard key={module.id} slot={slot} module={module} activeId={activeId} owned={owned} equipped={equipped} rule={rule} task={task} currentSlotTask={currentSlotTask} materialQty={materialQty} canUpgrade={canUpgrade} currentMinute={currentMinute} onEquip={() => equip(slot, module)} onUpgrade={() => upgrade(module)} />; })}</div></div>;
-            })}
-          </div>
-        </div>
       </section>
-      <RoomCustomization />
+      <RoomDetailPanel roomId={selectedRoomId} onClose={() => setSelectedRoomId(null)} />
     </div>
   );
 }
