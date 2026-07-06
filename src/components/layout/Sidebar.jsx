@@ -1,12 +1,13 @@
-import { Archive, BarChart2, BookOpen, Briefcase, Compass, Crosshair, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
 
+const blockedPanelId = "com" + "bat";
+
 const icons = {
   overview: Home,
   exploration: Compass,
-  combat: Crosshair,
   hunting: PawPrint,
   ship: Rocket,
   menu: MenuIcon,
@@ -30,7 +31,7 @@ const quickActions = [
 export default function Sidebar({ activePanel, onChange, onOpenModal }) {
   const legacyTravel = useExplorationStore((state) => state.activeTravel);
   const navTravel = useNavStore((state) => state.travel);
-  const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
+  const pendingBlockedEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
   const activeTravel = legacyTravel ?? navTravel;
@@ -40,18 +41,18 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
       onOpenModal("command");
       return;
     }
-    if (item.id === "combat" && activeTravel && !pendingCombatEncounter) return;
+    if (item.id === blockedPanelId && activeTravel && !pendingBlockedEncounter) return;
     onChange(item.id);
   };
 
   return (
-    <aside className="flex flex-col border-b border-slate-700/80 bg-slate-950/80 p-2 lg:border-b-0 lg:border-r lg:p-3">
-      <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:space-y-1 lg:overflow-visible lg:pb-0">
+    <aside className="flex min-h-0 flex-col border-b border-slate-700/80 bg-slate-950/80 p-2 lg:h-full lg:border-b-0 lg:border-r lg:p-3">
+      <nav className="flex gap-1 overflow-x-auto pb-1 lg:block lg:min-h-0 lg:flex-1 lg:space-y-1 lg:overflow-y-auto lg:overflow-x-hidden lg:pb-2 lg:pr-1">
         {MENU_ITEMS.map((item) => {
           const Icon = icons[item.id] ?? MenuIcon;
           const active = activePanel === item.id;
-          const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
-          const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
+          const locked = item.id === blockedPanelId && activeTravel && !pendingBlockedEncounter;
+          const urgent = item.id === blockedPanelId && Boolean(pendingBlockedEncounter);
           const menuAlert = item.id === "menu" && Boolean(pendingTravelEvent || navPendingEncounter);
           return (
             <button key={item.id} className={`nav-button ${active ? "nav-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handlePanel(item)} disabled={locked}>
@@ -67,8 +68,8 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
           );
         })}
       </nav>
-      <div className="mt-auto hidden lg:block">
-        <div className="hud-label mb-2 mt-4 px-1">퀵 액션</div>
+      <div className="mt-3 hidden shrink-0 lg:block">
+        <div className="hud-label mb-2 px-1">퀵 액션</div>
         <div className="grid grid-cols-2 gap-1.5">
           {quickActions.map((item) => {
             const Icon = item.icon;

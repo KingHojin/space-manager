@@ -49,7 +49,35 @@ export const JOB_LOAD_COST = {
   training: 1,
 };
 
+export const JOB_REQUIRED_ROLE = {
+  recovery: "medic",
+  hull_repair: "engineer",
+  salvage: "engineer",
+  module_upgrade: "engineer",
+  training: null,
+};
+
+export const JOB_PRIORITY = {
+  emergency: 1,
+  high: 3,
+  normal: 5,
+  low: 7,
+};
+
+export const ROOM_TRAVEL_MINUTES = 10;
+
+export const ROOM_CONFIG = {
+  bridge: { label: "브릿지", slotCapacity: 2, loadThreshold: 3 },
+  ops: { label: "관제실", slotCapacity: 2, loadThreshold: 3 },
+  engineering: { label: "기관실", slotCapacity: 2, loadThreshold: 3 },
+  cargo: { label: "창고", slotCapacity: 2, loadThreshold: 4 },
+  medbay: { label: "의무실", slotCapacity: 1, loadThreshold: 2 },
+  living: { label: "생활구역", slotCapacity: 1, loadThreshold: 2 },
+};
+
 export const JOB_ECONOMY = {
+  defaultPriority: JOB_PRIORITY.normal,
+  cancelRefundRatio: 0.5,
   training: { credits: 180 },
   recovery: { credits: 90, fatigueRecovery: 32 },
   hullRepair: { salvageScrapCost: 6, hullDelta: 8 },
