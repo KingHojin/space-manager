@@ -73,6 +73,14 @@ function normalizeShipWorkTask(task) {
   };
 }
 
+function improveModule(module) {
+  const nextStats = {};
+  Object.entries(module.stats).forEach(([key, value]) => {
+    nextStats[key] = Math.round(value * 1.12 + (value >= 0 ? 1 : -1));
+  });
+  return { ...module, level: module.level + 1, stats: nextStats };
+}
+
 export const useShipStore = create(
   persist(
     (set, get) => ({
@@ -117,6 +125,30 @@ export const useShipStore = create(
         set((state) => ({
           shipWorkQueue: state.shipWorkQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
         })),
+      applyModuleJob: (task = {}) => {
+        const action = task.action ?? task.type;
+        const moduleId = task.moduleId ?? task.payload?.moduleId;
+        const requestedSlot = task.slot ?? task.payload?.slot;
+        let log = null;
+        set((state) => {
+          const module = state.modules.find((entry) => entry.id === moduleId);
+          if (!module) return state;
+          const slot = requestedSlot ?? module.slot;
+          if (action === "equip") {
+            log = `${slot} 슬롯에 ${module.name} 장착 완료.`;
+            clearInstalledCache();
+            return { installed: { ...state.installed, [slot]: moduleId } };
+          }
+          if (action === "upgrade") {
+            const nextModules = state.modules.map((entry) => (entry.id === moduleId ? improveModule(entry) : entry));
+            log = `${module.name} 모듈 Lv.${module.level + 1} 개선 완료.`;
+            clearInstalledCache();
+            return { modules: nextModules };
+          }
+          return state;
+        });
+        return log;
+      },
       completeReadyInstallations: (currentMinute) => {
         const ready = get().installationQueue.filter((task) => task.completeAt <= currentMinute);
         if (ready.length === 0) return [];
@@ -132,15 +164,8 @@ export const useShipStore = create(
               logs.push(`${task.slot} 슬롯에 ${module.name} 장착 완료.`);
             }
             if (task.type === "upgrade") {
-              nextModules = nextModules.map((entry) => {
-                if (entry.id !== task.moduleId) return entry;
-                const nextStats = {};
-                Object.entries(entry.stats).forEach(([key, value]) => {
-                  nextStats[key] = Math.round(value * 1.12 + (value >= 0 ? 1 : -1));
-                });
-                logs.push(`${entry.name} 모듈 Lv.${entry.level + 1} 개선 완료.`);
-                return { ...entry, level: entry.level + 1, stats: nextStats };
-              });
+              nextModules = nextModules.map((entry) => (entry.id === task.moduleId ? improveModule(entry) : entry));
+              logs.push(`${module.name} 모듈 Lv.${module.level + 1} 개선 완료.`);
             }
           });
           clearInstalledCache();
