@@ -13,9 +13,10 @@ const ROLE_DEFAULTS = {
   기관실: { station: "기관실", action: "엔진 출력 점검", intent: "engineering" },
   포탑: { station: "포탑 관제", action: "표적 추적 시뮬레이션", intent: "combat" },
   의무실: { station: "의무실", action: "응급 키트 정리", intent: "medical" },
+  조리실: { station: "식당/조리실", action: "식사 준비", intent: "galley", roomId: "galley" },
 };
 
-const IDLE_ACTIONS = ["식사", "휴식", "생활구역 정리", "함내 순찰", "동료와 대화", "개인 장비 점검"];
+const IDLE_ACTIONS = ["휴식", "생활구역 정리", "함내 순찰", "동료와 대화", "개인 장비 점검"];
 
 const MODULE_SLOT_WORK_ROOM = {
   engine: { roomId: "engineering", station: "기관실", action: "추진계 작업" },
@@ -95,11 +96,27 @@ function idleAction(member, currentMinute, index) {
   const action = IDLE_ACTIONS[stableIndex(bucket, index + member.id.length, IDLE_ACTIONS.length)];
   return {
     memberId: member.id,
-    station: action === "휴식" || action === "식사" ? "생활구역" : defaultJob.station,
-    action: action === "개인 장비 점검" ? `${action}` : action,
+    station: action === "휴식" ? "생활구역" : defaultJob.station,
+    action,
     intent: "idle",
     priority: "low",
     detail: "자동 생활 행동",
+    roomId: action === "휴식" ? "living" : defaultJob.roomId,
+    updatedAt: currentMinute,
+  };
+}
+
+function pickMealActivity(member, currentMinute) {
+  const hunger = member.needs?.hunger ?? 0;
+  if (hunger < 58) return null;
+  return {
+    memberId: member.id,
+    station: "식당/조리실",
+    action: hunger >= 78 ? "긴급 식사" : "식사",
+    intent: "meal",
+    priority: hunger >= 78 ? "high" : "normal",
+    detail: `배고픔 ${Math.round(hunger)}`,
+    roomId: "galley",
     updatedAt: currentMinute,
   };
 }
@@ -308,6 +325,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
   const claimedCrisisIds = new Set();
   const queueIndex = buildMemberQueueIndex(queues);
   const engineeringWorkContext = buildEngineeringWorkContext(snapshot);
+  const hasHungryCrew = crew.some((member) => member.alive && (member.needs?.hunger ?? 0) >= 58);
 
   crew.forEach((member, index) => {
     if (!member.alive) {
@@ -330,6 +348,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
 
     if (assignFixedActivity(fixedActivities, member, pickCrisisAssignment(member, snapshot, claimedCrisisIds), currentMinute)) return;
     if (assignFixedActivity(fixedActivities, member, pickMedicalCare(member, crew), currentMinute)) return;
+    if (assignFixedActivity(fixedActivities, member, pickMealActivity(member, currentMinute), currentMinute)) return;
 
     if ((member.fatigue ?? 0) >= 85) {
       fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", roomId: "living", updatedAt: currentMinute });
@@ -347,7 +366,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     idleMembers: roomJobCandidates.map((candidate) => candidate.member),
     rooms: snapshot.rooms ?? {},
     currentMinute,
-    context: snapshot,
+    context: { ...snapshot, hasHungryCrew },
   });
 
   return crew.map((member, index) => {
