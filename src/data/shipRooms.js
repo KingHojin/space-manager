@@ -1,12 +1,13 @@
-import { Activity, Eye, FlaskConical, Leaf, Package, Radar, Radio, Shield, Utensils, Wrench } from "lucide-react";
+import { Activity, ChefHat, Eye, FlaskConical, Leaf, Package, Radar, Radio, Shield, Utensils, Wrench } from "lucide-react";
 
 export const ROOMS = [
   { id: "bridge", label: "브릿지", icon: Radar, left: 39, top: 6, width: 22, height: 15, tone: "border-cyan-300/45 bg-cyan-300/10" },
   { id: "ops", label: "관제실", icon: Radar, left: 10, top: 30, width: 23, height: 18, tone: "border-sky-300/35 bg-sky-300/10" },
   { id: "medbay", label: "의무실", icon: Activity, left: 67, top: 30, width: 23, height: 18, tone: "border-emerald-300/35 bg-emerald-300/10" },
-  { id: "living", label: "생활구역", icon: Utensils, left: 10, top: 63, width: 23, height: 20, tone: "border-indigo-300/35 bg-indigo-300/10" },
-  { id: "engineering", label: "기관실", icon: Wrench, left: 39, top: 63, width: 22, height: 20, tone: "border-amber-300/35 bg-amber-300/10" },
-  { id: "cargo", label: "창고", icon: Package, left: 67, top: 63, width: 23, height: 20, tone: "border-violet-300/35 bg-violet-300/10" },
+  { id: "living", label: "생활구역", icon: Utensils, left: 8, top: 63, width: 19, height: 20, tone: "border-indigo-300/35 bg-indigo-300/10" },
+  { id: "galley", label: "식당/조리실", icon: ChefHat, left: 30, top: 63, width: 19, height: 20, tone: "border-orange-300/35 bg-orange-300/10" },
+  { id: "engineering", label: "기관실", icon: Wrench, left: 52, top: 63, width: 19, height: 20, tone: "border-amber-300/35 bg-amber-300/10" },
+  { id: "cargo", label: "창고", icon: Package, left: 74, top: 63, width: 18, height: 20, tone: "border-violet-300/35 bg-violet-300/10" },
 ];
 
 export const AUX_ZONES = [
@@ -24,9 +25,10 @@ export const ROUTES = [
   ["bridge", "ops"],
   ["bridge", "medbay"],
   ["ops", "living"],
-  ["medbay", "cargo"],
-  ["living", "engineering"],
+  ["living", "galley"],
+  ["galley", "engineering"],
   ["engineering", "cargo"],
+  ["medbay", "cargo"],
   ["bridge", "engineering"],
 ];
 
@@ -36,7 +38,7 @@ export const DISPLAY_ROUTES = [
   ["bridge", "lab"],
   ["bridge", "comms"],
   ["medbay", "observatory"],
-  ["living", "hydroponics"],
+  ["galley", "hydroponics"],
   ["cargo", "survey-bay"],
 ];
 
