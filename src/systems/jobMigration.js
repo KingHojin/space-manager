@@ -1,4 +1,4 @@
-import { JOB_DURATION, JOB_LOAD_COST } from "../data/constants";
+import { JOB_DURATION, JOB_ECONOMY, JOB_LOAD_COST } from "../data/constants";
 import { normalizePriority } from "./priorities";
 
 const SHIP_WORK_TYPE_MAP = {
@@ -28,7 +28,8 @@ function createId(prefix) {
 }
 
 function numeric(value, fallback = 0) {
-  return Number.isFinite(value) ? value : fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
 }
 
 export function normalizeJob(job = {}) {
@@ -85,7 +86,10 @@ function recoveryToJob(task) {
     completeAt: task.completeAt,
     startedAt: task.startedAt,
     cost: task.cost,
-    payload: { targetCrewId: task.memberId, fatigueRecovery: task.fatigueRecovery ?? 32 },
+    payload: {
+      targetCrewId: task.memberId,
+      fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
+    },
   });
 }
 
@@ -130,7 +134,7 @@ export function jobToLegacyRecovery(job) {
     completeAt: normalized.completeAt,
     cost: normalized.cost,
     duration: normalized.duration,
-    fatigueRecovery: normalized.payload?.fatigueRecovery ?? 32,
+    fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
     priority: normalized.priority,
     startedAt: normalized.startedAt,
   };
