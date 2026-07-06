@@ -1,4 +1,4 @@
-import { Briefcase, Cpu, Fuel, Store, Wind, Wrench } from "lucide-react";
+import { Briefcase, Cpu, Fuel, Store, Utensils, Wind, Wrench } from "lucide-react";
 import Badge from "../common/Badge";
 import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
@@ -20,7 +20,16 @@ const services = [
   { id: "full", label: "종합 출항 패키지", desc: "연료, 산소, 선체를 한 번에 정비합니다.", icon: Store, cost: 720, changes: { fuel: 45, oxygen: 35, hull: 32 } },
 ];
 
+const foodGoods = [
+  { id: "food-ration", label: "표준 식량 묶음", desc: "요리사 없이도 바로 배급할 수 있는 기본 식량입니다.", qty: 6, cost: 150 },
+  { id: "raw-ingredients", label: "신선 식재료", desc: "요리사가 있으면 조리식으로 만들어 더 좋은 식사 효과를 냅니다.", qty: 4, cost: 180 },
+];
+
 const rarityRank = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
+
+function itemQty(items, itemId) {
+  return items.find((item) => item.id === itemId)?.qty ?? 0;
+}
 
 export default function Market() {
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
@@ -33,6 +42,7 @@ export default function Market() {
   const advanceMinutes = useGameStore((state) => state.advanceMinutes);
   const addLog = useGameStore((state) => state.addLog);
   const items = useInventoryStore((state) => state.items);
+  const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const modules = useShipStore((state) => state.modules);
   const unlockedModuleIds = useShipStore((state) => state.unlockedModuleIds ?? []);
@@ -60,6 +70,19 @@ export default function Market() {
     }
     addResources(service.changes);
     addLog(`${service.label} 완료. 크레딧 ${service.cost} 사용.`);
+  };
+
+  const buyFood = (good) => {
+    if (!docked) {
+      addLog("식량 구매 실패: 정거장 또는 시장 구역에 도킹해야 합니다.");
+      return;
+    }
+    if (!spendCredits(good.cost)) {
+      addLog(`${good.label} 구매 실패: 크레딧이 부족합니다.`);
+      return;
+    }
+    addItem(good.id, good.qty);
+    addLog(`${good.label} 구매 완료: ${good.id} x${good.qty}, ₢${good.cost}.`);
   };
 
   const buyModule = (module) => {
@@ -135,6 +158,10 @@ export default function Market() {
             <Status label="연료" value={`${Math.round(resources.fuel)}%`} />
             <Status label="산소" value={`${Math.round(resources.oxygen)}%`} />
           </div>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+            <Status label="표준 식량" value={itemQty(items, "food-ration")} />
+            <Status label="식재료" value={itemQty(items, "raw-ingredients")} />
+          </div>
         </div>
       </div>
 
@@ -162,6 +189,31 @@ export default function Market() {
           );
         })}
       </div>
+
+      <section>
+        <div className="section-title"><Utensils size={18} />식량 보급</div>
+        <div className="mt-4 grid gap-3 lg:grid-cols-2">
+          {foodGoods.map((good) => {
+            const disabled = !docked || resources.credits < good.cost;
+            return (
+              <div key={good.id} className="rounded border border-orange-300/30 bg-orange-300/10 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="font-semibold text-orange-100">{good.label}</div>
+                    <p className="mt-1 text-sm leading-6 text-slate-300">{good.desc}</p>
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      <span className="hud-chip">보유 {itemQty(items, good.id)}</span>
+                      <span className="hud-chip hud-chip-success">+{good.qty}</span>
+                    </div>
+                  </div>
+                  <span className="hud-chip">₢ {good.cost}</span>
+                </div>
+                <button className="primary-button mt-4 w-full" disabled={disabled} onClick={() => buyFood(good)}>구매</button>
+              </div>
+            );
+          })}
+        </div>
+      </section>
 
       <section>
         <div className="section-title"><Briefcase size={18} />계약 의뢰</div>
