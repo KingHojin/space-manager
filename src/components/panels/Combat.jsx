@@ -20,6 +20,7 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 
@@ -47,6 +48,20 @@ function rollCrewCasualty({ crew, enemy, directive, hullDamage, shipHull, casual
   if (roll < deathRisk + woundRisk * 0.42) return { member: target, injury: "중상", risk: Math.round((deathRisk + woundRisk) * 100) };
   if (roll < deathRisk + woundRisk) return { member: target, injury: "경상", risk: Math.round((deathRisk + woundRisk) * 100) };
   return null;
+}
+
+function combatStatusChip(status, combatEngaged) {
+  if (status === "won") return "hud-chip-success";
+  if (status === "retreated" || status === "lost") return "hud-chip-danger";
+  if (combatEngaged) return "hud-chip-warn";
+  return "";
+}
+
+function missionCombatOutcomeLabel(status) {
+  if (status === "won") return "승리";
+  if (status === "retreated") return "퇴각";
+  if (status === "lost") return "패배";
+  return status;
 }
 
 function ThreatPoster({ enemy, pendingCombatEncounter, combat, travelLocked }) {
@@ -131,6 +146,7 @@ export default function Combat() {
   const navTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const clearPendingCombatEncounter = useExplorationStore((state) => state.clearPendingCombatEncounter);
+  const currentMinute = useGameStore((state) => state.currentMinute);
   const resources = useGameStore((state) => state.resources);
   const shipName = useGameStore((state) => state.shipName);
   const setPaused = useGameStore((state) => state.setPaused);
@@ -139,6 +155,7 @@ export default function Combat() {
   const cards = useInventoryStore((state) => state.cards);
   const activeCardIds = useInventoryStore((state) => state.activeCardIds);
   const addItem = useInventoryStore((state) => state.addItem);
+  const failMission = useMissionStore((state) => state.failMission);
   const combat = useCombatStore((state) => state.combatByVesselId[activeVesselId] ?? null);
   const feed = useCombatStore((state) => state.feedByVesselId[activeVesselId] ?? DEFAULT_FEED);
   const targetId = useCombatStore((state) => state.targetByVesselId[activeVesselId] ?? "hull");
@@ -180,6 +197,20 @@ export default function Combat() {
     return null;
   };
 
+  const appendMissionCombatOutcome = (nextCombat, logs) => {
+    const source = nextCombat?.source;
+    if (source?.kind !== "missionEncounter" || !["won", "retreated", "lost"].includes(nextCombat.status)) return;
+    const outcomeLabel = missionCombatOutcomeLabel(nextCombat.status);
+    if (nextCombat.status === "won") {
+      logs.push("임무 전투 승리: 탐사 화면에서 임무를 완료할 수 있습니다.");
+      setPaused(false);
+      return;
+    }
+    const failed = failMission({ vesselId: activeVesselId, currentMinute, reason: `missionCombat:${nextCombat.status}` });
+    logs.push(failed.ok ? `임무 전투 ${outcomeLabel}: ${failed.mission.title} 계약이 실패 처리되었습니다.` : `임무 전투 ${outcomeLabel}: 임무 실패 처리 실패(${failed.reason}).`);
+    setPaused(false);
+  };
+
   const issueDirective = (directive) => {
     if (!combat || combat.status !== "engaged") return pushFeed([getCombatDirectiveResult(directive), travelLocked ? "항해 중이라 훈련 교전도 제한됩니다." : "교전이 없어 훈련 중계만 기록됩니다."]);
     if (activeCrew.length === 0) return pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
@@ -200,6 +231,7 @@ export default function Combat() {
       setPaused(false);
     }
     if (result.combat.status === "lost" && activeTravel) casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
+    appendMissionCombatOutcome(result.combat, casualtyLogs);
     pushFeed([...result.logs, ...casualtyLogs]);
     return null;
   };
@@ -226,7 +258,7 @@ export default function Combat() {
         {activeTravel && <div className={`mt-4 rounded-2xl border p-3 text-sm ${pendingCombatEncounter || combatEngaged ? "border-red-400/40 bg-red-400/10 text-red-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}><div className="flex items-center gap-2 font-bold"><AlertTriangle size={16} />{pendingCombatEncounter || combatEngaged ? "항해 중 긴급 교전" : "항해 작전 진행 중"}</div></div>}
         <TacticalCrewPanel crew={activeCrew} assignments={tacticalAssignments} bonus={tacticalBonus} />
         <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
-          <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combatEngaged ? "hud-chip-warn" : ""}`}>{combat?.status ?? "대기"}</span></div>
+          <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combatStatusChip(combat?.status, combatEngaged)}`}>{combat?.status ?? "대기"}</span></div>
           {enemy && <div className="mt-3 grid grid-cols-2 gap-2"><StatTile icon={Shield} label="적 선체" value={`${enemyHull}%`} /><StatTile icon={Zap} label="적 방어막" value={`${enemyShield}%`} /></div>}
           {enemy && <EnemySubsystemPanel enemy={enemy} />}
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
