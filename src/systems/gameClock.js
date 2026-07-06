@@ -144,32 +144,27 @@ function processCrewMeals(currentMinute) {
   const crewStore = useCrewStore.getState();
   const mealActivities = (crewStore.crewActivities ?? []).filter((activity) => activity.intent === "meal").slice(0, 2);
   if (mealActivities.length === 0) return;
-
   const hasCook = crewStore.crew.some((member) => member.alive && member.role === "조리실");
   mealActivities.forEach((activity) => {
     const member = useCrewStore.getState().crew.find((entry) => entry.id === activity.memberId);
     if (!member?.alive || (member.needs?.hunger ?? 0) < 58) return;
     if (member.lastMealAt && currentMinute - member.lastMealAt < MEAL_COOLDOWN_MINUTES) return;
-
     const inventoryStore = useInventoryStore.getState();
     const items = inventoryStore.items;
     const ingredients = itemQty(items, "raw-ingredients");
     const rations = itemQty(items, "food-ration");
-
     if (hasCook && ingredients > 0) {
       inventoryStore.removeItem("raw-ingredients", 1);
       const message = useCrewStore.getState().completeMeal({ memberId: member.id, quality: "cooked", currentMinute });
       if (message) useGameStore.getState().addLog(`식당: ${message} 식재료 1개 사용.`);
       return;
     }
-
     if (rations > 0) {
       inventoryStore.removeItem("food-ration", 1);
       const message = useCrewStore.getState().completeMeal({ memberId: member.id, quality: "ration", currentMinute });
       if (message) useGameStore.getState().addLog(`식당: ${message} 표준 식량 1개 사용.`);
       return;
     }
-
     if ((member.needs?.hunger ?? 0) >= 75) useGameStore.getState().addLog(`${member.name} 식사 실패: 식량이 부족합니다.`);
   });
 }
@@ -246,6 +241,8 @@ function applyShipWork(task) {
 }
 
 function applyUnifiedJob(job) {
+  if (job.type === "training") return useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey });
+  if (job.type === "treatment") return useCrewStore.getState().completeTreatmentJob({ memberId: job.payload?.targetCrewId, fatiguePenalty: job.payload?.fatiguePenalty, injury: job.payload?.injury });
   if (job.type === "recovery") return useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
   const shipWork = jobToLegacyShipWork(job);
   if (shipWork) return applyShipWork(shipWork);
@@ -255,10 +252,7 @@ function applyUnifiedJob(job) {
 function migrateLegacyJobsOnce() {
   const jobStore = useJobStore.getState();
   if (jobStore.legacyMigrationVersion >= 1) return [];
-  const result = jobStore.migrateLegacyQueues({
-    shipWorkQueue: useShipStore.getState().shipWorkQueue ?? [],
-    recoveryQueue: useCrewStore.getState().recoveryQueue ?? [],
-  });
+  const result = jobStore.migrateLegacyQueues({ shipWorkQueue: useShipStore.getState().shipWorkQueue ?? [], recoveryQueue: useCrewStore.getState().recoveryQueue ?? [] });
   if (result.migrated <= 0 && result.errors.length <= 0) return [];
   const logs = result.migrated > 0 ? [`작업 큐 마이그레이션: 기존 작업 ${result.migrated}개를 통합 Job 시스템으로 이전.`] : [];
   if (result.errors.length > 0) logs.push(`작업 큐 마이그레이션 경고: ${result.errors.length}개 작업 변환 실패.`);
