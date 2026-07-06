@@ -6,6 +6,7 @@ import { roomForCrewActivity } from "../../data/shipInteriorLayout";
 import { ROOM_SLOTS } from "../../data/constants";
 import { formatMinutes, getModuleRule } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { computeJobRefund } from "../../systems/jobEconomy";
 import { jobTypeLabel } from "../../systems/jobMigration";
 import { canFitPower, modulePowerCost, reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
 import { useCrewStore } from "../../stores/crewStore";
@@ -64,14 +65,20 @@ function EquipTab({ roomId }) {
 
   if (slots.length === 0) return <p className="text-sm text-slate-400">이 구역에는 함선 장비 슬롯이 없습니다.</p>;
 
-  const installedModules = Object.values(installed).map((id) => modulesById.get(id)).filter(Boolean);
+  // 대기/진행 중인 장착 job의 모듈을 해당 슬롯에 이미 있는 것처럼 계산해,
+  // 여러 슬롯에 연달아 장착을 지시해도 합산 전력이 예산을 넘지 못하게 막는다.
+  const effectiveInstalled = { ...installed };
+  moduleWorkQueue.forEach((job) => {
+    if (job.payload?.action === "equip" && job.payload?.slot && job.payload?.moduleId) effectiveInstalled[job.payload.slot] = job.payload.moduleId;
+  });
+  const installedModules = Object.values(effectiveInstalled).map((id) => modulesById.get(id)).filter(Boolean);
   const capacity = reactorCapacity(shipGrade, engineeringTier);
   const draw = totalPowerDraw(installedModules);
 
   const equip = (slot, module) => {
     if (!unlockedModuleIds.includes(module.id)) return addLog(`${module.name} 모듈은 아직 보유하지 않았습니다. 시장에서 구매하거나 제작하세요.`);
     if (slotTasks.get(slot)) return addLog(`${slot} 슬롯은 이미 장착 작업 중입니다.`);
-    const currentModule = modulesById.get(installed[slot]);
+    const currentModule = modulesById.get(effectiveInstalled[slot]);
     if (!canFitPower(installedModules, module, currentModule, capacity)) {
       const freed = currentModule ? modulePowerCost(currentModule) : 0;
       return addLog(`${module.name} 장착 실패: 동력 예산 초과 (필요 ${modulePowerCost(module)}, 여유 ${Math.max(0, capacity - draw + freed)}).`);
@@ -120,7 +127,7 @@ function EquipTab({ roomId }) {
                 const task = moduleTasks.get(module.id);
                 const materialQty = upgradeMaterialQty[module.rarity] ?? 2;
                 const canUpgrade = owned && !task && resources.credits >= rule.upgradeCredits && getItemQty(items, "tritanium") >= materialQty;
-                const powerOk = equipped || canFitPower(installedModules, module, active, capacity);
+                const powerOk = equipped || canFitPower(installedModules, module, modulesById.get(effectiveInstalled[slot]), capacity);
                 return (
                   <article key={module.id} className={`rounded-2xl border p-3 ${owned ? "border-slate-700/70 bg-slate-950/60" : "border-slate-800 bg-slate-950/40 opacity-70"}`}>
                     <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate font-black text-slate-100">{module.name}</div><div className="mt-1 text-xs text-slate-400">Lv.{module.level} · 동력 {modulePowerCost(module)}</div></div><Badge rarity={module.rarity}>{module.rarity}</Badge></div>
@@ -155,6 +162,8 @@ function CrewTab({ roomId }) {
   const nudgeJobPriority = useJobStore((state) => state.nudgeJobPriority);
   const cancelJob = useJobStore((state) => state.cancelJob);
   const addLog = useGameStore((state) => state.addLog);
+  const addResources = useGameStore((state) => state.addResources);
+  const addItem = useInventoryStore((state) => state.addItem);
 
   const activityByMember = useMemo(() => new Map(crewActivities.map((activity) => [activity.memberId, activity])), [crewActivities]);
   const assignedCrew = crew.filter((member) => member.alive && roomForCrewActivity(member, activityByMember.get(member.id)) === roomId);
@@ -163,7 +172,17 @@ function CrewTab({ roomId }) {
 
   const cancel = (job) => {
     const result = cancelJob(job.id);
-    return addLog(result.ok ? "작업 취소: 진행 전 작업을 취소했습니다." : "작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
+    if (!result.ok) return addLog("작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
+    const { items: refundItems, credits } = computeJobRefund(result.job ?? job);
+    const refunded = refundItems.map(({ itemId, qty }) => {
+      addItem(itemId, qty);
+      return `${itemId} +${qty}`;
+    });
+    if (credits > 0) {
+      addResources({ credits });
+      refunded.push(`₢${credits}`);
+    }
+    return addLog(refunded.length > 0 ? `작업 취소: 진행 전 작업 취소, 환급 ${refunded.join(", ")}.` : "작업 취소: 진행 전 작업을 취소했습니다.");
   };
 
   return (

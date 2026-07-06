@@ -5,6 +5,7 @@ import RoomDetailPanel from "../ship/RoomDetailPanel";
 import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
+import { computeJobRefund } from "../../systems/jobEconomy";
 import { explainBacklogReason } from "../../systems/jobScheduler";
 import { jobToLegacyModuleWork, jobTypeLabel } from "../../systems/jobMigration";
 import { reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
@@ -154,21 +155,15 @@ export default function Ship() {
   };
 
   const refundCancelledJob = (job) => {
-    const ratio = JOB_ECONOMY.cancelRefundRatio ?? 0.5;
+    const { items: refundItems, credits } = computeJobRefund(job);
     const refundedItems = [];
-    (job.payload?.inputItems ?? []).forEach(({ itemId, qty }) => {
-      const refundQty = Math.max(1, Math.floor((qty ?? 0) * ratio));
-      if (!itemId || refundQty <= 0) return;
-      addItem(itemId, refundQty);
-      refundedItems.push(`${itemId} +${refundQty}`);
+    refundItems.forEach(({ itemId, qty }) => {
+      addItem(itemId, qty);
+      refundedItems.push(`${itemId} +${qty}`);
     });
-    const creditBase = job.payload?.creditCost ?? (job.type === "recovery" ? job.cost : 0);
-    if (creditBase > 0) {
-      const credits = Math.floor(creditBase * ratio);
-      if (credits > 0) {
-        addResources({ credits });
-        refundedItems.push(`₢${credits}`);
-      }
+    if (credits > 0) {
+      addResources({ credits });
+      refundedItems.push(`₢${credits}`);
     }
     return refundedItems;
   };
