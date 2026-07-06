@@ -1,10 +1,25 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { getAllZones } from "../data/sectors";
+import { canExploreZone, consumeZoneYield, normalizeZoneRuntime, refreshZoneRuntimeIfNeeded } from "../systems/explorationRules";
+import { rollExplorationReward } from "../systems/explorationLoot";
+
+function normalizeZoneRuntimeMap(map = {}) {
+  return Object.fromEntries(
+    Object.entries(map ?? {}).map(([zoneId, runtime]) => [
+      zoneId,
+      {
+        explored: Boolean(runtime?.explored),
+        remainingYield: Math.max(0, Number(runtime?.remainingYield ?? 0)),
+        lastExploredAt: runtime?.lastExploredAt ?? null,
+      },
+    ]),
+  );
+}
 
 export const useExplorationStore = create(
   persist(
-    (set) => ({
+    (set, get) => ({
       currentZoneId: "anchor-station",
       selectedZoneId: null,
       discoveredZoneIds: ["anchor-station", "blue-drift"],
@@ -14,7 +29,33 @@ export const useExplorationStore = create(
       pendingTravelEvent: null,
       pendingCombatEncounter: null,
       travelLog: [],
+      zoneRuntime: {},
+      lastExplorationResult: null,
       selectZone: (zoneId) => set({ selectedZoneId: zoneId }),
+      getZoneRuntime: (zone, currentMinute = 0) => refreshZoneRuntimeIfNeeded(zone, get().zoneRuntime?.[zone?.id], currentMinute),
+      exploreZone: (zone, currentMinute = 0, rng = Math.random) => {
+        const state = get();
+        if (!zone?.id) return { ok: false, reason: "missingZone" };
+        const runtime = refreshZoneRuntimeIfNeeded(zone, state.zoneRuntime?.[zone.id], currentMinute);
+        const check = canExploreZone(zone, runtime, currentMinute);
+        if (!check.ok) {
+          const failed = { ok: false, reason: check.reason, zoneId: zone.id, runtime: check.runtime };
+          set((nextState) => ({
+            zoneRuntime: { ...nextState.zoneRuntime, [zone.id]: check.runtime },
+            lastExplorationResult: failed,
+          }));
+          return failed;
+        }
+        const reward = rollExplorationReward(zone, check.runtime, rng);
+        const nextRuntime = consumeZoneYield(zone, check.runtime, currentMinute, reward.yieldConsumed ?? 0);
+        const result = { ...reward, ok: true, runtime: nextRuntime };
+        set((nextState) => ({
+          zoneRuntime: { ...nextState.zoneRuntime, [zone.id]: nextRuntime },
+          lastExplorationResult: result,
+          travelLog: [`탐험 결과: ${zone.name ?? zone.id} · ${reward.summary}`, ...nextState.travelLog].slice(0, 8),
+        }));
+        return result;
+      },
       startTravel: (plan) =>
         set({
           activeTravel: plan,
@@ -98,6 +139,8 @@ export const useExplorationStore = create(
         pendingTravelEvent: persistedState?.pendingTravelEvent ?? null,
         pendingCombatEncounter: persistedState?.pendingCombatEncounter ?? null,
         travelLog: persistedState?.travelLog ?? [],
+        zoneRuntime: normalizeZoneRuntimeMap(persistedState?.zoneRuntime),
+        lastExplorationResult: persistedState?.lastExplorationResult ?? null,
       }),
     },
   ),
