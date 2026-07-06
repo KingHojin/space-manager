@@ -7,6 +7,8 @@ const ROLE_BY_CREW_ROLE = {
   의무실: "medic",
 };
 
+const TARGETED_CREW_JOB_TYPES = new Set(["recovery", "training", "treatment"]);
+
 function isCrewUsable(member) {
   if (!member?.alive) return false;
   if (!canWorkWithInjury(member.injury)) return false;
@@ -14,13 +16,15 @@ function isCrewUsable(member) {
   return true;
 }
 
+function canReserveTargetForJob(job, member) {
+  if (!member?.alive) return false;
+  if (job.type === "treatment") return true;
+  return isCrewUsable(member);
+}
+
 function matchesRole(member, requiredRole) {
   if (!requiredRole) return true;
   return ROLE_BY_CREW_ROLE[member.role] === requiredRole;
-}
-
-function activeJobIdsForRoom(jobs, roomId) {
-  return jobs.filter((job) => job.roomId === roomId && job.status === "in_progress").map((job) => job.id);
 }
 
 function usedSlotIdsForRoom(jobs, roomId) {
@@ -43,7 +47,7 @@ function assignedCrewIds(jobs) {
   jobs.forEach((job) => {
     if (!["assigned", "in_progress"].includes(job.status)) return;
     if (job.assignedCrewId) ids.add(job.assignedCrewId);
-    if (job.type === "recovery" && job.payload?.targetCrewId) ids.add(job.payload.targetCrewId);
+    if (TARGETED_CREW_JOB_TYPES.has(job.type) && job.payload?.targetCrewId) ids.add(job.payload.targetCrewId);
   });
   return ids;
 }
@@ -53,7 +57,7 @@ function findCandidateForJob(job, crew, reservedCrewIds) {
 
   if (targetCrewId) {
     const target = crew.find((member) => member.id === targetCrewId);
-    if (!isCrewUsable(target)) return null;
+    if (!canReserveTargetForJob(job, target)) return null;
     if (!matchesRole(target, job.requiredRole)) return null;
     if (reservedCrewIds.has(target.id)) return null;
     return target;
@@ -69,9 +73,9 @@ export function scheduleJobs(jobs = [], rooms = {}, crew = [], now = 0) {
   const usedByRoom = new Map(Object.keys(rooms).map((roomId) => [roomId, usedSlotIdsForRoom(jobs, roomId)]));
 
   jobs.filter((job) => job.status === "assigned").forEach((job) => {
-    const reservedCrewId = job.type === "recovery" ? job.payload?.targetCrewId ?? job.assignedCrewId : job.assignedCrewId;
+    const reservedCrewId = TARGETED_CREW_JOB_TYPES.has(job.type) ? job.payload?.targetCrewId ?? job.assignedCrewId : job.assignedCrewId;
     const member = crew.find((entry) => entry.id === reservedCrewId);
-    if (reservedCrewId && !isCrewUsable(member)) {
+    if (reservedCrewId && !canReserveTargetForJob(job, member)) {
       results.push({ kind: "rollback", jobId: job.id, reason: "crew_unavailable" });
       reservedCrewIds.delete(reservedCrewId);
       const used = usedByRoom.get(job.roomId) ?? [];
