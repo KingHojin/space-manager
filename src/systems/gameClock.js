@@ -240,6 +240,9 @@ export const useGameClock = () => {
   const isPaused = useGameStore((state) => state.isPaused);
   const speed = useGameStore((state) => state.speed);
   useEffect(() => {
+    migrateLegacyJobsOnce().forEach((message) => useGameStore.getState().addLog(message));
+  }, []);
+  useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === "Space" && !["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {
         event.preventDefault();
