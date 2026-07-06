@@ -6,6 +6,7 @@ import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 
 const ACTIVE = new Set(["backlog", "assigned", "in_progress"]);
+const LEGACY_MIGRATION_VERSION = 3;
 const MODULE_ROOM_BY_SLOT = {
   engine: "engineering",
   shield: "engineering",
@@ -141,13 +142,13 @@ export const useJobStore = create(
         });
         return result;
       },
-      migrateLegacyQueues: ({ shipWorkQueue = [], recoveryQueue = [], currentMinute = null }) => {
-        if (get().legacyMigrationVersion >= 1) return { migrated: 0, errors: [] };
-        const result = migrateLegacyQueues(shipWorkQueue, recoveryQueue, currentMinute);
+      migrateLegacyQueues: ({ shipWorkQueue = [], recoveryQueue = [], trainingQueue = [], treatmentQueue = [], currentMinute = null }) => {
+        if (get().legacyMigrationVersion >= LEGACY_MIGRATION_VERSION) return { migrated: 0, errors: [] };
+        const result = migrateLegacyQueues(shipWorkQueue, recoveryQueue, trainingQueue, treatmentQueue, currentMinute);
         set((state) => {
           const ids = new Set(normalizeJobs(state.jobs).map((job) => job.id));
           const jobs = [...normalizeJobs(state.jobs), ...result.jobs.filter((job) => !ids.has(job.id))];
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs), legacyMigrationVersion: 1, legacyMigrationErrors: result.errors };
+          return { jobs, rooms: roomsFromJobs(state.rooms, jobs), legacyMigrationVersion: LEGACY_MIGRATION_VERSION, legacyMigrationErrors: result.errors };
         });
         return { migrated: result.jobs.length, errors: result.errors };
       },
