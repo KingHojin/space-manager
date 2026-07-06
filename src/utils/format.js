@@ -9,4 +9,5 @@ export const statLabel = {
   engineering: "공학",
   medicine: "의료",
   scouting: "탐사",
+  cooking: "조리",
 };
