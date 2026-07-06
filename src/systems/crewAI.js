@@ -26,6 +26,10 @@ const MODULE_SLOT_WORK_ROOM = {
   "weapon-b": { roomId: "ops", station: "포탑 관제", action: "무장 슬롯 B 작업" },
 };
 
+const SHIP_WORK_ROOM = {
+  hullRepair: { roomId: "engineering", station: "기관실", action: "선체 응급 정비", intent: "repair" },
+};
+
 const CREW_QUEUE_WORKFLOWS = [
   {
     queueKey: "treatmentQueue",
@@ -145,19 +149,22 @@ function slotForModuleTask(task, moduleById) {
   return moduleById.get(task.moduleId)?.slot ?? "engine";
 }
 
-function buildInstallationWorkContext(snapshot = {}) {
+function normalizeEngineeringTask(task, source) {
+  return { ...task, source, priority: normalizePriority(task.priority ?? (task.type === "equip" ? "high" : "normal")) };
+}
+
+function buildEngineeringWorkContext(snapshot = {}) {
   return {
     moduleById: buildModuleById(snapshot.modules ?? []),
-    tasks: [...(snapshot.installationQueue ?? [])].filter((task) => task?.id).sort(comparePriorityTasks),
+    tasks: [
+      ...(snapshot.installationQueue ?? []).filter((task) => task?.id).map((task) => normalizeEngineeringTask(task, "module")),
+      ...(snapshot.shipWorkQueue ?? []).filter((task) => task?.id).map((task) => normalizeEngineeringTask(task, "ship")),
+    ].sort(comparePriorityTasks),
     claimedTaskIds: new Set(),
   };
 }
 
-function pickInstallationWork(member, workContext, currentMinute) {
-  if (member.role !== "기관실" || !canWorkWithInjury(member.injury)) return null;
-  const task = workContext.tasks.find((entry) => !workContext.claimedTaskIds.has(entry.id));
-  if (!task) return null;
-  workContext.claimedTaskIds.add(task.id);
+function moduleWorkActivity(member, task, workContext, currentMinute) {
   const slot = slotForModuleTask(task, workContext.moduleById);
   const room = MODULE_SLOT_WORK_ROOM[slot] ?? MODULE_SLOT_WORK_ROOM.engine;
   const priority = normalizePriority(task.priority ?? (task.type === "equip" ? "high" : "normal"));
@@ -175,6 +182,30 @@ function pickInstallationWork(member, workContext, currentMinute) {
     moduleId: task.moduleId,
     updatedAt: currentMinute,
   };
+}
+
+function shipWorkActivity(member, task, currentMinute) {
+  const room = SHIP_WORK_ROOM[task.type] ?? SHIP_WORK_ROOM.hullRepair;
+  const priority = normalizePriority(task.priority ?? "normal");
+  return {
+    memberId: member.id,
+    station: room.station,
+    action: room.action,
+    intent: room.intent,
+    priority,
+    detail: `함선 작업 · 완료 대기 ${getPriorityConfig(priority).label}`,
+    roomId: room.roomId,
+    taskId: task.id,
+    updatedAt: currentMinute,
+  };
+}
+
+function pickEngineeringWork(member, workContext, currentMinute) {
+  if (member.role !== "기관실" || !canWorkWithInjury(member.injury)) return null;
+  const task = workContext.tasks.find((entry) => !workContext.claimedTaskIds.has(entry.id));
+  if (!task) return null;
+  workContext.claimedTaskIds.add(task.id);
+  return task.source === "ship" ? shipWorkActivity(member, task, currentMinute) : moduleWorkActivity(member, task, workContext, currentMinute);
 }
 
 function pickCrisisAssignment(member, snapshot, claimedCrisisIds) {
@@ -275,7 +306,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
   const fixedActivities = new Map();
   const claimedCrisisIds = new Set();
   const queueIndex = buildMemberQueueIndex(queues);
-  const installationWorkContext = buildInstallationWorkContext(snapshot);
+  const engineeringWorkContext = buildEngineeringWorkContext(snapshot);
 
   crew.forEach((member, index) => {
     if (!member.alive) {
@@ -306,7 +337,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
 
     if (assignFixedActivity(fixedActivities, member, queueActivity(member, queueTask, currentMinute), currentMinute)) return;
     if (assignFixedActivity(fixedActivities, member, roleCrisisAssignment(member, snapshot), currentMinute)) return;
-    if (assignFixedActivity(fixedActivities, member, pickInstallationWork(member, installationWorkContext, currentMinute), currentMinute)) return;
+    if (assignFixedActivity(fixedActivities, member, pickEngineeringWork(member, engineeringWorkContext, currentMinute), currentMinute)) return;
 
     roomJobCandidates.push({ member, index });
   });
