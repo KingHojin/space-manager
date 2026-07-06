@@ -1,4 +1,5 @@
 import {
+  AlertTriangle,
   Archive,
   BarChart2,
   BookOpen,
@@ -12,6 +13,7 @@ import {
   ScrollText,
   Sparkles,
   Store,
+  Trash2,
   Users,
 } from "lucide-react";
 import { contracts } from "../../data/contracts";
@@ -26,6 +28,22 @@ import { useRecruitStore } from "../../stores/recruitStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { number } from "../../utils/format";
+
+const STORAGE_KEY_PREFIX = "space-manager";
+const KNOWN_STORAGE_KEYS = [
+  "space-manager-game",
+  "space-manager-crew",
+  "space-manager-ship",
+  "space-manager-inventory",
+  "space-manager-exploration",
+  "space-manager-jobs",
+  "space-manager-nav",
+  "space-manager-ship-interior",
+  "space-manager-recruit",
+  "space-manager-contracts",
+  "space-manager-missions",
+  "space-manager-skills",
+];
 
 const primaryMenus = [
   { id: "missions", label: "임무", desc: "계약 임무 선택, 위험도·보상 확인, 출항 동기 설정", icon: Briefcase, tone: "border-sky-400/45 bg-sky-400/10 text-sky-100", modal: true },
@@ -45,6 +63,23 @@ const utilityMenus = [
   { id: "log", label: "로그", icon: ScrollText },
   { id: "save", label: "저장", icon: Save },
 ];
+
+function storageKeysForGame() {
+  if (typeof window === "undefined" || !window.localStorage) return [];
+  const keys = new Set(KNOWN_STORAGE_KEYS);
+  for (let index = 0; index < window.localStorage.length; index += 1) {
+    const key = window.localStorage.key(index);
+    if (key?.startsWith(STORAGE_KEY_PREFIX)) keys.add(key);
+  }
+  return [...keys].filter((key) => window.localStorage.getItem(key) !== null);
+}
+
+function wipeSavedGameAndReload() {
+  if (typeof window === "undefined" || !window.localStorage) return;
+  const keys = storageKeysForGame();
+  keys.forEach((key) => window.localStorage.removeItem(key));
+  window.location.reload();
+}
 
 export default function Menu({ onNavigate, onOpenModal }) {
   const availablePoints = useSkillStore((state) => state.availablePoints);
@@ -83,6 +118,12 @@ export default function Menu({ onNavigate, onOpenModal }) {
       return;
     }
     onNavigate?.(menu.id);
+  };
+
+  const handleWipe = () => {
+    const ok = window.confirm("현재 브라우저에 저장된 Space Manager 진행 상태를 전부 초기화할까요? 승무원, 작업 큐, 항해, 함선, 인벤토리 진행 상태가 새 게임 상태로 돌아갑니다.");
+    if (!ok) return;
+    wipeSavedGameAndReload();
   };
 
   return (
@@ -131,6 +172,17 @@ export default function Menu({ onNavigate, onOpenModal }) {
             const badge = menu.id === "inventory" ? itemCount : menu.id === "cards" ? cards.length : menu.id === "log" ? logs.length : null;
             return <button key={menu.id} className="dock-button justify-between px-3" style={{ height: "3.5rem" }} onClick={() => onOpenModal?.(menu.id)}><span className="flex min-w-0 items-center gap-2"><Icon size={16} /><span className="truncate">{menu.label}</span></span>{badge !== null && <span className="hud-chip px-1.5 py-0.5 text-[0.6rem]">{badge}</span>}</button>;
           })}
+        </div>
+      </section>
+      <section className="rounded-2xl border border-red-400/35 bg-red-400/10 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="section-title text-red-100"><AlertTriangle size={18} />진행 상태 초기화</div>
+            <p className="mt-2 text-sm leading-6 text-red-100/80">회복/작업 큐가 꼬였거나 테스트 상태를 새로 시작해야 할 때 현재 브라우저의 저장된 진행 상태를 전부 지웁니다.</p>
+          </div>
+          <button className="secondary-button border-red-300/50 bg-red-950/50 text-red-100 hover:border-red-200" onClick={handleWipe}>
+            <Trash2 size={16} />전체 초기화
+          </button>
         </div>
       </section>
       <section>
