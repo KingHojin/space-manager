@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
@@ -39,6 +40,10 @@ function recoveryPriority(member) {
   if ((member.fatigue ?? 0) >= 75) return "high";
   if ((member.needs?.stress ?? 0) >= 70 || (member.needs?.sleepDebt ?? 0) >= 70) return "high";
   return "normal";
+}
+
+function indexByMemberId(entries = []) {
+  return new Map(entries.map((entry) => [entry.memberId, entry]));
 }
 
 function RoleIcon({ role, size = 14 }) {
@@ -129,7 +134,14 @@ export default function Crew() {
   const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
   const aiSummary = summarizeCrewAI(crewActivities ?? []);
   const coverage = getRoleCoverage(crew);
-  const busy = (memberId) => trainingQueue.some((task) => task.memberId === memberId) || treatmentQueue.some((task) => task.memberId === memberId) || recoveryQueue.some((task) => task.memberId === memberId);
+  const injuredCrewCount = useMemo(() => crew.filter((member) => member.alive && isInjured(member.injury)).length, [crew]);
+  const taskByMemberId = useMemo(() => ({
+    training: indexByMemberId(trainingQueue),
+    treatment: indexByMemberId(treatmentQueue),
+    recovery: indexByMemberId(recoveryQueue),
+  }), [trainingQueue, treatmentQueue, recoveryQueue]);
+  const activityByMemberId = useMemo(() => indexByMemberId(crewActivities ?? []), [crewActivities]);
+  const busy = (memberId) => taskByMemberId.training.has(memberId) || taskByMemberId.treatment.has(memberId) || taskByMemberId.recovery.has(memberId);
 
   const train = (member) => {
     if (!member.alive || busy(member.id)) return addLog(`${member.name} 훈련 불가: 현재 작업을 확인하세요.`);
@@ -164,15 +176,15 @@ export default function Crew() {
   return (
     <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
       <section>
-        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Users size={18} />승무원 스쿼드</div><p className="mt-2 text-sm text-slate-400">승무원 상태를 카드/컨디션 중심으로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">AI {aiSummary.total}</span><span className="hud-chip">긴급 {aiSummary.emergency}</span><span className="hud-chip">부상 {crew.filter((member) => member.alive && isInjured(member.injury)).length}</span></div></div>
+        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Users size={18} />승무원 스쿼드</div><p className="mt-2 text-sm text-slate-400">승무원 상태를 카드/컨디션 중심으로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">AI {aiSummary.total}</span><span className="hud-chip">긴급 {aiSummary.emergency}</span><span className="hud-chip">부상 {injuredCrewCount}</span></div></div>
         {coverage.missingRoles.length > 0 && <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">역할 공백: {coverage.missingRoles.join(", ")}</div>}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {crew.map((member) => {
             const mainStat = trainingByRole[member.role] ?? "scouting";
-            const trainingTask = trainingQueue.find((task) => task.memberId === member.id);
-            const treatmentTask = treatmentQueue.find((task) => task.memberId === member.id);
-            const recoveryTask = recoveryQueue.find((task) => task.memberId === member.id);
-            const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id);
+            const trainingTask = taskByMemberId.training.get(member.id);
+            const treatmentTask = taskByMemberId.treatment.get(member.id);
+            const recoveryTask = taskByMemberId.recovery.get(member.id);
+            const activity = activityByMemberId.get(member.id);
             const isBusy = Boolean(trainingTask || treatmentTask || recoveryTask);
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
