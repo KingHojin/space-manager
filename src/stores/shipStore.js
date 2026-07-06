@@ -59,7 +59,8 @@ function mergeVessels(persistedState) {
 
 function normalizeWorkTask(task) {
   const fallback = task.type === "equip" ? "high" : "normal";
-  return { ...task, priority: normalizePriority(task.priority ?? fallback) };
+  const module = modules.find((entry) => entry.id === task.moduleId);
+  return { ...task, slot: task.slot ?? module?.slot, priority: normalizePriority(task.priority ?? fallback) };
 }
 
 export const useShipStore = create(
@@ -83,11 +84,11 @@ export const useShipStore = create(
             { id: crypto.randomUUID(), type: "equip", slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
-      startUpgrade: ({ moduleId, completeAt, cost, duration, priority = "normal" }) =>
+      startUpgrade: ({ moduleId, slot = null, completeAt, cost, duration, priority = "normal" }) =>
         set((state) => ({
           installationQueue: [
             ...state.installationQueue,
-            { id: crypto.randomUUID(), type: "upgrade", moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
+            { id: crypto.randomUUID(), type: "upgrade", slot: slot ?? state.modules.find((module) => module.id === moduleId)?.slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
       setInstallationPriority: (taskId, priority) =>
