@@ -18,6 +18,7 @@ export const ROLE_COVERAGE_RULES = {
   함교: { label: "항해/지휘", missingTitle: "함교 역할 공백", desc: "항로 분석과 조우 판단 안정성이 낮아집니다." },
   기관실: { label: "기관/수리", missingTitle: "엔지니어 부재", desc: "기관실 상태 감소와 위기 대응 위험이 커집니다." },
   의무실: { label: "의료", missingTitle: "메딕 부재", desc: "부상 회복이 느려지고 악화 위험이 커집니다." },
+  조리실: { label: "식사/보급", missingTitle: "요리사 부재", desc: "식재료를 조리식으로 전환하지 못해 식사 효율이 낮아집니다.", required: false },
 };
 
 const STRING_TO_STATE = {
@@ -119,14 +120,18 @@ export function rollPermanentTrait(existingTraits = []) {
 }
 
 export function getRoleCoverage(crew = []) {
-  const counts = { 함교: 0, 기관실: 0, 의무실: 0, 포탑: 0 };
+  const counts = Object.fromEntries(Object.keys(ROLE_COVERAGE_RULES).map((role) => [role, 0]));
+  counts.포탑 = 0;
   crew.forEach((member) => {
     if (!member?.alive) return;
     if (!canWorkWithInjury(member.injury)) return;
     if (counts[member.role] !== undefined) counts[member.role] += 1;
   });
 
-  const missingRoles = Object.keys(ROLE_COVERAGE_RULES).filter((role) => (counts[role] ?? 0) === 0);
+  const missingRoles = Object.entries(ROLE_COVERAGE_RULES)
+    .filter(([, rule]) => rule.required !== false)
+    .map(([role]) => role)
+    .filter((role) => (counts[role] ?? 0) === 0);
   return { counts, missingRoles };
 }
 
