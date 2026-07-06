@@ -75,6 +75,7 @@ function normalizeCrew(member) {
     injury: normalizeInjury(member.injury ?? base.injury),
     needs: normalizeNeeds({ ...(base.needs ?? DEFAULT_NEEDS), ...(member.needs ?? {}) }),
     stats: { ...(base.stats ?? {}), ...(member.stats ?? {}) },
+    lastMealAt: member.lastMealAt ?? base.lastMealAt ?? null,
   };
 }
 
@@ -109,11 +110,11 @@ function applyRecovery(member, task = {}) {
   return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) - (task.fatigueRecovery ?? 32), 0, 100), morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs) };
 }
 
-function applyMeal(member, quality = "ration") {
+function applyMeal(member, quality = "ration", currentMinute = null) {
   if (!member.alive) return member;
   const cooked = quality === "cooked";
   const needs = applyNeedDelta(member.needs, { hunger: cooked ? -46 : -32, mood: cooked ? 6 : 2, stress: cooked ? -4 : -1, hygiene: -1 });
-  return { ...member, needs, morale: moraleFromNeeds(member.morale, needs) };
+  return { ...member, needs, morale: moraleFromNeeds(member.morale, needs), lastMealAt: currentMinute ?? member.lastMealAt ?? null };
 }
 
 function activityTreatmentTargets(crew, activities = []) {
@@ -235,10 +236,10 @@ export const useCrewStore = create(
         set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyRecovery(entry, task) : entry)) }));
         return `${member?.name ?? "승무원"} 회복 절차 완료.`;
       },
-      completeMeal: ({ memberId, quality = "ration" }) => {
+      completeMeal: ({ memberId, quality = "ration", currentMinute = null }) => {
         const member = get().crew.find((entry) => entry.id === memberId);
         if (!member?.alive) return null;
-        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyMeal(entry, quality) : entry)) }));
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyMeal(entry, quality, currentMinute) : entry)) }));
         return `${member.name} 식사 완료.`;
       },
       tickCrewNeeds: ({ deltaMinutes = 0, mode = "normal", severity = 1 }) => {
