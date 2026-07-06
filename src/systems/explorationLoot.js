@@ -1,5 +1,5 @@
 import { EXPLORATION_REWARD, EXPLORATION_YIELD, SALVAGE_LOOT_TABLE } from "../data/constants";
-import { consumeZoneYield, explorationFuelCost, getExplorationProfile, zoneHasYield } from "./explorationRules";
+import { explorationFuelCost, getExplorationProfile, zoneHasYield } from "./explorationRules";
 
 const RARITY_RANK = { common: 1, uncommon: 2, rare: 3, epic: 4, legendary: 5 };
 
@@ -93,7 +93,6 @@ export function rollExplorationReward(zone, runtime = {}, rng = Math.random) {
       fuelCost: 0,
       hullDamage: 0,
       yieldConsumed: 0,
-      nextRuntime: consumeZoneYield(zone, runtime, 0, 0),
       summary: "수거할 잔해 없음",
     };
   }
@@ -121,7 +120,6 @@ export function rollExplorationReward(zone, runtime = {}, rng = Math.random) {
     fuelCost,
     hullDamage,
     yieldConsumed: 1,
-    nextRuntime: consumeZoneYield(zone, runtime, 0, 1),
     summary: mergedItems.length > 0 ? mergedItems.map((item) => `${item.id} x${item.qty}`).join(", ") : "회수 자원 없음",
   };
 }
