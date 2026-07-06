@@ -4,16 +4,25 @@ import { getAllZones } from "../data/sectors";
 import { canExploreZone, consumeZoneYield, refreshZoneRuntimeIfNeeded } from "../systems/explorationRules";
 import { rollExplorationReward } from "../systems/explorationLoot";
 
+function normalizeRuntimeNumber(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function normalizeZoneRuntimeMap(map = {}) {
   return Object.fromEntries(
-    Object.entries(map ?? {}).map(([zoneId, runtime]) => [
-      zoneId,
-      {
-        explored: Boolean(runtime?.explored),
-        remainingYield: Math.max(0, Number(runtime?.remainingYield ?? 0)),
-        lastExploredAt: runtime?.lastExploredAt ?? null,
-      },
-    ]),
+    Object.entries(map ?? {}).map(([zoneId, runtime]) => {
+      const remainingYield = normalizeRuntimeNumber(runtime?.remainingYield);
+      const lastExploredAt = normalizeRuntimeNumber(runtime?.lastExploredAt);
+      return [
+        zoneId,
+        {
+          explored: Boolean(runtime?.explored),
+          ...(remainingYield !== undefined ? { remainingYield: Math.max(0, remainingYield) } : {}),
+          lastExploredAt: lastExploredAt ?? null,
+        },
+      ];
+    }),
   );
 }
 
