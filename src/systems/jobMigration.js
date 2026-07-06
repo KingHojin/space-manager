@@ -45,6 +45,25 @@ function normalizedRequiredRole(job, type) {
   return hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null;
 }
 
+function legacyStartedAt(task, type) {
+  const duration = Math.max(1, numeric(task?.duration, JOB_DURATION[type] ?? 60));
+  if (task?.startedAt !== undefined && task?.startedAt !== null) return numeric(task.startedAt, 0);
+  if (task?.completeAt !== undefined && task?.completeAt !== null) return numeric(task.completeAt, duration) - duration;
+  return numeric(task?.createdAt, 0);
+}
+
+function legacyDuration(task, type) {
+  const startedAt = legacyStartedAt(task, type);
+  if (task?.duration !== undefined && task?.duration !== null) return Math.max(1, numeric(task.duration, JOB_DURATION[type] ?? 60));
+  if (task?.completeAt !== undefined && task?.completeAt !== null) return Math.max(1, numeric(task.completeAt, startedAt + (JOB_DURATION[type] ?? 60)) - startedAt);
+  return Math.max(1, JOB_DURATION[type] ?? 60);
+}
+
+function legacyStatus(task) {
+  if (task?.status) return task.status;
+  return "in_progress";
+}
+
 export function normalizeRoomId(roomId, type = null) {
   const fallback = DEFAULT_ROOM_BY_TYPE[type] ?? "living";
   const normalized = ROOM_ALIASES[roomId] ?? roomId ?? fallback;
@@ -115,15 +134,38 @@ export function normalizeJob(job = {}, now = null) {
 function shipWorkToJob(task, now) {
   const type = SHIP_WORK_TYPE_MAP[task?.type];
   if (!task?.id || !type) return null;
-  return normalizeJob({ id: task.id, type, roomId: task.roomId ?? DEFAULT_ROOM_BY_TYPE[type], priority: task.priority ?? (type === "hull_repair" ? "high" : "normal"), duration: task.duration, startedAt: task.startedAt, createdAt: task.startedAt, cost: task.cost, payload: task.payload ?? {}, status: "in_progress" }, now);
+  const startedAt = legacyStartedAt(task, type);
+  return normalizeJob({ id: task.id, type, roomId: task.roomId ?? DEFAULT_ROOM_BY_TYPE[type], priority: task.priority ?? (type === "hull_repair" ? "high" : "normal"), duration: legacyDuration(task, type), startedAt, createdAt: startedAt, cost: task.cost, payload: task.payload ?? {}, status: legacyStatus(task) }, now);
 }
 
 function recoveryToJob(task, now) {
   if (!task?.id || !task?.memberId) return null;
-  return normalizeJob({ id: task.id, type: "recovery", roomId: "medbay", assignedCrewId: task.memberId, priority: task.priority ?? "normal", duration: task.duration, startedAt: task.startedAt, createdAt: task.startedAt, cost: task.cost, payload: { targetCrewId: task.memberId, fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery }, status: "in_progress" }, now);
+  const type = "recovery";
+  const startedAt = legacyStartedAt(task, type);
+  return normalizeJob({ id: task.id, type, roomId: "medbay", assignedCrewId: task.memberId, priority: task.priority ?? "normal", duration: legacyDuration(task, type), startedAt, createdAt: startedAt, cost: task.cost, payload: { targetCrewId: task.memberId, fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery }, status: legacyStatus(task) }, now);
 }
 
-export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], now = null) {
+function trainingToJob(task, now) {
+  if (!task?.id || !task?.memberId || !task?.statKey) return null;
+  const type = "training";
+  const startedAt = legacyStartedAt(task, type);
+  return normalizeJob({ id: task.id, type, roomId: "living", assignedCrewId: task.memberId, priority: task.priority ?? "normal", duration: legacyDuration(task, type), startedAt, createdAt: startedAt, cost: task.cost, payload: { targetCrewId: task.memberId, statKey: task.statKey }, status: legacyStatus(task) }, now);
+}
+
+function treatmentToJob(task, now) {
+  if (!task?.id || !task?.memberId) return null;
+  const type = "treatment";
+  const startedAt = legacyStartedAt(task, type);
+  return normalizeJob({ id: task.id, type, roomId: "medbay", assignedCrewId: task.memberId, priority: task.priority ?? "high", duration: legacyDuration(task, type), startedAt, createdAt: startedAt, cost: task.cost, payload: { targetCrewId: task.memberId, injury: task.injury, fatiguePenalty: task.fatiguePenalty }, status: legacyStatus(task) }, now);
+}
+
+export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], trainingQueue = [], treatmentQueue = [], now = null) {
+  if (!Array.isArray(trainingQueue)) {
+    now = trainingQueue;
+    trainingQueue = [];
+    treatmentQueue = [];
+  }
+
   const jobs = [];
   const errors = [];
   shipWorkQueue.forEach((task) => {
@@ -135,6 +177,16 @@ export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], now 
     const job = recoveryToJob(task, now);
     if (job) jobs.push(job);
     else errors.push({ source: "recoveryQueue", id: task?.id ?? null, reason: "invalid_task" });
+  });
+  trainingQueue.forEach((task) => {
+    const job = trainingToJob(task, now);
+    if (job) jobs.push(job);
+    else errors.push({ source: "trainingQueue", id: task?.id ?? null, reason: "invalid_task" });
+  });
+  treatmentQueue.forEach((task) => {
+    const job = treatmentToJob(task, now);
+    if (job) jobs.push(job);
+    else errors.push({ source: "treatmentQueue", id: task?.id ?? null, reason: "invalid_task" });
   });
   return { jobs, errors };
 }
