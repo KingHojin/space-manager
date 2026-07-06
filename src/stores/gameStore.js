@@ -3,10 +3,20 @@ import { persist } from "zustand/middleware";
 import { DEV_FLAGS, GAME_TIME, RESOURCES } from "../data/constants";
 
 const PERCENT_RESOURCES = new Set(["fuel", "oxygen", "hull"]);
+const LOCK_FLAG_BY_RESOURCE = {
+  fuel: "LOCK_FUEL",
+  oxygen: "LOCK_OXYGEN",
+  hull: "LOCK_HULL",
+};
+
+function isResourceLocked(key) {
+  if (!PERCENT_RESOURCES.has(key)) return false;
+  return Boolean(DEV_FLAGS.LOCK_PERCENT_RESOURCES || DEV_FLAGS[LOCK_FLAG_BY_RESOURCE[key]]);
+}
 
 function clampResource(key, value) {
   if (key === "credits") return Math.max(0, Math.round(value));
-  if (PERCENT_RESOURCES.has(key)) return DEV_FLAGS.LOCK_PERCENT_RESOURCES ? 100 : Math.min(100, Math.max(0, value));
+  if (PERCENT_RESOURCES.has(key)) return isResourceLocked(key) ? 100 : Math.min(100, Math.max(0, value));
   return value;
 }
 
@@ -17,6 +27,13 @@ function normalizeResources(resources = {}) {
     oxygen: clampResource("oxygen", resources.oxygen ?? RESOURCES.START_OXYGEN),
     hull: clampResource("hull", resources.hull ?? RESOURCES.START_HULL),
   };
+}
+
+function hasLowConsumableResource(resources) {
+  return (
+    (!isResourceLocked("fuel") && resources.fuel <= RESOURCES.LOW_RESOURCE_WARNING) ||
+    (!isResourceLocked("oxygen") && resources.oxygen <= RESOURCES.LOW_RESOURCE_WARNING)
+  );
 }
 
 export const useGameStore = create(
@@ -77,7 +94,7 @@ export const useGameStore = create(
           }),
         }));
         const { resources } = get();
-        if (!DEV_FLAGS.LOCK_PERCENT_RESOURCES && (resources.fuel <= RESOURCES.LOW_RESOURCE_WARNING || resources.oxygen <= RESOURCES.LOW_RESOURCE_WARNING)) {
+        if (hasLowConsumableResource(resources)) {
           get().addLog("자원 경고: 연료 또는 산소가 낮습니다. 정거장 보급을 검토하세요.");
         }
       },
