@@ -128,6 +128,12 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   return { effects, logs };
 }
 
+function processJobScheduler(currentMinute) {
+  const crew = useCrewStore.getState().crew;
+  const logs = useJobStore.getState().runScheduler({ currentMinute, crew });
+  logs.forEach((message) => useGameStore.getState().addLog(`작업: ${message}`));
+}
+
 function processCrewAI(currentMinute) {
   const crewStore = useCrewStore.getState();
   const logs = crewStore.runCrewAI(getActiveVesselCrewAiSnapshot({ currentMinute }));
@@ -262,6 +268,7 @@ function migrateLegacyJobsOnce() {
 export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
+  processJobScheduler(currentMinute);
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
