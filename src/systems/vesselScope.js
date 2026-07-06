@@ -67,7 +67,6 @@ export function getActiveVesselScope() {
 
 export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.getState().currentMinute } = {}) {
   const scope = getActiveVesselScope();
-  useJobStore.getState().runScheduler({ currentMinute, crew: scope.crew.members });
   const jobStore = useJobStore.getState();
   const exploration = useExplorationStore.getState();
   return {
