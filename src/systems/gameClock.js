@@ -16,6 +16,7 @@ import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
 const MEAL_COOLDOWN_MINUTES = 120;
+const LEGACY_JOB_MIGRATION_VERSION = 3;
 
 export const formatGameDate = (totalMinutes) => {
   const year = Math.floor(totalMinutes / 525600);
@@ -260,10 +261,24 @@ function applyUnifiedJob(job) {
   return null;
 }
 
+function clearMigratedLegacyQueues(result) {
+  if (result.migrated <= 0 || result.errors.length > 0) return;
+  useCrewStore.setState({ trainingQueue: [], treatmentQueue: [], recoveryQueue: [] });
+  useShipStore.setState({ shipWorkQueue: [] });
+}
+
 function migrateLegacyJobsOnce() {
   const jobStore = useJobStore.getState();
-  if (jobStore.legacyMigrationVersion >= 1) return [];
-  const result = jobStore.migrateLegacyQueues({ shipWorkQueue: useShipStore.getState().shipWorkQueue ?? [], recoveryQueue: useCrewStore.getState().recoveryQueue ?? [] });
+  if (jobStore.legacyMigrationVersion >= LEGACY_JOB_MIGRATION_VERSION) return [];
+  const crewStore = useCrewStore.getState();
+  const result = jobStore.migrateLegacyQueues({
+    shipWorkQueue: useShipStore.getState().shipWorkQueue ?? [],
+    recoveryQueue: crewStore.recoveryQueue ?? [],
+    trainingQueue: crewStore.trainingQueue ?? [],
+    treatmentQueue: crewStore.treatmentQueue ?? [],
+    currentMinute: useGameStore.getState().currentMinute,
+  });
+  clearMigratedLegacyQueues(result);
   if (result.migrated <= 0 && result.errors.length <= 0) return [];
   const logs = result.migrated > 0 ? [`작업 큐 마이그레이션: 기존 작업 ${result.migrated}개를 통합 Job 시스템으로 이전.`] : [];
   if (result.errors.length > 0) logs.push(`작업 큐 마이그레이션 경고: ${result.errors.length}개 작업 변환 실패.`);
