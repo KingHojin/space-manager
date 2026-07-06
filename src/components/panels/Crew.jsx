@@ -18,6 +18,9 @@ const ROLE_ICONS = {
 };
 const TRAINING_COST = 180;
 const TRAINING_MINUTES = 360;
+const RECOVERY_COST = 90;
+const RECOVERY_MINUTES = 180;
+const RECOVERY_FATIGUE = 32;
 const TREATMENT = {
   minor: { cost: 140, minutes: 180, fatiguePenalty: 8 },
   serious: { cost: 420, minutes: 720, fatiguePenalty: 18 },
@@ -30,6 +33,12 @@ const defaultNeeds = { hunger: 0, mood: 60, stress: 20, sleepDebt: 0, hygiene: 8
 function treatmentRule(injury) {
   const state = normalizeInjury(injury).state;
   return TREATMENT[state] ?? { cost: 220, minutes: 300, fatiguePenalty: 10 };
+}
+
+function recoveryPriority(member) {
+  if ((member.fatigue ?? 0) >= 75) return "high";
+  if ((member.needs?.stress ?? 0) >= 70 || (member.needs?.sleepDebt ?? 0) >= 70) return "high";
+  return "normal";
 }
 
 function RoleIcon({ role, size = 14 }) {
@@ -111,7 +120,7 @@ function CrewPortrait({ member }) {
 }
 
 export default function Crew() {
-  const { crew, trainingQueue, treatmentQueue, crewActivities, crewActivityLog, startTraining, startTreatment, restMember } = useCrewStore();
+  const { crew, trainingQueue, treatmentQueue, recoveryQueue, crewActivities, crewActivityLog, startTraining, startTreatment, startRecovery } = useCrewStore();
   const currentMinute = useGameStore((state) => state.currentMinute);
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
@@ -120,7 +129,7 @@ export default function Crew() {
   const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
   const aiSummary = summarizeCrewAI(crewActivities ?? []);
   const coverage = getRoleCoverage(crew);
-  const busy = (memberId) => trainingQueue.some((task) => task.memberId === memberId) || treatmentQueue.some((task) => task.memberId === memberId);
+  const busy = (memberId) => trainingQueue.some((task) => task.memberId === memberId) || treatmentQueue.some((task) => task.memberId === memberId) || recoveryQueue.some((task) => task.memberId === memberId);
 
   const train = (member) => {
     if (!member.alive || busy(member.id)) return addLog(`${member.name} 훈련 불가: 현재 작업을 확인하세요.`);
@@ -133,10 +142,13 @@ export default function Crew() {
     addLog(`${member.name} 훈련 시작: ${statLabel[statKey]} +1, 우선순위 ${getPriorityConfig(priority).label}, ₢${TRAINING_COST}, 완료 ${formatGameDate(completeAt)}.`);
   };
 
-  const rest = (member) => {
-    if (!member.alive || busy(member.id)) return addLog(`${member.name} 휴식 불가: 현재 작업을 확인하세요.`);
-    restMember(member.id);
-    addLog(`${member.name} 휴식 완료: 피로·배고픔·스트레스 감소, 기분 개선.`);
+  const recover = (member) => {
+    if (!member.alive || busy(member.id)) return addLog(`${member.name} 회복 불가: 현재 작업을 확인하세요.`);
+    if (!spendCredits(RECOVERY_COST)) return addLog(`${member.name} 회복 실패: 크레딧 부족.`);
+    const completeAt = currentMinute + RECOVERY_MINUTES;
+    const priority = recoveryPriority(member);
+    startRecovery({ memberId: member.id, completeAt, cost: RECOVERY_COST, duration: RECOVERY_MINUTES, fatigueRecovery: RECOVERY_FATIGUE, priority });
+    addLog(`${member.name} 회복 절차 시작: 의무실 회복실 이동, 우선순위 ${getPriorityConfig(priority).label}, ₢${RECOVERY_COST}, ${formatMinutes(RECOVERY_MINUTES)}, 완료 ${formatGameDate(completeAt)}.`);
   };
 
   const treat = (member) => {
@@ -159,8 +171,9 @@ export default function Crew() {
             const mainStat = trainingByRole[member.role] ?? "scouting";
             const trainingTask = trainingQueue.find((task) => task.memberId === member.id);
             const treatmentTask = treatmentQueue.find((task) => task.memberId === member.id);
+            const recoveryTask = recoveryQueue.find((task) => task.memberId === member.id);
             const activity = (crewActivities ?? []).find((entry) => entry.memberId === member.id);
-            const isBusy = Boolean(trainingTask || treatmentTask);
+            const isBusy = Boolean(trainingTask || treatmentTask || recoveryTask);
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
             return (
@@ -168,14 +181,15 @@ export default function Crew() {
                 <CrewPortrait member={member} />
                 <div className="mt-3 flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><RoleIcon role={member.role} size={16} /><div className="truncate font-black text-slate-100">{member.name}</div></div><div className="mt-1 truncate text-xs text-slate-500">{member.role} · {member.trait ?? "일반 대원"}</div></div><span className={`hud-chip shrink-0 ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span></div>
                 <ActivityCard activity={activity} />
-                <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><Info label="사기" value={member.morale} /><Info label="피로" value={`${Math.round(member.fatigue ?? 0)}`} tone={fatigueTone(member.fatigue ?? 0)} /><Info label="경험" value={`${member.experience ?? 0}`} /></div>
+                <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><Info label="피로" value={`${Math.round(member.fatigue ?? 0)}%`} tone={fatigueTone(member.fatigue ?? 0)} /><Info label="사기" value={member.morale ?? "보통"} /><Info label="경험" value={member.experience ?? 0} /></div>
                 <NeedGrid member={member} />
                 <InjuryProgress injury={member.injury} />
                 {trainingTask && <Progress task={trainingTask} currentMinute={currentMinute} label="훈련 진행" />}
                 {treatmentTask && <Progress task={treatmentTask} currentMinute={currentMinute} label="치료 진행" />}
+                {recoveryTask && <Progress task={recoveryTask} currentMinute={currentMinute} label="회복 진행" />}
                 {injury.permanentTraits.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{injury.permanentTraits.map((trait) => <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(member.stats).map(([key, value]) => <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>{statLabel[key]} {value}</span>)}</div>
-                <div className="mt-4 grid grid-cols-3 gap-2"><button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : `훈련`}</button><button className="secondary-button justify-center" disabled={!member.alive || isBusy} onClick={() => rest(member)}>휴식</button><button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : !isInjured(member.injury) ? "정상" : `치료`}</button></div>
+                <div className="mt-4 grid grid-cols-3 gap-2"><button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button><button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < RECOVERY_COST} onClick={() => recover(member)}>{recoveryTask ? "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button><button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : !isInjured(member.injury) ? "정상" : "치료"}</button></div>
               </article>
             );
           })}
