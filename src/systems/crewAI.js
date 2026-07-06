@@ -28,6 +28,7 @@ const MODULE_SLOT_WORK_ROOM = {
 
 const SHIP_WORK_ROOM = {
   hullRepair: { roomId: "engineering", station: "기관실", action: "선체 응급 정비", intent: "repair" },
+  salvageProcessing: { roomId: "cargo", station: "창고", action: "잔해 분해", intent: "engineering" },
 };
 
 const CREW_QUEUE_WORKFLOWS = [

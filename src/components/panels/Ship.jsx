@@ -14,6 +14,9 @@ const slotIcon = { engine: Rocket, "weapon-a": Zap, "weapon-b": Zap, shield: Shi
 const SCRAP_REPAIR_COST = 6;
 const SCRAP_REPAIR_HULL = 8;
 const SCRAP_REPAIR_MINUTES = 120;
+const SALVAGE_PROCESS_COST = 4;
+const SALVAGE_PROCESS_TRITANIUM = 2;
+const SALVAGE_PROCESS_MINUTES = 90;
 
 function getItemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
@@ -84,6 +87,28 @@ function ScrapRepairCard({ hull, scrap, task, currentMinute, onRepair }) {
   );
 }
 
+function SalvageProcessingCard({ scrap, tritanium, task, currentMinute, onProcess }) {
+  const canProcess = scrap >= SALVAGE_PROCESS_COST && !task;
+  return (
+    <section className="mt-4 rounded-2xl border border-cyan-300/30 bg-cyan-300/10 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="section-title"><Cpu size={18} />잔해 분해 작업</div>
+          <p className="mt-2 text-sm leading-6 text-slate-300">폐자재를 창고 작업으로 분해해 모듈 개선 재료를 회수합니다. 기관실 승무원이 창고로 이동해 처리합니다.</p>
+        </div>
+        <span className="hud-chip hud-chip-accent">Ti {tritanium}</span>
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
+        <div className="mission-stat-tile"><span>입력</span><span>Scrap {SALVAGE_PROCESS_COST}</span></div>
+        <div className="mission-stat-tile"><span>출력</span><span>Ti +{SALVAGE_PROCESS_TRITANIUM}</span></div>
+        <div className="mission-stat-tile"><span>시간</span><span>{formatMinutes(SALVAGE_PROCESS_MINUTES)}</span></div>
+      </div>
+      {task && <Progress task={task} currentMinute={currentMinute} label="잔해 분해 진행" />}
+      <button className="secondary-button mt-4 w-full justify-center" disabled={!canProcess} onClick={onProcess}>{task ? "분해 작업 중" : scrap < SALVAGE_PROCESS_COST ? "폐자재 부족" : "잔해 분해 지시"}</button>
+    </section>
+  );
+}
+
 export default function Ship() {
   const { modules, installed, unlockedModuleIds, installationQueue, shipWorkQueue, startInstallation, startUpgrade, startShipWork } = useShipStore();
   const resources = useGameStore((state) => state.resources);
@@ -100,6 +125,7 @@ export default function Ship() {
   const slotTasks = useMemo(() => new Map(installationQueue.filter((task) => task.type === "equip").map((task) => [task.slot, task])), [installationQueue]);
   const moduleTasks = useMemo(() => new Map(installationQueue.map((task) => [task.moduleId, task])), [installationQueue]);
   const hullRepairTask = useMemo(() => shipWorkQueue.find((task) => task.type === "hullRepair") ?? null, [shipWorkQueue]);
+  const salvageProcessingTask = useMemo(() => shipWorkQueue.find((task) => task.type === "salvageProcessing") ?? null, [shipWorkQueue]);
 
   const slotTask = (slot) => slotTasks.get(slot);
   const moduleTask = (moduleId) => moduleTasks.get(moduleId);
@@ -112,6 +138,16 @@ export default function Ship() {
     const completeAt = currentMinute + SCRAP_REPAIR_MINUTES;
     startShipWork({ type: "hullRepair", roomId: "engineering", completeAt, cost: SCRAP_REPAIR_COST, duration: SCRAP_REPAIR_MINUTES, priority: "high", payload: { hullDelta: SCRAP_REPAIR_HULL } });
     addLog(`선체 정비 지시: 기관실 승무원이 현장으로 이동합니다. 폐자재 ${SCRAP_REPAIR_COST}개, 소요 ${formatMinutes(SCRAP_REPAIR_MINUTES)}, 완료 ${formatGameDate(completeAt)}.`);
+    return null;
+  };
+
+  const processSalvage = () => {
+    if (salvageProcessingTask) return addLog("잔해 분해 실패: 이미 창고 분해 작업이 진행 중입니다.");
+    if (salvageScrap < SALVAGE_PROCESS_COST) return addLog(`잔해 분해 실패: 폐자재 ${SALVAGE_PROCESS_COST}개가 필요합니다.`);
+    removeItem("salvage-scrap", SALVAGE_PROCESS_COST);
+    const completeAt = currentMinute + SALVAGE_PROCESS_MINUTES;
+    startShipWork({ type: "salvageProcessing", roomId: "cargo", completeAt, cost: SALVAGE_PROCESS_COST, duration: SALVAGE_PROCESS_MINUTES, priority: "normal", payload: { outputItems: [{ itemId: "tritanium", qty: SALVAGE_PROCESS_TRITANIUM }] } });
+    addLog(`잔해 분해 지시: 기관실 승무원이 창고로 이동합니다. 폐자재 ${SALVAGE_PROCESS_COST}개, 소요 ${formatMinutes(SALVAGE_PROCESS_MINUTES)}, 완료 ${formatGameDate(completeAt)}.`);
     return null;
   };
 
@@ -143,6 +179,7 @@ export default function Ship() {
       <section>
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함선 슬롯 도면</div><p className="mt-2 text-sm text-slate-400">슬롯별 장착 모듈과 진행 작업을 카드로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Ti {tritanium}</span><span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span><span className="hud-chip">작업 {installationQueue.length + shipWorkQueue.length}</span></div></div>
         <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} />
+        <SalvageProcessingCard scrap={salvageScrap} tritanium={tritanium} task={salvageProcessingTask} currentMinute={currentMinute} onProcess={processSalvage} />
         <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">{MODULE_SLOTS.map((slot) => { const module = modulesById.get(installed[slot]); const task = slotTask(slot); return <SlotCard key={slot} slot={slot} module={module} task={task} />; })}</div>
       </section>
       <section>
