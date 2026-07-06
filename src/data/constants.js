@@ -29,6 +29,33 @@ export const CREW_NEEDS = {
   DRIFT_STRESS_PER_HOUR: 3.4,
 };
 
+export const JOB_STATUS = ["backlog", "assigned", "in_progress", "done", "failed"];
+
+export const JOB_TYPES = ["recovery", "hull_repair", "salvage", "module_upgrade", "training"];
+
+export const JOB_DURATION = {
+  recovery: 180,
+  hull_repair: 120,
+  salvage: 90,
+  module_upgrade: 120,
+  training: 360,
+};
+
+export const JOB_LOAD_COST = {
+  recovery: 1,
+  hull_repair: 2,
+  salvage: 2,
+  module_upgrade: 3,
+  training: 1,
+};
+
+export const JOB_ECONOMY = {
+  training: { credits: 180 },
+  recovery: { credits: 90, fatigueRecovery: 32 },
+  hullRepair: { salvageScrapCost: 6, hullDelta: 8 },
+  salvageProcessing: { salvageScrapCost: 4, tritaniumReward: 2 },
+};
+
 export const DRIFT = {
   OXYGEN_LOSS_PER_HOUR: 1.3,
   HULL_LOSS_PER_HOUR: 0.35,
