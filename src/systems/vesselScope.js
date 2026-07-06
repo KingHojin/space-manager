@@ -6,8 +6,14 @@ import { useNavStore } from "../stores/navStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
+const BUSY_RECOVERY_STATUSES = new Set(["assigned", "in_progress"]);
+
 function activeVesselIdFromShipStore() {
   return useShipStore.getState().activeVesselId;
+}
+
+function getCrewAiRecoveryQueue(jobStore) {
+  return jobStore.getLegacyRecoveryQueue().filter((task) => !task.status || BUSY_RECOVERY_STATUSES.has(task.status));
 }
 
 export function getActiveVesselScope() {
@@ -46,7 +52,7 @@ export function getActiveVesselScope() {
       activities: crew.crewActivities ?? [],
       trainingQueue: crew.trainingQueue ?? [],
       treatmentQueue: crew.treatmentQueue ?? [],
-      recoveryQueue: jobs.getLegacyRecoveryQueue(),
+      recoveryQueue: getCrewAiRecoveryQueue(jobs),
       roleCoverage: crew.getRoleCoverage(),
     },
     shipLoadout: {
@@ -74,7 +80,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     ["pending" + "CombatEncounter"]: exploration["pending" + "CombatEncounter"] ?? null,
     installationQueue: scope.shipLoadout.installationQueue,
     shipWorkQueue: jobStore.getLegacyShipWorkQueue(),
-    recoveryQueue: jobStore.getLegacyRecoveryQueue(),
+    recoveryQueue: getCrewAiRecoveryQueue(jobStore),
     jobs: jobStore.getActiveJobs(),
     jobRooms: jobStore.rooms,
     modules: scope.shipLoadout.modules,
