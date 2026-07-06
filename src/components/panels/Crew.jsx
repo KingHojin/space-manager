@@ -220,9 +220,10 @@ export default function Crew() {
     return addLog(`${member.name} 회복 절차 대기열 등록: 의무실 슬롯 필요, 우선순위 ${getPriorityConfig(priority).label}, ₢${RECOVERY_COST}, ${formatMinutes(RECOVERY_MINUTES)}.`);
   };
 
-  const treat = (member) => {
-    if (!member.alive || !isInjured(member.injury) || busy(member.id)) return addLog(`${member.name} 치료 불가: 상태 또는 작업 큐를 확인하세요.`);
+  const treat = (member, treatmentTask) => {
     const rule = treatmentRule(member.injury);
+    if (treatmentTask) return cancelQueuedCrewJob(treatmentTask, rule.cost, `${member.name} 치료`);
+    if (!member.alive || !isInjured(member.injury) || busy(member.id)) return addLog(`${member.name} 치료 불가: 상태 또는 작업 큐를 확인하세요.`);
     const label = injuryLabel(member.injury);
     if (!spendCredits(rule.cost)) return addLog(`${member.name} 치료 실패: 크레딧 부족.`);
     const completeAt = currentMinute + rule.minutes;
@@ -243,7 +244,6 @@ export default function Crew() {
             const treatmentTask = taskByMemberId.treatment.get(member.id);
             const recoveryTask = taskByMemberId.recovery.get(member.id);
             const activity = activityByMemberId.get(member.id);
-            const isBusy = Boolean(trainingTask || treatmentTask || recoveryTask);
             const isInjuredNow = isInjured(member.injury);
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
@@ -264,7 +264,7 @@ export default function Crew() {
                 <div className={`mt-4 grid ${actionGridClass} gap-2`}>
                   <button className="secondary-button justify-center" disabled={!member.alive || Boolean(treatmentTask || recoveryTask) || (!trainingTask && (!isHealthy(member.injury) || resources.credits < TRAINING_COST)) || (trainingTask && !canCancelTask(trainingTask))} onClick={() => train(member, trainingTask)}>{trainingTask ? canCancelTask(trainingTask) ? "훈련 취소" : "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button>
                   <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || treatmentTask) || (!recoveryTask && resources.credits < RECOVERY_COST) || (recoveryTask && !canCancelTask(recoveryTask))} onClick={() => recover(member, recoveryTask)}>{recoveryTask ? canCancelTask(recoveryTask) ? "회복 취소" : "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button>
-                  {isInjuredNow && <button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "치료"}</button>}
+                  {isInjuredNow && <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || recoveryTask) || (!treatmentTask && resources.credits < rule.cost) || (treatmentTask && !canCancelTask(treatmentTask))} onClick={() => treat(member, treatmentTask)}>{treatmentTask ? canCancelTask(treatmentTask) ? "치료 취소" : "치료 중" : recoveryTask ? "회복 중" : "치료"}</button>}
                 </div>
               </article>
             );
