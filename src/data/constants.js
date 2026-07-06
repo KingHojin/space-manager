@@ -50,7 +50,7 @@ export const JOB_LOAD_COST = {
 };
 
 export const JOB_REQUIRED_ROLE = {
-  recovery: "medic",
+  recovery: null,
   hull_repair: "engineer",
   salvage: "engineer",
   module_upgrade: "engineer",
