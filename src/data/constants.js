@@ -6,7 +6,10 @@ export const GAME_TIME = {
 };
 
 export const DEV_FLAGS = {
-  LOCK_PERCENT_RESOURCES: true,
+  LOCK_PERCENT_RESOURCES: false,
+  LOCK_FUEL: false,
+  LOCK_OXYGEN: false,
+  LOCK_HULL: false,
 };
 
 export const RESOURCES = {
