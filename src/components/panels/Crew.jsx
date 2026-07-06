@@ -24,6 +24,7 @@ import CrewFacilityStatus from "../crew/CrewFacilityStatus";
 import ShipInterior from "../ship/ShipInterior";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
+const cancelableJobStatuses = new Set(["backlog", "assigned"]);
 
 const ROLE_ICONS = {
   함교: { icon: Compass, color: "text-cyan-300", mark: "🧭" },
@@ -75,6 +76,10 @@ function activeLegacyJobs(rawJobs, converter) {
   return rawJobs.filter((job) => activeJobStatuses.has(job.status)).map(converter).filter(Boolean);
 }
 
+function canCancelTask(task) {
+  return Boolean(task?.id && cancelableJobStatuses.has(task.status));
+}
+
 function RoleIcon({ role, size = 14 }) {
   const config = ROLE_ICONS[role] ?? { icon: User, color: "text-slate-500" };
   const Icon = config.icon;
@@ -116,7 +121,7 @@ function Progress({ task, currentMinute, label }) {
   const progress = Math.max(0, Math.min(100, Math.round(raw)));
   const priority = getPriorityConfig(task.priority);
   const completeAt = task.completeAt ?? (task.startedAt ? task.startedAt + task.duration : null);
-  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">{completeAt ? `완료 ${formatGameDate(completeAt)}` : "슬롯 대기"}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span></div></div>;
+  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">{completeAt ? `완료 ${formatGameDate(completeAt)}` : "슬롯 대기"}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span>{canCancelTask(task) && <span className="hud-chip hud-chip-warn">재클릭 취소</span>}</div></div>;
 }
 
 function InjuryProgress({ injury }) {
@@ -155,14 +160,16 @@ export default function Crew() {
   const jobTrainingQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTraining), [rawJobs]);
   const jobTreatmentQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTreatment), [rawJobs]);
   const recoveryQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyRecovery), [rawJobs]);
-  const trainingQueue = useMemo(() => [...(legacyTrainingQueue ?? []), ...jobTrainingQueue], [legacyTrainingQueue, jobTrainingQueue]);
-  const treatmentQueue = useMemo(() => [...(legacyTreatmentQueue ?? []), ...jobTreatmentQueue], [legacyTreatmentQueue, jobTreatmentQueue]);
+  const trainingQueue = useMemo(() => [...jobTrainingQueue, ...(legacyTrainingQueue ?? [])], [legacyTrainingQueue, jobTrainingQueue]);
+  const treatmentQueue = useMemo(() => [...jobTreatmentQueue, ...(legacyTreatmentQueue ?? [])], [legacyTreatmentQueue, jobTreatmentQueue]);
   const startTraining = useJobStore((state) => state.enqueueTraining);
   const startTreatment = useJobStore((state) => state.enqueueTreatment);
   const startRecovery = useJobStore((state) => state.enqueueRecovery);
+  const cancelJob = useJobStore((state) => state.cancelJob);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
+  const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
   const rooms = useShipInteriorStore((state) => state.rooms);
   const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
@@ -177,7 +184,22 @@ export default function Crew() {
   const activityByMemberId = useMemo(() => indexByMemberId(crewActivities ?? []), [crewActivities]);
   const busy = (memberId) => taskByMemberId.training.has(memberId) || taskByMemberId.treatment.has(memberId) || taskByMemberId.recovery.has(memberId);
 
-  const train = (member) => {
+  const refundCancelledCrewJob = (task, fallbackCost, label) => {
+    const refund = Math.floor((task.cost ?? fallbackCost) * (JOB_ECONOMY.cancelRefundRatio ?? 0.5));
+    if (refund > 0) addResources({ credits: refund });
+    addLog(`${label} 취소: ${refund > 0 ? `₢${refund} 환급.` : "환급 없음."}`);
+  };
+
+  const cancelQueuedCrewJob = (task, fallbackCost, label) => {
+    if (!canCancelTask(task)) return addLog(`${label} 취소 불가: 이미 진행 중이거나 구버전 작업 큐입니다.`);
+    const result = cancelJob(task.id);
+    if (!result.ok) return addLog(`${label} 취소 실패: ${result.reason}.`);
+    refundCancelledCrewJob(result.job ?? task, fallbackCost, label);
+    return null;
+  };
+
+  const train = (member, trainingTask) => {
+    if (trainingTask) return cancelQueuedCrewJob(trainingTask, TRAINING_COST, `${member.name} 훈련`);
     if (!member.alive || busy(member.id)) return addLog(`${member.name} 훈련 불가: 현재 작업을 확인하세요.`);
     if (!isHealthy(member.injury)) return addLog(`${member.name} 훈련 불가: 부상 회복이 먼저입니다.`);
     if (!spendCredits(TRAINING_COST)) return addLog(`${member.name} 훈련 실패: 크레딧 부족.`);
@@ -188,7 +210,8 @@ export default function Crew() {
     return addLog(`${member.name} 훈련 대기열 등록: ${statLabel[statKey] ?? statKey} +1, 우선순위 ${getPriorityConfig(priority).label}, ₢${TRAINING_COST}, ${formatMinutes(TRAINING_MINUTES)}.`);
   };
 
-  const recover = (member) => {
+  const recover = (member, recoveryTask) => {
+    if (recoveryTask) return cancelQueuedCrewJob(recoveryTask, RECOVERY_COST, `${member.name} 회복`);
     if (!member.alive || busy(member.id)) return addLog(`${member.name} 회복 불가: 현재 작업을 확인하세요.`);
     if (!spendCredits(RECOVERY_COST)) return addLog(`${member.name} 회복 실패: 크레딧 부족.`);
     const completeAt = currentMinute + RECOVERY_MINUTES;
@@ -221,8 +244,10 @@ export default function Crew() {
             const recoveryTask = taskByMemberId.recovery.get(member.id);
             const activity = activityByMemberId.get(member.id);
             const isBusy = Boolean(trainingTask || treatmentTask || recoveryTask);
+            const isInjuredNow = isInjured(member.injury);
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
+            const actionGridClass = isInjuredNow ? "grid-cols-3" : "grid-cols-2";
             return (
               <article key={member.id} className={`mission-contract-card rounded-2xl border p-3 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
                 <CrewPortrait member={member} />
@@ -236,7 +261,11 @@ export default function Crew() {
                 {recoveryTask && <Progress task={recoveryTask} currentMinute={currentMinute} label="회복 진행" />}
                 {injury.permanentTraits.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{injury.permanentTraits.map((trait) => <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(member.stats ?? {}).map(([key, value]) => <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>{statLabel[key] ?? key} {value}</span>)}</div>
-                <div className="mt-4 grid grid-cols-3 gap-2"><button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button><button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < RECOVERY_COST} onClick={() => recover(member)}>{recoveryTask ? "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button><button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : !isInjured(member.injury) ? "정상" : "치료"}</button></div>
+                <div className={`mt-4 grid ${actionGridClass} gap-2`}>
+                  <button className="secondary-button justify-center" disabled={!member.alive || Boolean(treatmentTask || recoveryTask) || (!trainingTask && (!isHealthy(member.injury) || resources.credits < TRAINING_COST)) || (trainingTask && !canCancelTask(trainingTask))} onClick={() => train(member, trainingTask)}>{trainingTask ? canCancelTask(trainingTask) ? "훈련 취소" : "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button>
+                  <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || treatmentTask) || (!recoveryTask && resources.credits < RECOVERY_COST) || (recoveryTask && !canCancelTask(recoveryTask))} onClick={() => recover(member, recoveryTask)}>{recoveryTask ? canCancelTask(recoveryTask) ? "회복 취소" : "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button>
+                  {isInjuredNow && <button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "치료"}</button>}
+                </div>
               </article>
             );
           })}
