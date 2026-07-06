@@ -1,4 +1,6 @@
 export const items = [
+  { id: "food-ration", name: "표준 식량", rarity: "common", qty: 16, type: "food" },
+  { id: "raw-ingredients", name: "식재료", rarity: "common", qty: 8, type: "food" },
   { id: "alloy-plate", name: "합금 장갑판", rarity: "common", qty: 8, type: "material" },
   { id: "tritanium", name: "트리타늄", rarity: "common", qty: 24, type: "material" },
   { id: "oxygen-cell", name: "산소 셀", rarity: "common", qty: 6, type: "consumable" },
@@ -50,5 +52,5 @@ export const items = [
 
   { id: "seraphim-core", name: "세라핌 코어", rarity: "legendary", qty: 0, type: "artifact" },
   { id: "seraphim-heart", name: "세라핌 심장", rarity: "legendary", qty: 0, type: "legendary-artifact" },
-  { id: "crown-neural-core", name: "왕관 신경핵", rarity: "legendary", qty: 0, type: "legendary-artifact" },
+  { id: "crown-neural-core", name: "왕관 신경핵", rarity: "legendary-artifact", qty: 0, type: "legendary-artifact" },
 ];
