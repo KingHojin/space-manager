@@ -140,6 +140,11 @@ function processCrewAI(currentMinute) {
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
 
+function refreshCrewAiImmediatelyForCrisis() {
+  if ((useShipInteriorStore.getState().activeCrises ?? []).length <= 0) return;
+  useCrewStore.setState({ lastCrewAiAt: null });
+}
+
 function processCrewMeals(currentMinute) {
   const crewStore = useCrewStore.getState();
   const mealActivities = (crewStore.crewActivities ?? []).filter((activity) => activity.intent === "meal").slice(0, 2);
@@ -198,7 +203,7 @@ function processRoomJobs(currentMinute, deltaMinutes) {
 
 function applyCrisisEffect(effect) {
   if (!effect) return;
-  if (effect.type === "crewCasualty" && effect.memberId) useCrewStore.getState().applyCombatCasualty({ memberId: effect.memberId, injury: effect.injury ?? "경상", morale: effect.morale ?? -1 });
+  if (effect.type === "crewCasualty" && effect.memberId) useCrewStore.getState().applyCombatCasualty({ memberId: effect.memberId, injury: effect.injury ?? "경상", morale: -1 });
   if (effect.type === "resourceDelta" && effect.resources) useGameStore.getState().addResources(effect.resources);
 }
 
@@ -277,6 +282,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
+  refreshCrewAiImmediatelyForCrisis();
   processCrewAI(currentMinute);
   processCrewMeals(currentMinute);
   processCrewNeeds(deltaMinutes);
