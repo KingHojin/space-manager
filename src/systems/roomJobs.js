@@ -5,8 +5,8 @@ import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
 export const ROOM_CONDITION_DECAY_PER_HOUR = 0.5;
 export const ROOM_LOAD_GROWTH_PER_HOUR = 0.8;
 
-const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
-const SUPPORT_ROOMS = new Set(["cargo", "living"]);
+const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay", 조리실: "galley" };
+const SUPPORT_ROOMS = new Set(["cargo", "living", "galley"]);
 
 export const ROOM_JOB_CATALOG = {
   bridge: { id: "bridge-route-analysis", roomId: "bridge", label: "항로 정밀 분석", durationMinutes: 90, conditionRestore: 20, loadRelief: 20 },
@@ -15,6 +15,7 @@ export const ROOM_JOB_CATALOG = {
   engineering: { id: "engineering-tuning", roomId: "engineering", label: "엔진 튜닝", durationMinutes: 100, conditionRestore: 25, loadRelief: 15 },
   cargo: { id: "cargo-sorting", roomId: "cargo", label: "화물 정리", durationMinutes: 70, conditionRestore: 10, loadRelief: 25 },
   living: { id: "living-rest-cycle", roomId: "living", label: "생활구역 정비", durationMinutes: 80, conditionRestore: 10, loadRelief: 20 },
+  galley: { id: "galley-meal-prep", roomId: "galley", label: "식사 준비", durationMinutes: 55, conditionRestore: 12, loadRelief: 18 },
 };
 
 export function getRoomJob(roomId) {
@@ -84,6 +85,7 @@ export function scoreJobForMember(member, room, job, context = {}) {
   score -= (member.fatigue ?? 0) * 0.2;
   if (assignedIds.includes(member.id)) score += 15;
   if (context.activeTravel && ["bridge", "engineering"].includes(room.id)) score += 10;
+  if (room.id === "galley" && context.hasHungryCrew) score += 24;
   if (supportRoom && ((room.condition ?? 100) < 70 || (room.load ?? 0) > 40)) score += 14;
   score *= injuryWorkSpeedMultiplier(member.injury);
   score *= calculateRoomModifiers(room).jobSpeedMul;
