@@ -35,6 +35,10 @@ function clamp01(value) {
   return Math.min(1, Math.max(0, value));
 }
 
+function hasOwn(object, key) {
+  return Object.prototype.hasOwnProperty.call(object, key);
+}
+
 export function normalizeRoomId(roomId, type = null) {
   const fallback = DEFAULT_ROOM_BY_TYPE[type] ?? "living";
   const normalized = ROOM_ALIASES[roomId] ?? roomId ?? fallback;
@@ -87,7 +91,7 @@ export function normalizeJob(job = {}, now = null) {
     roomId,
     status,
     assignedCrewId: job.assignedCrewId ?? null,
-    requiredRole: job.requiredRole ?? JOB_REQUIRED_ROLE[type] ?? null,
+    requiredRole: hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null,
     priority: normalizeJobPriority(job.priority),
     progress,
     duration,
@@ -128,6 +132,8 @@ function recoveryToJob(task, now) {
       id: task.id,
       type: "recovery",
       roomId: "medbay",
+      requiredRole: null,
+      assignedCrewId: task.memberId,
       priority: task.priority ?? "normal",
       duration: task.duration,
       startedAt: task.startedAt,
@@ -166,6 +172,7 @@ export function jobToLegacyShipWork(job) {
     id: normalized.id,
     type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing",
     roomId: normalized.roomId,
+    status: normalized.status,
     cost: normalized.cost,
     duration: normalized.duration,
     payload: normalized.payload,
@@ -181,11 +188,15 @@ export function jobToLegacyRecovery(job) {
   return {
     id: normalized.id,
     memberId: normalized.payload?.targetCrewId,
+    roomId: normalized.roomId,
+    status: normalized.status,
+    assignedCrewId: normalized.assignedCrewId,
     cost: normalized.cost,
     duration: normalized.duration,
     fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
     priority: normalized.priority,
     startedAt: normalized.startedAt ?? normalized.createdAt,
     completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
+    progress: normalized.progress,
   };
 }
