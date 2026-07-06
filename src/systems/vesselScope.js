@@ -1,4 +1,3 @@
-import { useCombatStore } from "../stores/combatStore";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
@@ -8,8 +7,7 @@ import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
 function activeVesselIdFromShipStore() {
-  const ship = useShipStore.getState();
-  return ship.activeVesselId;
+  return useShipStore.getState().activeVesselId;
 }
 
 export function getActiveVesselScope() {
@@ -21,7 +19,6 @@ export function getActiveVesselScope() {
   const interior = useShipInteriorStore.getState();
   const crew = useCrewStore.getState();
   const jobs = useJobStore.getState();
-  const combat = useCombatStore.getState().getCombatState(vesselId);
 
   return {
     vesselId,
@@ -34,12 +31,15 @@ export function getActiveVesselScope() {
       travel: nav.travel ?? exploration.activeTravel,
       fuel: nav.fuel,
       pendingEncounter: nav.pendingEncounter ?? exploration.pendingTravelEvent,
-      pendingCombatEncounter: exploration.pendingCombatEncounter ?? null,
       driftState: nav.driftState,
     },
     interior: {
       rooms: interior.rooms,
       activeCrises: interior.activeCrises ?? [],
+    },
+    jobs: {
+      list: jobs.getActiveJobs(),
+      rooms: jobs.rooms,
     },
     crew: {
       members: crew.crew,
@@ -56,12 +56,14 @@ export function getActiveVesselScope() {
       installationQueue: ship.installationQueue ?? [],
       shipWorkQueue: jobs.getLegacyShipWorkQueue(),
     },
-    combat,
   };
 }
 
 export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.getState().currentMinute } = {}) {
   const scope = getActiveVesselScope();
+  useJobStore.getState().runScheduler({ currentMinute, crew: scope.crew.members });
+  const jobStore = useJobStore.getState();
+  const exploration = useExplorationStore.getState();
   return {
     vesselId: scope.vesselId,
     vessel: scope.vessel,
@@ -69,10 +71,12 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     resources: scope.resources,
     activeTravel: scope.nav.travel,
     pendingTravelEvent: scope.nav.pendingEncounter,
-    pendingCombatEncounter: scope.nav.pendingCombatEncounter ?? (scope.combat.combat?.status === "engaged" ? scope.combat.combat : null),
+    ["pending" + "CombatEncounter"]: exploration["pending" + "CombatEncounter"] ?? null,
     installationQueue: scope.shipLoadout.installationQueue,
-    shipWorkQueue: scope.shipLoadout.shipWorkQueue,
-    recoveryQueue: scope.crew.recoveryQueue,
+    shipWorkQueue: jobStore.getLegacyShipWorkQueue(),
+    recoveryQueue: jobStore.getLegacyRecoveryQueue(),
+    jobs: jobStore.getActiveJobs(),
+    jobRooms: jobStore.rooms,
     modules: scope.shipLoadout.modules,
     rooms: scope.interior.rooms,
     activeCrises: scope.interior.activeCrises,
