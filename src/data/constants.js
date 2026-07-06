@@ -19,6 +19,12 @@ export const RESOURCES = {
   LOW_RESOURCE_WARNING: 25,
 };
 
+export const NAVIGATION_TRAVEL = {
+  minutesPerDistance: 11,
+  fuelPerDistance: 1.15,
+  discoveryRadiusSteps: 1,
+};
+
 export const CREW_NEEDS = {
   HUNGER_PER_HOUR: 1.6,
   MOOD_DECAY_PER_HOUR: 0.35,
@@ -31,10 +37,11 @@ export const CREW_NEEDS = {
 
 export const JOB_STATUS = ["backlog", "assigned", "in_progress", "done", "failed"];
 
-export const JOB_TYPES = ["recovery", "hull_repair", "salvage", "module_upgrade", "training"];
+export const JOB_TYPES = ["recovery", "treatment", "hull_repair", "salvage", "module_upgrade", "training"];
 
 export const JOB_DURATION = {
   recovery: 180,
+  treatment: 360,
   hull_repair: 120,
   salvage: 90,
   module_upgrade: 120,
@@ -43,6 +50,7 @@ export const JOB_DURATION = {
 
 export const JOB_LOAD_COST = {
   recovery: 1,
+  treatment: 1,
   hull_repair: 2,
   salvage: 2,
   module_upgrade: 3,
@@ -51,6 +59,7 @@ export const JOB_LOAD_COST = {
 
 export const JOB_REQUIRED_ROLE = {
   recovery: null,
+  treatment: null,
   hull_repair: "engineer",
   salvage: "engineer",
   module_upgrade: "engineer",
@@ -83,6 +92,60 @@ export const JOB_ECONOMY = {
   recovery: { credits: 90, fatigueRecovery: 32 },
   hullRepair: { salvageScrapCost: 6, hullDelta: 8 },
   salvageProcessing: { salvageScrapCost: 4, tritaniumReward: 2 },
+};
+
+export const EXPLORATION_YIELD = {
+  station: { baseRolls: 0, salvageWeight: 0, itemWeight: 0, creditWeight: 0.25, tags: ["station"] },
+  market: { baseRolls: 0, salvageWeight: 0, itemWeight: 0, creditWeight: 0.35, tags: ["station", "trade"] },
+  colony: { baseRolls: 1, salvageWeight: 0.25, itemWeight: 0.35, creditWeight: 0.45, tags: ["station", "trade", "supply"] },
+  gate: { baseRolls: 0, salvageWeight: 0, itemWeight: 0, creditWeight: 0, tags: ["gate"] },
+  exit: { baseRolls: 0, salvageWeight: 0, itemWeight: 0, creditWeight: 0, tags: ["gate"] },
+  nebula: { baseRolls: 1, salvageWeight: 0.45, itemWeight: 0.45, creditWeight: 0.1, tags: ["nebula", "science"] },
+  debris: { baseRolls: 2, salvageWeight: 1.15, itemWeight: 0.2, creditWeight: 0.05, tags: ["salvage", "wreck", "debris"] },
+  distress: { baseRolls: 1, salvageWeight: 0.55, itemWeight: 0.55, creditWeight: 0.1, tags: ["salvage", "distress", "crew"] },
+  unknown: { baseRolls: 1, salvageWeight: 0.45, itemWeight: 0.65, creditWeight: 0.05, tags: ["anomaly", "science"] },
+  wreck: { baseRolls: 2, salvageWeight: 1.2, itemWeight: 0.35, creditWeight: 0.05, tags: ["salvage", "wreck", "debris"] },
+  ruin: { baseRolls: 2, salvageWeight: 0.65, itemWeight: 0.75, creditWeight: 0.05, tags: ["ruin", "artifact", "science"] },
+  mining: { baseRolls: 3, salvageWeight: 1.3, itemWeight: 0.15, creditWeight: 0.05, tags: ["mining", "material"] },
+  ice: { baseRolls: 2, salvageWeight: 0.75, itemWeight: 0.35, creditWeight: 0.05, tags: ["ice", "material", "science"] },
+  anomaly: { baseRolls: 1, salvageWeight: 0.35, itemWeight: 0.9, creditWeight: 0.05, tags: ["anomaly", "science", "artifact"] },
+  creature: { baseRolls: 1, salvageWeight: 0.35, itemWeight: 0.75, creditWeight: 0.05, tags: ["creature", "biology", "science"] },
+  pirate: { baseRolls: 2, salvageWeight: 0.9, itemWeight: 0.55, creditWeight: 0.2, tags: ["pirate", "salvage", "tactical"] },
+  defense: { baseRolls: 2, salvageWeight: 0.75, itemWeight: 0.85, creditWeight: 0.05, tags: ["defense", "tactical", "artifact"] },
+  blackhole: { baseRolls: 2, salvageWeight: 0.35, itemWeight: 1.15, creditWeight: 0.05, tags: ["blackhole", "artifact", "science"] },
+  research: { baseRolls: 2, salvageWeight: 0.35, itemWeight: 1, creditWeight: 0.05, tags: ["research", "science", "artifact"] },
+};
+
+export const EXPLORATION_REWARD = {
+  rareBonusPerDanger: 0.06,
+  quantityBonusPerRichness: 0.08,
+  creditBase: 35,
+  creditPerRichness: 12,
+  fuelPenaltyPerDanger: 0.75,
+  hullRiskPerDanger: 0.025,
+  hullDamageRange: [1, 5],
+};
+
+export const SALVAGE_LOOT_TABLE = [
+  { weight: 58, rarity: "common", tags: ["salvage", "wreck", "debris", "mining", "material"], items: [{ id: "salvage-scrap", qty: [2, 4] }] },
+  { weight: 26, rarity: "common", tags: ["material", "mining", "ice", "debris"], items: [{ id: "alloy-plate", qty: [1, 2] }] },
+  { weight: 14, rarity: "uncommon", tags: ["science", "research", "anomaly", "ruin"], items: [{ id: "quantum-circuit", qty: [1, 1] }] },
+  { weight: 10, rarity: "uncommon", tags: ["biology", "creature", "science"], items: [{ id: "bio-fiber", qty: [1, 2] }] },
+  { weight: 8, rarity: "rare", tags: ["salvage", "wreck", "distress"], items: [{ id: "blackbox", qty: [1, 1] }] },
+  { weight: 6, rarity: "rare", tags: ["tactical", "pirate", "defense"], items: [{ id: "tactical-ai-chip", qty: [1, 1] }] },
+  { weight: 5, rarity: "rare", tags: ["artifact", "ruin", "research", "blackhole"], items: [{ id: "ancient-relay", qty: [1, 1] }] },
+  { weight: 3, rarity: "epic", tags: ["artifact", "blackhole", "anomaly"], items: [{ id: "phase-crystal", qty: [1, 1] }] },
+];
+
+export const ZONE_DEPLETION = {
+  defaultYield: 2,
+  richnessYieldBonus: 0.5,
+  maxYield: 6,
+  regenCooldownMin: 1440,
+};
+
+export const EXPLORATION_FUEL = {
+  exploreCost: 4,
 };
 
 export const DRIFT = {
