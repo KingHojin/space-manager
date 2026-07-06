@@ -41,7 +41,7 @@ function SlotCard({ slot, module, task }) {
         <span className="absolute left-2 top-2 hud-chip bg-slate-950/70">{slot}</span>
         <span className="absolute right-2 top-2 hud-chip bg-slate-950/70">{task ? "작업" : `Lv.${module?.level ?? 1}`}</span>
       </div>
-      <div className="mt-3 truncate font-black text-slate-50">{task ? "장착 작업 중" : module?.name ?? "미장착"}</div>
+      <div className="mt-3 truncate font-black text-slate-50">{task ? "현장 작업 중" : module?.name ?? "미장착"}</div>
       <div className="mt-2 flex flex-wrap gap-1.5">{module && Object.entries(module.stats).slice(0, 3).map(([key, value]) => <span key={key} className="mission-reward-icon">{key} {value > 0 ? "+" : ""}{value}</span>)}</div>
       {task && <div className="mt-2 text-xs text-amber-100">완료 {formatGameDate(task.completeAt)}</div>}
     </div>
@@ -55,7 +55,7 @@ function ModuleCard({ slot, module, activeId, owned, equipped, rule, task, curre
       <div className="mt-3 grid grid-cols-3 gap-1.5">{Object.entries(module.stats).slice(0, 6).map(([key, value]) => <span key={key} className="mission-stat-tile text-[11px]">{key} {value > 0 ? "+" : ""}{value}</span>)}</div>
       <div className="mt-3 flex flex-wrap gap-1.5 text-xs"><span className={`hud-chip ${owned ? "hud-chip-success" : ""}`}>{owned ? "보유" : "미보유"}</span>{equipped && <span className="hud-chip hud-chip-accent">장착 중</span>}{task && <span className="hud-chip hud-chip-warn">작업 중</span>}<span className="hud-chip">₢{rule.installCredits}</span><span className="hud-chip">{formatMinutes(rule.installMinutes)}</span><span className="hud-chip">Ti {materialQty}</span></div>
       {task && <Progress task={task} currentMinute={currentMinute} />}
-      <div className="mt-4 grid grid-cols-2 gap-2"><button className="secondary-button justify-center" disabled={equipped || !owned || Boolean(currentSlotTask) || task || activeId === module.id} onClick={onEquip}>{equipped ? "장착 중" : owned ? "장착 예약" : "구매 필요"}</button><button className="secondary-button justify-center" disabled={!canUpgrade} onClick={onUpgrade}>개선 예약</button></div>
+      <div className="mt-4 grid grid-cols-2 gap-2"><button className="secondary-button justify-center" disabled={equipped || !owned || Boolean(currentSlotTask) || task || activeId === module.id} onClick={onEquip}>{equipped ? "장착 중" : owned ? "장착 지시" : "구매 필요"}</button><button className="secondary-button justify-center" disabled={!canUpgrade} onClick={onUpgrade}>개선 지시</button></div>
     </article>
   );
 }
@@ -113,7 +113,7 @@ export default function Ship() {
     if (!spendCredits(rule.installCredits)) return addLog(`${module.name} 장착 실패: 크레딧이 부족합니다.`);
     const completeAt = currentMinute + rule.installMinutes;
     startInstallation({ slot, moduleId: module.id, completeAt, cost: rule.installCredits, duration: rule.installMinutes });
-    addLog(`${module.name} 장착 작업 시작: 비용 ₢${rule.installCredits}, 소요 ${formatMinutes(rule.installMinutes)}, 완료 ${formatGameDate(completeAt)}.`);
+    addLog(`${module.name} 장착 작업 지시: 기관실 승무원이 현장으로 이동합니다. 비용 ₢${rule.installCredits}, 소요 ${formatMinutes(rule.installMinutes)}, 완료 ${formatGameDate(completeAt)}.`);
   };
 
   const upgrade = (module) => {
@@ -125,8 +125,8 @@ export default function Ship() {
     if (!spendCredits(rule.upgradeCredits)) return addLog(`${module.name} 개선 실패: 크레딧이 부족합니다.`);
     removeItem("tritanium", materialQty);
     const completeAt = currentMinute + rule.upgradeMinutes;
-    startUpgrade({ moduleId: module.id, completeAt, cost: rule.upgradeCredits, duration: rule.upgradeMinutes });
-    addLog(`${module.name} 개선 작업 시작: 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, 소요 ${formatMinutes(rule.upgradeMinutes)}.`);
+    startUpgrade({ moduleId: module.id, slot: module.slot, completeAt, cost: rule.upgradeCredits, duration: rule.upgradeMinutes });
+    addLog(`${module.name} 개선 작업 지시: 기관실 승무원이 ${module.slot} 현장으로 이동합니다. 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, 소요 ${formatMinutes(rule.upgradeMinutes)}.`);
   };
 
   return (
@@ -139,8 +139,8 @@ export default function Ship() {
       <section>
         <div className="section-title"><Wrench size={18} />외부 모듈 교체 & 개선</div>
         <div className="mt-4 grid gap-4">{MODULE_SLOTS.map((slot) => { const slotModules = modules.filter((entry) => entry.slot === slot); const activeId = installed[slot]; const active = modules.find((entry) => entry.id === activeId); const currentSlotTask = slotTask(slot); return <div key={slot} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3"><div className="flex items-center justify-between gap-2"><div><div className="hud-label">{slot}</div><div className="font-black text-slate-100">현재: {active?.name ?? "미장착"}</div></div>{currentSlotTask ? <span className="hud-chip hud-chip-warn">작업 중</span> : active && <Badge rarity={active.rarity}>{active.rarity}</Badge>}</div>{currentSlotTask && <Progress task={currentSlotTask} currentMinute={currentMinute} />}<div className="mt-3 grid gap-3 md:grid-cols-2">{slotModules.map((module) => { const equipped = module.id === activeId; const owned = unlocked.includes(module.id); const rule = getModuleRule(module); const task = moduleTask(module.id); const materialQty = upgradeMaterialQty[module.rarity] ?? 2; const canUpgrade = owned && !task && resources.credits >= rule.upgradeCredits && getItemQty(items, "tritanium") >= materialQty; return <ModuleCard key={module.id} slot={slot} module={module} activeId={activeId} owned={owned} equipped={equipped} rule={rule} task={task} currentSlotTask={currentSlotTask} materialQty={materialQty} canUpgrade={canUpgrade} currentMinute={currentMinute} onEquip={() => equip(slot, module)} onUpgrade={() => upgrade(module)} />; })}</div></div>; })}</div>
+        <RoomCustomization />
       </section>
-      <RoomCustomization />
     </div>
   );
 }
