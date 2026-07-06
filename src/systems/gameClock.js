@@ -174,11 +174,25 @@ function processCrewHealth(currentMinute, deltaMinutes) {
   logs.forEach((message) => useGameStore.getState().addLog(`의무실: ${message}`));
 }
 
+function applyItemOutputs(outputItems = []) {
+  const awarded = [];
+  outputItems.forEach(({ itemId, qty }) => {
+    if (!itemId || !qty) return;
+    useInventoryStore.getState().addItem(itemId, qty);
+    awarded.push(`${itemId} x${qty}`);
+  });
+  return awarded;
+}
+
 function applyShipWork(task) {
   if (task.type === "hullRepair") {
     const hullDelta = task.payload?.hullDelta ?? 0;
     if (hullDelta > 0) useGameStore.getState().addResources({ hull: hullDelta });
     return `선체 정비 완료: 선체 +${hullDelta}%.`;
+  }
+  if (task.type === "salvageProcessing") {
+    const awarded = applyItemOutputs(task.payload?.outputItems ?? []);
+    return `잔해 분해 완료: ${awarded.length > 0 ? awarded.join(", ") : "회수 자원 없음"}.`;
   }
   return `함선 작업 완료: ${task.type}.`;
 }
