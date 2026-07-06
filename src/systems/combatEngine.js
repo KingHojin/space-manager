@@ -5,11 +5,23 @@ const moraleScore = {
   최상: 8,
 };
 
+const DEFAULT_ENEMY_SUBSYSTEMS = Object.freeze({
+  weaponsDisrupted: 0,
+  engineDisrupted: 0,
+  shieldCracked: 0,
+});
+
 export const COMBAT_TARGETS = Object.freeze({
   hull: { id: "hull", label: "선체", icon: "◆", desc: "격침을 노리는 표준 화력 집중", damage: 1.08, shieldRatio: 0.55, pressure: 1.08 },
-  shield: { id: "shield", label: "방어막", icon: "◈", desc: "실드를 먼저 벗겨 다음 타격을 준비", damage: 0.96, shieldRatio: 0.82, pressure: 0.98 },
-  weapons: { id: "weapons", label: "무장", icon: "⌖", desc: "적 반격 화력을 낮추는 교란 사격", damage: 0.88, shieldRatio: 0.62, pressure: 0.78 },
-  engine: { id: "engine", label: "엔진", icon: "↯", desc: "도주·추격 우위를 노리는 기동 저지", damage: 0.92, shieldRatio: 0.58, pressure: 0.86 },
+  shield: { id: "shield", label: "방어막", icon: "◈", desc: "실드를 먼저 벗겨 다음 타격을 준비", damage: 0.96, shieldRatio: 0.82, pressure: 0.98, subsystemKey: "shieldCracked" },
+  weapons: { id: "weapons", label: "무장", icon: "⌖", desc: "적 반격 화력을 낮추는 교란 사격", damage: 0.88, shieldRatio: 0.62, pressure: 0.78, subsystemKey: "weaponsDisrupted" },
+  engine: { id: "engine", label: "엔진", icon: "↯", desc: "도주·추격 우위를 노리는 기동 저지", damage: 0.92, shieldRatio: 0.58, pressure: 0.86, subsystemKey: "engineDisrupted" },
+});
+
+export const ENEMY_SUBSYSTEM_STATES = Object.freeze({
+  weaponsDisrupted: { key: "weaponsDisrupted", label: "무장 교란", icon: "⌖", desc: "적 반격 압력 감소", duration: 2 },
+  engineDisrupted: { key: "engineDisrupted", label: "엔진 교란", icon: "↯", desc: "도주 성공률 상승", duration: 2 },
+  shieldCracked: { key: "shieldCracked", label: "실드 균열", icon: "◈", desc: "다음 실드 피해 증가", duration: 2 },
 });
 
 export const TACTICAL_STATIONS = Object.freeze({
@@ -65,10 +77,33 @@ export function pickEnemyFleet(danger = 2) {
   return pool[Math.floor(Math.random() * pool.length)] ?? ENEMY_FLEETS[0];
 }
 
+function normalizeSubsystems(subsystems = {}) {
+  return Object.fromEntries(Object.entries(DEFAULT_ENEMY_SUBSYSTEMS).map(([key, value]) => [key, Math.max(0, Math.round(subsystems[key] ?? value))]));
+}
+
+function decaySubsystems(subsystems = {}) {
+  return Object.fromEntries(Object.entries(normalizeSubsystems(subsystems)).map(([key, turns]) => [key, Math.max(0, turns - 1)]));
+}
+
+function applyTargetSubsystemEffect(subsystems, targetId) {
+  const target = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
+  const key = target.subsystemKey;
+  if (!key) return normalizeSubsystems(subsystems);
+  const meta = ENEMY_SUBSYSTEM_STATES[key];
+  return { ...normalizeSubsystems(subsystems), [key]: Math.max(subsystems[key] ?? 0, meta?.duration ?? 2) };
+}
+
+export function getActiveEnemySubsystems(enemy = {}) {
+  const subsystems = normalizeSubsystems(enemy.subsystems);
+  return Object.values(ENEMY_SUBSYSTEM_STATES)
+    .map((state) => ({ ...state, turns: subsystems[state.key] ?? 0 }))
+    .filter((state) => state.turns > 0);
+}
+
 export function createCombatState(enemyTemplate) {
   return {
     round: 1,
-    enemy: { ...enemyTemplate, hullNow: enemyTemplate.hull, shieldNow: enemyTemplate.shield },
+    enemy: { ...enemyTemplate, hullNow: enemyTemplate.hull, shieldNow: enemyTemplate.shield, subsystems: normalizeSubsystems(enemyTemplate.subsystems) },
     status: "engaged",
     lastDirective: "standby",
     lastTarget: "hull",
@@ -129,7 +164,11 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
 
   const tactical = tacticalCrewBonus ?? { damageMul: 1, takenMul: 1, retreatThresholdShift: 0, labels: [] };
   const target = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
-  const next = { ...combat, enemy: { ...combat.enemy }, lastDirective: directive, lastTarget: target.id };
+  const activeSubsystems = normalizeSubsystems(combat.enemy?.subsystems);
+  const subsystemPressureMul = (activeSubsystems.weaponsDisrupted > 0 ? 0.85 : 1) * (activeSubsystems.engineDisrupted > 0 ? 0.96 : 1);
+  const shieldDamageMul = activeSubsystems.shieldCracked > 0 ? 1.18 : 1;
+  const retreatSubsystemShift = activeSubsystems.engineDisrupted > 0 ? 0.08 : 0;
+  const next = { ...combat, enemy: { ...combat.enemy, subsystems: decaySubsystems(activeSubsystems) }, lastDirective: directive, lastTarget: target.id };
   const directiveBonus = {
     attack: { damage: 1.35, taken: 1.12, label: "공격 집중" },
     evade: { damage: 0.78, taken: 0.58, label: "회피 기동" },
@@ -139,14 +178,14 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
   }[directive] ?? { damage: 1, taken: 1, label: "표준 교전" };
 
   const baseDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage * target.damage * (tactical.damageMul ?? 1)));
-  const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * target.shieldRatio));
+  const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * target.shieldRatio * shieldDamageMul));
   const hullDamage = Math.max(0, baseDamage - shieldDamage);
   next.enemy.shieldNow = Math.max(0, next.enemy.shieldNow - shieldDamage);
   next.enemy.hullNow = Math.max(0, next.enemy.hullNow - hullDamage);
   next.lastDamage = shieldDamage + hullDamage;
 
   const targetPressure = target.pressure ?? 1;
-  const enemyPressure = Math.max(2, Math.round((next.enemy.power / 12 + roll(2, 10)) * directiveBonus.taken * targetPressure * (tactical.takenMul ?? 1)));
+  const enemyPressure = Math.max(2, Math.round((next.enemy.power / 12 + roll(2, 10)) * directiveBonus.taken * targetPressure * (tactical.takenMul ?? 1) * subsystemPressureMul));
   const resourceChanges = {
     hull: -Math.max(0, Math.round(enemyPressure * 0.55)),
     oxygen: directive === "shield" ? -2 : 0,
@@ -159,10 +198,15 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
     `적 반격으로 선체 ${Math.abs(resourceChanges.hull)}%, 연료 ${Math.abs(resourceChanges.fuel)} 소모.`,
   ];
 
+  if (activeSubsystems.weaponsDisrupted > 0) logs.push(`적 무장 교란 지속: 반격 압력 감소 ${activeSubsystems.weaponsDisrupted}라운드.`);
+  if (activeSubsystems.engineDisrupted > 0) logs.push(`적 엔진 교란 지속: 도주 판정 보정 ${activeSubsystems.engineDisrupted}라운드.`);
+  if (activeSubsystems.shieldCracked > 0) logs.push(`적 실드 균열 지속: 실드 피해 증가 ${activeSubsystems.shieldCracked}라운드.`);
   if ((tactical.labels ?? []).length > 0) logs.push(`전술 담당: ${tactical.labels.slice(0, 3).join(" · ")}.`);
-  if (target.id === "weapons") logs.push("무장 교란 사격으로 이번 교전 반격 압력을 낮췄습니다.");
-  if (target.id === "engine") logs.push("엔진 교란으로 적의 추격 각도를 흐트러뜨렸습니다.");
-  if (target.id === "shield") logs.push("방어막 집중 타격으로 실드 소모를 우선했습니다.");
+
+  next.enemy.subsystems = applyTargetSubsystemEffect(next.enemy.subsystems, target.id);
+  if (target.id === "weapons") logs.push("무장 교란 성공: 다음 라운드까지 적 반격 압력이 낮아집니다.");
+  if (target.id === "engine") logs.push("엔진 교란 성공: 다음 라운드까지 도주 판정이 유리해집니다.");
+  if (target.id === "shield") logs.push("방어막 균열 발생: 다음 라운드 실드 타격 효율이 상승합니다.");
   if (target.id === "hull") logs.push("선체 타격으로 격침 속도를 우선했습니다.");
 
   let loot = null;
@@ -174,9 +218,9 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
       loot = { itemId: next.enemy.lootItemId, qty: next.enemy.lootItemQty ?? 1 };
       logs.push(`전리품 확보: ${next.enemy.lootItemId} x${next.enemy.lootItemQty ?? 1}.`);
     }
-  } else if (directive === "retreat" && Math.random() > Math.max(0.1, (target.id === "engine" ? 0.22 : 0.35) - (tactical.retreatThresholdShift ?? 0))) {
+  } else if (directive === "retreat" && Math.random() > Math.max(0.1, (target.id === "engine" ? 0.22 : 0.35) - (tactical.retreatThresholdShift ?? 0) - retreatSubsystemShift)) {
     next.status = "retreated";
-    logs.unshift(target.id === "engine" ? "엔진 교란 후 도주 항로 확보. 교전을 이탈했습니다." : "도주 항로 확보. 교전을 이탈했습니다.");
+    logs.unshift(target.id === "engine" || activeSubsystems.engineDisrupted > 0 ? "엔진 교란 후 도주 항로 확보. 교전을 이탈했습니다." : "도주 항로 확보. 교전을 이탈했습니다.");
   } else {
     next.round += 1;
   }
