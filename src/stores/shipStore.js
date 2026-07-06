@@ -63,6 +63,16 @@ function normalizeWorkTask(task) {
   return { ...task, slot: task.slot ?? module?.slot, priority: normalizePriority(task.priority ?? fallback) };
 }
 
+function normalizeShipWorkTask(task) {
+  const fallback = task.type === "hullRepair" ? "high" : "normal";
+  return {
+    ...task,
+    payload: task.payload ?? {},
+    roomId: task.roomId ?? "engineering",
+    priority: normalizePriority(task.priority ?? fallback),
+  };
+}
+
 export const useShipStore = create(
   persist(
     (set, get) => ({
@@ -72,6 +82,7 @@ export const useShipStore = create(
       installed: initialInstalled,
       unlockedModuleIds: initialUnlockedIds,
       installationQueue: [],
+      shipWorkQueue: [],
       selectVessel: (vesselId) => set((state) => (state.vesselsById?.[vesselId] ? { activeVesselId: vesselId } : state)),
       unlockModule: (moduleId) =>
         set((state) => ({
@@ -91,9 +102,20 @@ export const useShipStore = create(
             { id: crypto.randomUUID(), type: "upgrade", slot: slot ?? state.modules.find((module) => module.id === moduleId)?.slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
           ],
         })),
+      startShipWork: ({ type, roomId = "engineering", completeAt, cost = 0, duration, payload = {}, priority = "normal" }) =>
+        set((state) => ({
+          shipWorkQueue: [
+            ...state.shipWorkQueue,
+            normalizeShipWorkTask({ id: crypto.randomUUID(), type, roomId, completeAt, cost, duration, payload, priority, startedAt: completeAt - duration }),
+          ],
+        })),
       setInstallationPriority: (taskId, priority) =>
         set((state) => ({
           installationQueue: state.installationQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
+        })),
+      setShipWorkPriority: (taskId, priority) =>
+        set((state) => ({
+          shipWorkQueue: state.shipWorkQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
         })),
       completeReadyInstallations: (currentMinute) => {
         const ready = get().installationQueue.filter((task) => task.completeAt <= currentMinute);
@@ -130,6 +152,12 @@ export const useShipStore = create(
         });
         return logs;
       },
+      completeReadyShipWork: (currentMinute) => {
+        const ready = get().shipWorkQueue.filter((task) => task.completeAt <= currentMinute).map(normalizeShipWorkTask);
+        if (ready.length === 0) return [];
+        set((state) => ({ shipWorkQueue: state.shipWorkQueue.filter((task) => task.completeAt > currentMinute) }));
+        return ready;
+      },
       getInstalledModules: () => {
         const state = useShipStore.getState();
         if (installedModulesCacheKey === state.installed) return installedModulesCache;
@@ -156,6 +184,7 @@ export const useShipStore = create(
           installed: mergeInstalled(persistedState?.installed),
           unlockedModuleIds: mergeUnlocked(persistedState),
           installationQueue: (persistedState?.installationQueue ?? []).map(normalizeWorkTask),
+          shipWorkQueue: (persistedState?.shipWorkQueue ?? []).map(normalizeShipWorkTask),
         };
       },
     },
