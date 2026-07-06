@@ -7,6 +7,7 @@ const SHIP_WORK_TYPE_MAP = {
 
 const DEFAULT_ROOM_BY_TYPE = {
   recovery: "medbay",
+  treatment: "medbay",
   hull_repair: "engineering",
   salvage: "cargo",
   module_upgrade: "engineering",
@@ -40,7 +41,7 @@ function hasOwn(object, key) {
 }
 
 function normalizedRequiredRole(job, type) {
-  if (type === "recovery") return null;
+  if (type === "recovery" || type === "treatment" || type === "training") return null;
   return hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null;
 }
 
@@ -66,6 +67,7 @@ export function priorityToActivityPriority(priority) {
 
 export function jobTypeLabel(type) {
   if (type === "recovery") return "회복 절차";
+  if (type === "treatment") return "의무실 치료";
   if (type === "hull_repair") return "선체 정비";
   if (type === "salvage") return "잔해 분해";
   if (type === "module_upgrade") return "부품 개선";
@@ -113,44 +115,12 @@ export function normalizeJob(job = {}, now = null) {
 function shipWorkToJob(task, now) {
   const type = SHIP_WORK_TYPE_MAP[task?.type];
   if (!task?.id || !type) return null;
-  return normalizeJob(
-    {
-      id: task.id,
-      type,
-      roomId: task.roomId ?? DEFAULT_ROOM_BY_TYPE[type],
-      priority: task.priority ?? (type === "hull_repair" ? "high" : "normal"),
-      duration: task.duration,
-      startedAt: task.startedAt,
-      createdAt: task.startedAt,
-      cost: task.cost,
-      payload: task.payload ?? {},
-      status: "in_progress",
-    },
-    now,
-  );
+  return normalizeJob({ id: task.id, type, roomId: task.roomId ?? DEFAULT_ROOM_BY_TYPE[type], priority: task.priority ?? (type === "hull_repair" ? "high" : "normal"), duration: task.duration, startedAt: task.startedAt, createdAt: task.startedAt, cost: task.cost, payload: task.payload ?? {}, status: "in_progress" }, now);
 }
 
 function recoveryToJob(task, now) {
   if (!task?.id || !task?.memberId) return null;
-  return normalizeJob(
-    {
-      id: task.id,
-      type: "recovery",
-      roomId: "medbay",
-      assignedCrewId: task.memberId,
-      priority: task.priority ?? "normal",
-      duration: task.duration,
-      startedAt: task.startedAt,
-      createdAt: task.startedAt,
-      cost: task.cost,
-      payload: {
-        targetCrewId: task.memberId,
-        fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
-      },
-      status: "in_progress",
-    },
-    now,
-  );
+  return normalizeJob({ id: task.id, type: "recovery", roomId: "medbay", assignedCrewId: task.memberId, priority: task.priority ?? "normal", duration: task.duration, startedAt: task.startedAt, createdAt: task.startedAt, cost: task.cost, payload: { targetCrewId: task.memberId, fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery }, status: "in_progress" }, now);
 }
 
 export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], now = null) {
@@ -172,35 +142,23 @@ export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], now 
 export function jobToLegacyShipWork(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "hull_repair" && normalized.type !== "salvage") return null;
-  return {
-    id: normalized.id,
-    type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing",
-    roomId: normalized.roomId,
-    status: normalized.status,
-    cost: normalized.cost,
-    duration: normalized.duration,
-    payload: normalized.payload,
-    priority: normalized.priority,
-    startedAt: normalized.startedAt ?? normalized.createdAt,
-    completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
-  };
+  return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, payload: normalized.payload, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration };
 }
 
 export function jobToLegacyRecovery(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "recovery") return null;
-  return {
-    id: normalized.id,
-    memberId: normalized.payload?.targetCrewId,
-    roomId: normalized.roomId,
-    status: normalized.status,
-    assignedCrewId: normalized.assignedCrewId,
-    cost: normalized.cost,
-    duration: normalized.duration,
-    fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
-    priority: normalized.priority,
-    startedAt: normalized.startedAt ?? normalized.createdAt,
-    completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
-    progress: normalized.progress,
-  };
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
+}
+
+export function jobToLegacyTraining(job) {
+  const normalized = normalizeJob(job);
+  if (normalized.type !== "training") return null;
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, statKey: normalized.payload?.statKey, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
+}
+
+export function jobToLegacyTreatment(job) {
+  const normalized = normalizeJob(job);
+  if (normalized.type !== "treatment") return null;
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, injury: normalized.payload?.injury, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatiguePenalty: normalized.payload?.fatiguePenalty, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
 }
