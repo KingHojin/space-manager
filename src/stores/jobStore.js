@@ -15,6 +15,10 @@ function createRooms() {
   return Object.fromEntries(Object.entries(ROOM_CONFIG).map(([id, config]) => [id, { id, ...config, activeJobIds: [], currentLoad: 0 }]));
 }
 
+function clampProgress(value) {
+  return Math.min(1, Math.max(0, value));
+}
+
 function normalizeJobs(jobs = [], now = null) {
   const seen = new Set();
   return jobs.map((job) => normalizeJob(job, now)).filter((job) => {
@@ -156,10 +160,19 @@ export const useJobStore = create(
         return done;
       },
       completeReadyJobs: (currentMinute) => {
-        const running = normalizeJobs(get().jobs, currentMinute);
-        const deltaByJob = new Map(running.filter((job) => job.status === "in_progress" && job.startedAt !== null).map((job) => [job.id, Math.max(0, currentMinute - job.startedAt - job.progress * job.duration)]));
-        const maxDelta = Math.max(0, ...deltaByJob.values());
-        return get().advanceJobs(maxDelta);
+        const done = [];
+        set((state) => {
+          const jobs = normalizeJobs(state.jobs).map((job) => {
+            if (job.status !== "in_progress" || job.startedAt === null) return job;
+            const progress = clampProgress((currentMinute - job.startedAt) / Math.max(1, job.duration));
+            if (progress < 1) return { ...job, progress };
+            const finished = { ...job, progress: 1, status: "done" };
+            done.push(finished);
+            return finished;
+          });
+          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+        });
+        return done;
       },
       recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
       getLegacyShipWorkQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyShipWork).filter(Boolean),
