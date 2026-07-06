@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG } from "../data/constants";
-import { migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
+import { jobToLegacyRecovery, jobToLegacyShipWork, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 
@@ -155,7 +155,15 @@ export const useJobStore = create(
         });
         return done;
       },
+      completeReadyJobs: (currentMinute) => {
+        const running = normalizeJobs(get().jobs, currentMinute);
+        const deltaByJob = new Map(running.filter((job) => job.status === "in_progress" && job.startedAt !== null).map((job) => [job.id, Math.max(0, currentMinute - job.startedAt - job.progress * job.duration)]));
+        const maxDelta = Math.max(0, ...deltaByJob.values());
+        return get().advanceJobs(maxDelta);
+      },
       recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
+      getLegacyShipWorkQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyShipWork).filter(Boolean),
+      getLegacyRecoveryQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyRecovery).filter(Boolean),
       getActiveJobs: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)),
       getBacklogJobs: () => normalizeJobs(get().jobs).filter((job) => job.status === "backlog"),
       getRunningJobs: () => normalizeJobs(get().jobs).filter((job) => ["assigned", "in_progress"].includes(job.status)),
