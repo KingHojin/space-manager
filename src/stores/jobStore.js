@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { JOB_DURATION, JOB_LOAD_COST } from "../data/constants";
+import { JOB_DURATION, JOB_ECONOMY, JOB_LOAD_COST } from "../data/constants";
 import { jobToLegacyRecovery, jobToLegacyShipWork, migrateLegacyQueues, normalizeJob } from "../systems/jobMigration";
 import { normalizePriority } from "../systems/priorities";
 
@@ -61,7 +61,7 @@ export const useJobStore = create(
         set((state) => ({ jobs: [...normalizeJobs(state.jobs), job] }));
         return job;
       },
-      enqueueRecovery: ({ memberId, completeAt, cost = 0, duration, fatigueRecovery = 32, priority = "normal" }) => {
+      enqueueRecovery: ({ memberId, completeAt, cost = 0, duration, fatigueRecovery = JOB_ECONOMY.recovery.fatigueRecovery, priority = "normal" }) => {
         const job = makeJob({
           type: "recovery",
           roomId: "medbay",
