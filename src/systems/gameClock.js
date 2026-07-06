@@ -27,6 +27,10 @@ export const formatGameDate = (totalMinutes) => {
   return `우주력 ${year}년 ${month}월 ${day}일 ${hour}:${minute}`;
 };
 
+function itemQty(items, itemId) {
+  return items.find((item) => item.id === itemId)?.qty ?? 0;
+}
+
 function consumeTravelFuel(activeTravel, currentMinute) {
   const lastFuelAt = activeTravel.lastFuelAt ?? activeTravel.startedAt;
   const elapsed = Math.max(0, currentMinute - lastFuelAt);
@@ -126,6 +130,39 @@ function processCrewAI(currentMinute) {
   const crewStore = useCrewStore.getState();
   const logs = crewStore.runCrewAI(getActiveVesselCrewAiSnapshot({ currentMinute }));
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
+}
+
+function processCrewMeals() {
+  const crewStore = useCrewStore.getState();
+  const inventoryStore = useInventoryStore.getState();
+  const mealActivities = (crewStore.crewActivities ?? []).filter((activity) => activity.intent === "meal").slice(0, 2);
+  if (mealActivities.length === 0) return;
+
+  const hasCook = crewStore.crew.some((member) => member.alive && member.role === "조리실");
+  mealActivities.forEach((activity) => {
+    const member = crewStore.crew.find((entry) => entry.id === activity.memberId);
+    if (!member?.alive || (member.needs?.hunger ?? 0) < 45) return;
+
+    const items = useInventoryStore.getState().items;
+    const ingredients = itemQty(items, "raw-ingredients");
+    const rations = itemQty(items, "food-ration");
+
+    if (hasCook && ingredients > 0) {
+      inventoryStore.removeItem("raw-ingredients", 1);
+      const message = crewStore.completeMeal({ memberId: member.id, quality: "cooked" });
+      if (message) useGameStore.getState().addLog(`식당: ${message} 식재료 1개 사용.`);
+      return;
+    }
+
+    if (rations > 0) {
+      inventoryStore.removeItem("food-ration", 1);
+      const message = crewStore.completeMeal({ memberId: member.id, quality: "ration" });
+      if (message) useGameStore.getState().addLog(`식당: ${message} 표준 식량 1개 사용.`);
+      return;
+    }
+
+    if ((member.needs?.hunger ?? 0) >= 75) useGameStore.getState().addLog(`${member.name} 식사 실패: 식량이 부족합니다.`);
+  });
 }
 
 function processCrewNeeds(deltaMinutes) {
@@ -230,6 +267,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrewAI(currentMinute);
+  processCrewMeals();
   processCrewNeeds(deltaMinutes);
   processRoomJobs(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
