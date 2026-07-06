@@ -39,6 +39,11 @@ function hasOwn(object, key) {
   return Object.prototype.hasOwnProperty.call(object, key);
 }
 
+function normalizedRequiredRole(job, type) {
+  if (type === "recovery") return null;
+  return hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null;
+}
+
 export function normalizeRoomId(roomId, type = null) {
   const fallback = DEFAULT_ROOM_BY_TYPE[type] ?? "living";
   const normalized = ROOM_ALIASES[roomId] ?? roomId ?? fallback;
@@ -91,7 +96,7 @@ export function normalizeJob(job = {}, now = null) {
     roomId,
     status,
     assignedCrewId: job.assignedCrewId ?? null,
-    requiredRole: hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null,
+    requiredRole: normalizedRequiredRole(job, type),
     priority: normalizeJobPriority(job.priority),
     progress,
     duration,
@@ -132,7 +137,6 @@ function recoveryToJob(task, now) {
       id: task.id,
       type: "recovery",
       roomId: "medbay",
-      requiredRole: null,
       assignedCrewId: task.memberId,
       priority: task.priority ?? "normal",
       duration: task.duration,
