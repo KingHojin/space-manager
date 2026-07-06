@@ -103,6 +103,12 @@ function applyTreatment(member, task) {
   return { ...member, needs, injury: after, fatigue: clamp((member.fatigue ?? 0) + (task.fatiguePenalty ?? 10), 0, 100), morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs) };
 }
 
+function applyRecovery(member, task = {}) {
+  if (!member.alive) return member;
+  const needs = applyNeedDelta(member.needs, { hunger: -12, mood: 10, stress: -18, sleepDebt: -26, hygiene: 8 });
+  return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) - (task.fatigueRecovery ?? 32), 0, 100), morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs) };
+}
+
 function activityTreatmentTargets(crew, activities = []) {
   const medicActivities = activities.filter((activity) => activity.intent === "medical-care");
   if (medicActivities.length === 0) return new Map();
@@ -162,6 +168,7 @@ export const useCrewStore = create(
       crew: initialCrew.map((member) => normalizeCrew({ ...member, alive: true })),
       trainingQueue: [],
       treatmentQueue: [],
+      recoveryQueue: [],
       crewActivities: [],
       crewActivityLog: [],
       lastCrewAiAt: null,
@@ -177,13 +184,15 @@ export const useCrewStore = create(
       },
       startTraining: ({ memberId, statKey, completeAt, cost, duration, priority = "normal" }) => set((state) => ({ trainingQueue: [...state.trainingQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
       startTreatment: ({ memberId, injury, completeAt, cost, duration, fatiguePenalty, priority = "high" }) => set((state) => ({ treatmentQueue: [...state.treatmentQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, injury: injuryLabel(injury), completeAt, cost, duration, fatiguePenalty, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
+      startRecovery: ({ memberId, completeAt, cost = 0, duration, fatigueRecovery = 32, priority = "normal" }) => set((state) => ({ recoveryQueue: [...state.recoveryQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, completeAt, cost, duration, fatigueRecovery, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
       setTrainingPriority: (taskId, priority) => set((state) => ({ trainingQueue: state.trainingQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
       setTreatmentPriority: (taskId, priority) => set((state) => ({ treatmentQueue: state.treatmentQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
+      setRecoveryPriority: (taskId, priority) => set((state) => ({ recoveryQueue: state.recoveryQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
       runCrewAI: (snapshot) => {
         const currentMinute = snapshot.currentMinute ?? 0;
         const state = get();
         if (state.lastCrewAiAt !== null && currentMinute - state.lastCrewAiAt < CREW_AI_INTERVAL) return [];
-        const activities = generateCrewActivities({ crew: state.crew, queues: { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue }, snapshot, currentMinute });
+        const activities = generateCrewActivities({ crew: state.crew, queues: { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue, recoveryQueue: state.recoveryQueue }, snapshot, currentMinute });
         const previousByMember = new Map((state.crewActivities ?? []).map((activity) => [activity.memberId, activity]));
         const changed = activities.filter((activity) => previousByMember.get(activity.memberId)?.action !== activity.action || previousByMember.get(activity.memberId)?.station !== activity.station);
         const logEntries = changed.slice(0, 3).map((activity) => { const member = state.crew.find((entry) => entry.id === activity.memberId); return `${member?.name ?? "승무원"}: ${activity.station} · ${activity.action}`; });
@@ -203,6 +212,13 @@ export const useCrewStore = create(
         const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
         set((state) => ({ treatmentQueue: state.treatmentQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task && isInjured(member.injury) ? applyTreatment(member, task) : member; }) }));
         return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 의무실 치료 단계 완료.`; });
+      },
+      completeReadyRecovery: (currentMinute) => {
+        const ready = get().recoveryQueue.filter((task) => task.completeAt <= currentMinute);
+        if (ready.length === 0) return [];
+        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
+        set((state) => ({ recoveryQueue: state.recoveryQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task ? applyRecovery(member, task) : member; }) }));
+        return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 회복 절차 완료.`; });
       },
       tickCrewNeeds: ({ deltaMinutes = 0, mode = "normal", severity = 1 }) => {
         if (deltaMinutes <= 0) return [];
@@ -224,16 +240,16 @@ export const useCrewStore = create(
         });
         return logs;
       },
-      restMember: (memberId) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, needs: applyNeedDelta(member.needs, { hunger: -12, mood: 8, stress: -16, sleepDebt: -24, hygiene: 6 }), fatigue: clamp((member.fatigue ?? 0) - 28, 0, 100), morale: shiftMorale(member.morale, 1) } : member) })),
+      restMember: (memberId) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? applyRecovery(member, { fatigueRecovery: 28 }) : member) })),
       applyCrewNeeds: ({ memberId = null, changes = {}, mode = "manual" }) => set((state) => ({ crew: state.crew.map((member) => { if (!member.alive || (memberId && member.id !== memberId)) return member; const needs = applyNeedDelta(member.needs, changes); return { ...member, needs, morale: moraleFromNeeds(member.morale, needs), fatigue: clamp((member.fatigue ?? 0) + (changes.fatigue ?? 0), 0, 100), lastNeedMode: mode }; }) })),
       applyCrewOutcome: ({ memberId, fatigue = 0, morale = 0, injury = null, experience = 0, needs = null }) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, needs: needs ? applyNeedDelta(member.needs, needs) : normalizeNeeds(member.needs), fatigue: clamp((member.fatigue ?? 0) + fatigue * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, morale), injury: injury ? applyInjury(member, injury) : normalizeInjury(member.injury), experience: (member.experience ?? 0) + experience } : member) })),
-      applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) => set((state) => ({ trainingQueue: injury === "전사" ? state.trainingQueue.filter((task) => task.memberId !== memberId) : state.trainingQueue, treatmentQueue: injury === "전사" ? state.treatmentQueue.filter((task) => task.memberId !== memberId) : state.treatmentQueue, crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, alive: injury !== "전사", injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury), fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale), needs: applyNeedDelta(member.needs, { mood: injury === "전사" ? -40 : -12, stress: injury === "전사" ? 40 : 18 }) } : member) })),
+      applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) => set((state) => ({ trainingQueue: injury === "전사" ? state.trainingQueue.filter((task) => task.memberId !== memberId) : state.trainingQueue, treatmentQueue: injury === "전사" ? state.treatmentQueue.filter((task) => task.memberId !== memberId) : state.treatmentQueue, recoveryQueue: injury === "전사" ? state.recoveryQueue.filter((task) => task.memberId !== memberId) : state.recoveryQueue, crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, alive: injury !== "전사", injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury), fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale), needs: applyNeedDelta(member.needs, { mood: injury === "전사" ? -40 : -12, stress: injury === "전사" ? 40 : 18 }) } : member) })),
       getRoleCoverage: () => getRoleCoverage(get().crew),
       getTreatmentTarget: () => chooseTreatmentTarget(get().crew),
     }),
     {
       name: "space-manager-crew",
-      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
     },
   ),
 );
