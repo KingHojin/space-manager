@@ -1,7 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DRIFT } from "../data/constants";
+import { evaluateTravelCrewReadiness, travelReadinessMessage } from "../systems/crewAvailability";
 import { generateSector, findRoute, rollEncounter, routeDistance } from "../systems/navigationSystem";
+import { useCrewStore } from "./crewStore";
+import { useJobStore } from "./jobStore";
 
 const TRAVEL_MINUTES_PER_DISTANCE = 11;
 const FUEL_PER_DISTANCE = 1.15;
@@ -59,10 +62,24 @@ function driftSeverity(minutesDrifting) {
   return 1;
 }
 
+function currentTravelReadiness() {
+  const crew = useCrewStore.getState();
+  const jobs = useJobStore.getState();
+  return evaluateTravelCrewReadiness({
+    crew: crew.crew,
+    jobs: jobs.jobs,
+    trainingQueue: crew.trainingQueue,
+    treatmentQueue: crew.treatmentQueue,
+    recoveryQueue: jobs.getLegacyRecoveryQueue(),
+  });
+}
+
 function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) {
   if (state.pendingEncounter) return { ok: false, reason: "pendingEncounter" };
   if (state.travel) return { ok: false, reason: "traveling" };
   if (state.driftState || state.fuel <= 0) return { ok: false, reason: "drifting" };
+  const readiness = currentTravelReadiness();
+  if (!readiness.ok) return { ok: false, reason: travelReadinessMessage(readiness), readiness };
   const route = findRoute(state.sector, state.currentNodeId, targetNodeId);
   if (route.length < 2) return { ok: false, reason: "noRoute" };
   const distance = routeDistance(state.sector, route);
@@ -190,7 +207,7 @@ export const useNavStore = create(
             const sector = generateSector(seed);
             const start = firstNodeId(sector);
             const discovered = revealNeighbors(sector, [start], start);
-            nextSectorState = { sector: withNodeFlags(sector, [start], discovered), sectorIndex: state.sectorIndex + 1, currentNodeId: start, selectedNodeId: null, route: [start], travel: null, discovered, visited: [start], driftState: null };
+            nextSectorState = { sector: withNodeFlags(sector, [start], discovered), sectorIndex: state.sectorIndex + 1, currentNodeId: start, selectedNodeId: null, route: [start], discovered, visited: [start], driftState: null };
           }
           set({ pendingEncounter: null, ...nextSectorState, navLog: [...logs, ...state.navLog].slice(0, 10) });
           return { effects, logs };
