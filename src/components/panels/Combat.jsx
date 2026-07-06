@@ -9,6 +9,7 @@ import {
   calculateCombatPower,
   calculateTacticalCrewBonus,
   createCombatState,
+  getActiveEnemySubsystems,
   getCombatDirectiveResult,
   pickEnemyFleet,
   resolveCombatRound,
@@ -96,6 +97,25 @@ function TacticalCrewPanel({ crew, assignments, bonus }) {
         })}
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">화력 x{(bonus.damageMul ?? 1).toFixed(2)}</span><span className="hud-chip">피해 x{(bonus.takenMul ?? 1).toFixed(2)}</span><span className="hud-chip">부상 x{(bonus.casualtyRiskMul ?? 1).toFixed(2)}</span></div>
+    </section>
+  );
+}
+
+function EnemySubsystemPanel({ enemy }) {
+  const activeStates = getActiveEnemySubsystems(enemy);
+  return (
+    <section className="mt-3 rounded-2xl border border-violet-300/25 bg-violet-300/10 p-3">
+      <div className="flex items-center justify-between gap-2"><div className="section-title"><Zap size={16} />적 서브시스템 상태</div><span className="hud-chip bg-slate-950/70">{activeStates.length || 0} ACTIVE</span></div>
+      {activeStates.length > 0 ? (
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {activeStates.map((state) => (
+            <div key={state.key} className="rounded-xl border border-violet-300/25 bg-slate-950/65 p-2">
+              <div className="flex items-center justify-between gap-2"><span className="font-black text-slate-100">{state.icon} {state.label}</span><span className="hud-chip hud-chip-accent">{state.turns}R</span></div>
+              <div className="mt-1 text-[11px] text-slate-400">{state.desc}</div>
+            </div>
+          ))}
+        </div>
+      ) : <p className="mt-2 text-xs text-slate-400">아직 지속 교란 없음. 무장/엔진/방어막을 노리면 다음 라운드 전술 효과가 남습니다.</p>}
     </section>
   );
 }
@@ -208,6 +228,7 @@ export default function Combat() {
         <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combat?.status === "won" ? "hud-chip-success" : combatEngaged ? "hud-chip-warn" : ""}`}>{combat?.status ?? "대기"}</span></div>
           {enemy && <div className="mt-3 grid grid-cols-2 gap-2"><StatTile icon={Shield} label="적 선체" value={`${enemyHull}%`} /><StatTile icon={Zap} label="적 방어막" value={`${enemyShield}%`} /></div>}
+          {enemy && <EnemySubsystemPanel enemy={enemy} />}
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
           {combat && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
