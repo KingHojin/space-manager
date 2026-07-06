@@ -39,7 +39,27 @@ function backlogSort(a, b) {
 }
 
 function assignedCrewIds(jobs) {
-  return new Set(jobs.filter((job) => ["assigned", "in_progress"].includes(job.status) && job.assignedCrewId).map((job) => job.assignedCrewId));
+  const ids = new Set();
+  jobs.forEach((job) => {
+    if (!["assigned", "in_progress"].includes(job.status)) return;
+    if (job.assignedCrewId) ids.add(job.assignedCrewId);
+    if (job.type === "recovery" && job.payload?.targetCrewId) ids.add(job.payload.targetCrewId);
+  });
+  return ids;
+}
+
+function findCandidateForJob(job, crew, reservedCrewIds) {
+  const targetCrewId = job.payload?.targetCrewId;
+
+  if (targetCrewId) {
+    const target = crew.find((member) => member.id === targetCrewId);
+    if (!isCrewUsable(target)) return null;
+    if (!matchesRole(target, job.requiredRole)) return null;
+    if (reservedCrewIds.has(target.id)) return null;
+    return target;
+  }
+
+  return crew.find((member) => isCrewUsable(member) && matchesRole(member, job.requiredRole) && !reservedCrewIds.has(member.id)) ?? null;
 }
 
 export function scheduleJobs(jobs = [], rooms = {}, crew = [], now = 0) {
@@ -49,10 +69,11 @@ export function scheduleJobs(jobs = [], rooms = {}, crew = [], now = 0) {
   const usedByRoom = new Map(Object.keys(rooms).map((roomId) => [roomId, usedSlotIdsForRoom(jobs, roomId)]));
 
   jobs.filter((job) => job.status === "assigned").forEach((job) => {
-    const member = crew.find((entry) => entry.id === job.assignedCrewId);
-    if (job.assignedCrewId && !isCrewUsable(member)) {
+    const reservedCrewId = job.type === "recovery" ? job.payload?.targetCrewId ?? job.assignedCrewId : job.assignedCrewId;
+    const member = crew.find((entry) => entry.id === reservedCrewId);
+    if (reservedCrewId && !isCrewUsable(member)) {
       results.push({ kind: "rollback", jobId: job.id, reason: "crew_unavailable" });
-      reservedCrewIds.delete(job.assignedCrewId);
+      reservedCrewIds.delete(reservedCrewId);
       const used = usedByRoom.get(job.roomId) ?? [];
       usedByRoom.set(job.roomId, used.filter((id) => id !== job.id));
       return;
@@ -68,7 +89,7 @@ export function scheduleJobs(jobs = [], rooms = {}, crew = [], now = 0) {
     }
     const usedIds = usedByRoom.get(job.roomId) ?? [];
     if (!hasSlot(room, usedIds)) return;
-    const candidate = crew.find((member) => isCrewUsable(member) && matchesRole(member, job.requiredRole) && !reservedCrewIds.has(member.id));
+    const candidate = findCandidateForJob(job, crew, reservedCrewIds);
     if (!candidate) return;
     reservedCrewIds.add(candidate.id);
     usedByRoom.set(job.roomId, [...usedIds, job.id]);
@@ -84,7 +105,7 @@ export function explainBacklogReason(job, jobs = [], rooms = {}, crew = []) {
   if (!room) return "방 없음";
   const usedIds = usedSlotIdsForRoom(jobs, job.roomId);
   if (!hasSlot(room, usedIds)) return "슬롯 대기";
-  const hasCrew = crew.some((member) => isCrewUsable(member) && matchesRole(member, job.requiredRole));
+  const hasCrew = Boolean(findCandidateForJob(job, crew, assignedCrewIds(jobs)));
   if (!hasCrew) return "크루 대기";
   return "배정 대기";
 }
