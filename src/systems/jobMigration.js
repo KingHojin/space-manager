@@ -70,7 +70,7 @@ export function jobTypeLabel(type) {
   if (type === "treatment") return "의무실 치료";
   if (type === "hull_repair") return "선체 정비";
   if (type === "salvage") return "잔해 분해";
-  if (type === "module_upgrade") return "부품 개선";
+  if (type === "module_upgrade") return "모듈 작업";
   if (type === "training") return "역할 훈련";
   return type ?? "작업";
 }
@@ -143,6 +143,26 @@ export function jobToLegacyShipWork(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "hull_repair" && normalized.type !== "salvage") return null;
   return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, payload: normalized.payload, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration };
+}
+
+export function jobToLegacyModuleWork(job) {
+  const normalized = normalizeJob(job);
+  if (normalized.type !== "module_upgrade") return null;
+  return {
+    id: normalized.id,
+    type: normalized.payload?.action ?? "upgrade",
+    slot: normalized.payload?.slot,
+    moduleId: normalized.payload?.moduleId,
+    roomId: normalized.roomId,
+    status: normalized.status,
+    cost: normalized.cost,
+    duration: normalized.duration,
+    payload: normalized.payload,
+    priority: normalized.priority,
+    startedAt: normalized.startedAt ?? normalized.createdAt,
+    completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
+    progress: normalized.progress,
+  };
 }
 
 export function jobToLegacyRecovery(job) {
