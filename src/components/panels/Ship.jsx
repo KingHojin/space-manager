@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { Cpu, Hammer, Rocket, Shield, Sparkles, Wrench, Zap } from "lucide-react";
 import Badge from "../common/Badge";
 import RoomCustomization from "../ship/RoomCustomization";
@@ -12,6 +13,7 @@ const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary
 const slotIcon = { engine: Rocket, "weapon-a": Zap, "weapon-b": Zap, shield: Shield, cargo: Cpu, special: Sparkles };
 const SCRAP_REPAIR_COST = 6;
 const SCRAP_REPAIR_HULL = 8;
+const SCRAP_REPAIR_MINUTES = 120;
 
 function getItemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
@@ -26,9 +28,9 @@ function moduleTone(module) {
   return "border-slate-700/70 bg-slate-950/60";
 }
 
-function Progress({ task, currentMinute }) {
+function Progress({ task, currentMinute, label = "작업 진행" }) {
   const progress = Math.max(0, Math.min(100, Math.round(((currentMinute - task.startedAt) / Math.max(1, task.duration)) * 100)));
-  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">작업 진행</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 text-xs text-slate-400">완료: {formatGameDate(task.completeAt)}</div></div>;
+  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 text-xs text-slate-400">완료: {formatGameDate(task.completeAt)}</div></div>;
 }
 
 function SlotCard({ slot, module, task }) {
@@ -60,49 +62,56 @@ function ModuleCard({ slot, module, activeId, owned, equipped, rule, task, curre
   );
 }
 
-function ScrapRepairCard({ hull, scrap, onRepair }) {
-  const canRepair = hull < 100 && scrap >= SCRAP_REPAIR_COST;
+function ScrapRepairCard({ hull, scrap, task, currentMinute, onRepair }) {
+  const canRepair = hull < 100 && scrap >= SCRAP_REPAIR_COST && !task;
   return (
     <section className="mt-4 rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
           <div className="section-title"><Hammer size={18} />캠페인 응급 정비</div>
-          <p className="mt-2 text-sm leading-6 text-slate-300">임무에서 얻은 폐자재로 선체 손상을 즉시 일부 복구합니다.</p>
+          <p className="mt-2 text-sm leading-6 text-slate-300">임무에서 얻은 폐자재로 선체 정비 작업을 지시합니다. 기관실 승무원이 이동해 정비 시간을 소모합니다.</p>
         </div>
         <span className="hud-chip hud-chip-warn">Scrap {scrap}</span>
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
         <div className="mission-stat-tile"><span>Hull</span><span>{Math.round(hull)}%</span></div>
         <div className="mission-stat-tile"><span>비용</span><span>Scrap {SCRAP_REPAIR_COST}</span></div>
-        <div className="mission-stat-tile"><span>복구</span><span>+{SCRAP_REPAIR_HULL}%</span></div>
+        <div className="mission-stat-tile"><span>복구</span><span>+{SCRAP_REPAIR_HULL}% / {formatMinutes(SCRAP_REPAIR_MINUTES)}</span></div>
       </div>
-      <button className="primary-button mt-4 w-full justify-center" disabled={!canRepair} onClick={onRepair}>{hull >= 100 ? "선체 양호" : scrap < SCRAP_REPAIR_COST ? "폐자재 부족" : "폐자재로 선체 정비"}</button>
+      {task && <Progress task={task} currentMinute={currentMinute} label="선체 정비 진행" />}
+      <button className="primary-button mt-4 w-full justify-center" disabled={!canRepair} onClick={onRepair}>{task ? "선체 정비 중" : hull >= 100 ? "선체 양호" : scrap < SCRAP_REPAIR_COST ? "폐자재 부족" : "선체 정비 지시"}</button>
     </section>
   );
 }
 
 export default function Ship() {
-  const { modules, installed, unlockedModuleIds, installationQueue, startInstallation, startUpgrade } = useShipStore();
+  const { modules, installed, unlockedModuleIds, installationQueue, shipWorkQueue, startInstallation, startUpgrade, startShipWork } = useShipStore();
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
-  const repairHull = useGameStore((state) => state.repairHull);
   const addLog = useGameStore((state) => state.addLog);
   const items = useInventoryStore((state) => state.items);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const unlocked = unlockedModuleIds ?? [];
   const tritanium = getItemQty(items, "tritanium");
   const salvageScrap = getItemQty(items, "salvage-scrap");
+  const modulesById = useMemo(() => new Map(modules.map((module) => [module.id, module])), [modules]);
+  const modulesBySlot = useMemo(() => MODULE_SLOTS.reduce((acc, slot) => ({ ...acc, [slot]: modules.filter((module) => module.slot === slot) }), {}), [modules]);
+  const slotTasks = useMemo(() => new Map(installationQueue.filter((task) => task.type === "equip").map((task) => [task.slot, task])), [installationQueue]);
+  const moduleTasks = useMemo(() => new Map(installationQueue.map((task) => [task.moduleId, task])), [installationQueue]);
+  const hullRepairTask = useMemo(() => shipWorkQueue.find((task) => task.type === "hullRepair") ?? null, [shipWorkQueue]);
 
-  const slotTask = (slot) => installationQueue.find((task) => task.type === "equip" && task.slot === slot);
-  const moduleTask = (moduleId) => installationQueue.find((task) => task.moduleId === moduleId);
+  const slotTask = (slot) => slotTasks.get(slot);
+  const moduleTask = (moduleId) => moduleTasks.get(moduleId);
 
   const repairWithScrap = () => {
     if (resources.hull >= 100) return addLog("선체 정비 불필요: 이미 선체 상태가 양호합니다.");
+    if (hullRepairTask) return addLog("선체 정비 실패: 이미 기관실 정비 작업이 진행 중입니다.");
     if (salvageScrap < SCRAP_REPAIR_COST) return addLog(`선체 정비 실패: 폐자재 ${SCRAP_REPAIR_COST}개가 필요합니다.`);
     removeItem("salvage-scrap", SCRAP_REPAIR_COST);
-    repairHull(SCRAP_REPAIR_HULL);
-    addLog(`캠페인 응급 정비: 폐자재 ${SCRAP_REPAIR_COST}개 사용, 선체 +${SCRAP_REPAIR_HULL}%.`);
+    const completeAt = currentMinute + SCRAP_REPAIR_MINUTES;
+    startShipWork({ type: "hullRepair", roomId: "engineering", completeAt, cost: SCRAP_REPAIR_COST, duration: SCRAP_REPAIR_MINUTES, priority: "high", payload: { hullDelta: SCRAP_REPAIR_HULL } });
+    addLog(`선체 정비 지시: 기관실 승무원이 현장으로 이동합니다. 폐자재 ${SCRAP_REPAIR_COST}개, 소요 ${formatMinutes(SCRAP_REPAIR_MINUTES)}, 완료 ${formatGameDate(completeAt)}.`);
     return null;
   };
 
@@ -132,13 +141,13 @@ export default function Ship() {
   return (
     <div className="grid gap-4 xl:h-full xl:grid-cols-[0.95fr_1.05fr]">
       <section>
-        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함선 슬롯 도면</div><p className="mt-2 text-sm text-slate-400">슬롯별 장착 모듈과 진행 작업을 카드로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Ti {tritanium}</span><span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span><span className="hud-chip">작업 {installationQueue.length}</span></div></div>
-        <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} onRepair={repairWithScrap} />
-        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">{MODULE_SLOTS.map((slot) => { const module = modules.find((entry) => entry.id === installed[slot]); const task = slotTask(slot); return <SlotCard key={slot} slot={slot} module={module} task={task} />; })}</div>
+        <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함선 슬롯 도면</div><p className="mt-2 text-sm text-slate-400">슬롯별 장착 모듈과 진행 작업을 카드로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Ti {tritanium}</span><span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span><span className="hud-chip">작업 {installationQueue.length + shipWorkQueue.length}</span></div></div>
+        <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} />
+        <div className="mt-4 grid grid-cols-2 gap-3 lg:grid-cols-3">{MODULE_SLOTS.map((slot) => { const module = modulesById.get(installed[slot]); const task = slotTask(slot); return <SlotCard key={slot} slot={slot} module={module} task={task} />; })}</div>
       </section>
       <section>
         <div className="section-title"><Wrench size={18} />외부 모듈 교체 & 개선</div>
-        <div className="mt-4 grid gap-4">{MODULE_SLOTS.map((slot) => { const slotModules = modules.filter((entry) => entry.slot === slot); const activeId = installed[slot]; const active = modules.find((entry) => entry.id === activeId); const currentSlotTask = slotTask(slot); return <div key={slot} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3"><div className="flex items-center justify-between gap-2"><div><div className="hud-label">{slot}</div><div className="font-black text-slate-100">현재: {active?.name ?? "미장착"}</div></div>{currentSlotTask ? <span className="hud-chip hud-chip-warn">작업 중</span> : active && <Badge rarity={active.rarity}>{active.rarity}</Badge>}</div>{currentSlotTask && <Progress task={currentSlotTask} currentMinute={currentMinute} />}<div className="mt-3 grid gap-3 md:grid-cols-2">{slotModules.map((module) => { const equipped = module.id === activeId; const owned = unlocked.includes(module.id); const rule = getModuleRule(module); const task = moduleTask(module.id); const materialQty = upgradeMaterialQty[module.rarity] ?? 2; const canUpgrade = owned && !task && resources.credits >= rule.upgradeCredits && getItemQty(items, "tritanium") >= materialQty; return <ModuleCard key={module.id} slot={slot} module={module} activeId={activeId} owned={owned} equipped={equipped} rule={rule} task={task} currentSlotTask={currentSlotTask} materialQty={materialQty} canUpgrade={canUpgrade} currentMinute={currentMinute} onEquip={() => equip(slot, module)} onUpgrade={() => upgrade(module)} />; })}</div></div>; })}</div>
+        <div className="mt-4 grid gap-4">{MODULE_SLOTS.map((slot) => { const slotModules = modulesBySlot[slot] ?? []; const activeId = installed[slot]; const active = modulesById.get(activeId); const currentSlotTask = slotTask(slot); return <div key={slot} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3"><div className="flex items-center justify-between gap-2"><div><div className="hud-label">{slot}</div><div className="font-black text-slate-100">현재: {active?.name ?? "미장착"}</div></div>{currentSlotTask ? <span className="hud-chip hud-chip-warn">작업 중</span> : active && <Badge rarity={active.rarity}>{active.rarity}</Badge>}</div>{currentSlotTask && <Progress task={currentSlotTask} currentMinute={currentMinute} />}<div className="mt-3 grid gap-3 md:grid-cols-2">{slotModules.map((module) => { const equipped = module.id === activeId; const owned = unlocked.includes(module.id); const rule = getModuleRule(module); const task = moduleTask(module.id); const materialQty = upgradeMaterialQty[module.rarity] ?? 2; const canUpgrade = owned && !task && resources.credits >= rule.upgradeCredits && getItemQty(items, "tritanium") >= materialQty; return <ModuleCard key={module.id} slot={slot} module={module} activeId={activeId} owned={owned} equipped={equipped} rule={rule} task={task} currentSlotTask={currentSlotTask} materialQty={materialQty} canUpgrade={canUpgrade} currentMinute={currentMinute} onEquip={() => equip(slot, module)} onUpgrade={() => upgrade(module)} />; })}</div></div>; })}</div>
       </section>
       <RoomCustomization />
     </div>
