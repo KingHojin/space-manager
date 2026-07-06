@@ -1,14 +1,10 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DRIFT } from "../data/constants";
+import { DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
 import { evaluateTravelCrewReadiness, travelReadinessMessage } from "../systems/crewAvailability";
 import { generateSector, findRoute, rollEncounter, routeDistance } from "../systems/navigationSystem";
 import { useCrewStore } from "./crewStore";
 import { useJobStore } from "./jobStore";
-
-const TRAVEL_MINUTES_PER_DISTANCE = 11;
-const FUEL_PER_DISTANCE = 1.15;
-const DISCOVERY_RADIUS_STEPS = 1;
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -27,7 +23,7 @@ function revealNeighbors(sector, discoveredIds, nodeId) {
   const discovered = new Set(discoveredIds);
   discovered.add(nodeId);
   let frontier = [nodeId];
-  for (let depth = 0; depth < DISCOVERY_RADIUS_STEPS; depth += 1) {
+  for (let depth = 0; depth < NAVIGATION_TRAVEL.discoveryRadiusSteps; depth += 1) {
     const nextFrontier = [];
     frontier.forEach((id) => {
       const node = sector.nodes.find((entry) => entry.id === id);
@@ -83,8 +79,8 @@ function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) 
   const route = findRoute(state.sector, state.currentNodeId, targetNodeId);
   if (route.length < 2) return { ok: false, reason: "noRoute" };
   const distance = routeDistance(state.sector, route);
-  const fuelCost = Math.max(2, distance * FUEL_PER_DISTANCE);
-  const duration = Math.max(18, Math.round(distance * TRAVEL_MINUTES_PER_DISTANCE));
+  const fuelCost = Math.max(2, distance * NAVIGATION_TRAVEL.fuelPerDistance);
+  const duration = Math.max(18, Math.round(distance * NAVIGATION_TRAVEL.minutesPerDistance));
   const travel = {
     fromId: route[0],
     toId: route[1],
@@ -218,10 +214,9 @@ export const useNavStore = create(
           const state = get();
           if (state.pendingEncounter) return { mode: "encounter", priority: "critical", title: state.pendingEncounter.title, desc: state.pendingEncounter.description, meta: state.pendingEncounter.typeLabel };
           if (state.travel) return { mode: "travel", priority: "medium", title: state.travel.missionTitle ? "임무 항해 중" : "항해 진행 중", desc: state.travel.missionTitle ? `${state.travel.missionTitle} · ${state.travel.fromId} → ${state.travel.toId}` : `${state.travel.fromId} → ${state.travel.toId}`, meta: `${Math.round(state.travel.progress ?? 0)}%` };
-          if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 상태", desc: `연료가 없어 이동할 수 없습니다. 압박 ${Math.round(state.driftState.pressure ?? 0)}%`, meta: `severity ${state.driftState.severity ?? 1}` };
+          if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 중", desc: "연료 고갈로 구조 대기 상태입니다.", meta: `severity ${state.driftState.severity}` };
           const current = state.sector.nodes.find((node) => node.id === state.currentNodeId);
-          const next = (current?.connections ?? []).map((id) => state.sector.nodes.find((node) => node.id === id)).filter(Boolean)[0];
-          return { mode: "idle", priority: "medium", title: "다음 목적지 선택", desc: next ? `${next.name} 항로 결재 가능` : "연결 노드를 찾을 수 없습니다.", meta: `${Math.round(state.fuel)} fuel` };
+          return { mode: "ready", priority: "low", title: current?.name ?? "대기", desc: "다음 노드를 선택해 항해를 시작하세요.", meta: `Fuel ${Math.round(state.fuel)}%` };
         },
       };
     },
@@ -229,10 +224,10 @@ export const useNavStore = create(
       name: "space-manager-nav",
       merge: (persistedState, currentState) => {
         const sector = normalizeSector(persistedState?.sector ?? currentState.sector);
-        const currentNodeId = persistedState?.currentNodeId ?? firstNodeId(sector);
-        const discovered = persistedState?.discovered ?? revealNeighbors(sector, [currentNodeId], currentNodeId);
-        const visited = persistedState?.visited ?? [currentNodeId];
-        return { ...currentState, ...(persistedState ?? {}), sector: withNodeFlags(sector, visited, discovered), currentNodeId, discovered, visited, route: persistedState?.route ?? [currentNodeId], travel: persistedState?.travel ?? null, fuel: clamp(persistedState?.fuel ?? 100, 0, 100), pendingEncounter: persistedState?.pendingEncounter ?? null, driftState: persistedState?.driftState ?? null, recruitCandidates: persistedState?.recruitCandidates ?? [], navLog: persistedState?.navLog ?? currentState.navLog };
+        const start = firstNodeId(sector);
+        const visited = persistedState?.visited ?? currentState.visited ?? [start];
+        const discovered = persistedState?.discovered ?? revealNeighbors(sector, visited, persistedState?.currentNodeId ?? start);
+        return { ...currentState, ...(persistedState ?? {}), sector: withNodeFlags(sector, visited, discovered), currentNodeId: persistedState?.currentNodeId ?? start, selectedNodeId: persistedState?.selectedNodeId ?? null, route: persistedState?.route ?? [persistedState?.currentNodeId ?? start], travel: persistedState?.travel ?? null, fuel: persistedState?.fuel ?? currentState.fuel, discovered, visited, pendingEncounter: persistedState?.pendingEncounter ?? null, driftState: persistedState?.driftState ?? null, recruitCandidates: persistedState?.recruitCandidates ?? [], navLog: persistedState?.navLog ?? currentState.navLog };
       },
     },
   ),
