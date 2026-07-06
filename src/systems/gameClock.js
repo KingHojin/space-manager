@@ -244,6 +244,7 @@ function applyUnifiedJob(job) {
   if (job.type === "training") return useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey });
   if (job.type === "treatment") return useCrewStore.getState().completeTreatmentJob({ memberId: job.payload?.targetCrewId, fatiguePenalty: job.payload?.fatiguePenalty, injury: job.payload?.injury });
   if (job.type === "recovery") return useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
+  if (job.type === "module_upgrade") return useShipStore.getState().applyModuleJob({ ...job.payload, cost: job.cost, duration: job.duration });
   const shipWork = jobToLegacyShipWork(job);
   if (shipWork) return applyShipWork(shipWork);
   return null;
