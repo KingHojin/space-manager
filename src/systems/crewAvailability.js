@@ -1,6 +1,7 @@
 import { canWorkWithInjury } from "./injurySystem";
 
 const BUSY_JOB_STATUSES = new Set(["assigned", "in_progress"]);
+const TARGETED_CREW_JOB_TYPES = new Set(["training", "treatment", "recovery"]);
 
 function isBusyJob(job) {
   return BUSY_JOB_STATUSES.has(job?.status);
@@ -12,7 +13,7 @@ export function getBusyCrewIdsFromJobs(jobs = []) {
   jobs.forEach((job) => {
     if (!isBusyJob(job)) return;
     if (job.assignedCrewId) ids.add(job.assignedCrewId);
-    if (job.type === "recovery" && job.payload?.targetCrewId) ids.add(job.payload.targetCrewId);
+    if (TARGETED_CREW_JOB_TYPES.has(job.type) && job.payload?.targetCrewId) ids.add(job.payload.targetCrewId);
   });
 
   return ids;
