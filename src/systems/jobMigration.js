@@ -5,20 +5,20 @@ const SHIP_WORK_TYPE_MAP = {
   salvageProcessing: "salvage",
 };
 
-const ROOM_ALIASES = {
-  engine_room: "engineering",
-  cargo_bay: "cargo",
-  cargo_hold: "cargo",
-  medical: "medbay",
-  bridge_room: "bridge",
-};
-
 const DEFAULT_ROOM_BY_TYPE = {
   recovery: "medbay",
   hull_repair: "engineering",
   salvage: "cargo",
   module_upgrade: "engineering",
   training: "living",
+};
+
+const ROOM_ALIASES = {
+  engine_room: "engineering",
+  cargo_bay: "cargo",
+  cargo_hold: "cargo",
+  medical: "medbay",
+  bridge_room: "bridge",
 };
 
 function createId(prefix) {
@@ -136,7 +136,6 @@ function recoveryToJob(task, now) {
       payload: {
         targetCrewId: task.memberId,
         fatigueRecovery: task.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
-        refund: { kind: "credits", amount: task.cost ?? 0 },
       },
       status: "in_progress",
     },
@@ -158,4 +157,35 @@ export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], now 
     else errors.push({ source: "recoveryQueue", id: task?.id ?? null, reason: "invalid_task" });
   });
   return { jobs, errors };
+}
+
+export function jobToLegacyShipWork(job) {
+  const normalized = normalizeJob(job);
+  if (normalized.type !== "hull_repair" && normalized.type !== "salvage") return null;
+  return {
+    id: normalized.id,
+    type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing",
+    roomId: normalized.roomId,
+    cost: normalized.cost,
+    duration: normalized.duration,
+    payload: normalized.payload,
+    priority: normalized.priority,
+    startedAt: normalized.startedAt ?? normalized.createdAt,
+    completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
+  };
+}
+
+export function jobToLegacyRecovery(job) {
+  const normalized = normalizeJob(job);
+  if (normalized.type !== "recovery") return null;
+  return {
+    id: normalized.id,
+    memberId: normalized.payload?.targetCrewId,
+    cost: normalized.cost,
+    duration: normalized.duration,
+    fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery,
+    priority: normalized.priority,
+    startedAt: normalized.startedAt ?? normalized.createdAt,
+    completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
+  };
 }
