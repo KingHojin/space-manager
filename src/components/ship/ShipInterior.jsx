@@ -1,13 +1,17 @@
-import { Activity, AlertTriangle, Flame, ShieldAlert, Thermometer, ZapOff } from "lucide-react";
+import { Activity, AlertTriangle, Cpu, Flame, Rocket, Shield, ShieldAlert, Sparkles, Thermometer, Zap, ZapOff } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { DISPLAY_ROOMS, DISPLAY_ROUTES } from "../../data/shipRooms";
 import { displayRoomCenter, roomAnchorPoint, roomForCrewActivity } from "../../data/shipInteriorLayout";
 import { calculateRoomModifiers } from "../../data/roomModules";
+import { ROOM_SLOTS } from "../../data/constants";
 import { CRISIS_CATALOG } from "../../systems/crisisSystem";
 import { getRoomJob } from "../../systems/roomJobs";
 import { useGameStore } from "../../stores/gameStore";
+import { useShipStore } from "../../stores/shipStore";
 import { deriveAnimationIntent, deriveTargetAnimState, useCrewMotionStore } from "../../stores/crewMotionStore";
 import CrewLayer, { CrewActivitySummary } from "./CrewLayer";
+
+const SLOT_ICON = { engine: Rocket, "weapon-a": Zap, "weapon-b": Zap, shield: Shield, cargo: Cpu, special: Sparkles };
 
 const CRISIS_ICONS = { overheat: Thermometer, fire: Flame, power_loss: ZapOff, hull_breach: ShieldAlert, intruder: AlertTriangle };
 
@@ -174,8 +178,30 @@ function deriveBarkTrigger(activity, animState) {
   return null;
 }
 
-export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], compact = false, onCrewClick }) {
+function EquipmentBadges({ roomId, installed, modulesById, compact }) {
+  const slots = ROOM_SLOTS[roomId];
+  if (!slots || slots.length === 0) return null;
+  return (
+    <div className="absolute right-1 top-6 flex flex-col items-end gap-0.5">
+      {slots.map((slot) => {
+        const module = modulesById.get(installed[slot]);
+        const Icon = SLOT_ICON[slot] ?? Cpu;
+        return (
+          <span key={slot} title={`${slot}: ${module?.name ?? "미장착"}`} className={`flex items-center gap-0.5 rounded border px-1 text-[9px] font-bold ${module ? "border-cyan-300/40 bg-slate-950/70 text-cyan-100" : "border-slate-700/60 bg-slate-950/50 text-slate-500"}`}>
+            <Icon size={compact ? 9 : 10} />
+            {!compact && (module ? `Lv${module.level}` : "-")}
+          </span>
+        );
+      })}
+    </div>
+  );
+}
+
+export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], compact = false, showEquipment = false, onCrewClick, onRoomClick }) {
   const isPaused = useGameStore((state) => state.isPaused);
+  const shipModules = useShipStore((state) => state.modules);
+  const installed = useShipStore((state) => state.installed);
+  const modulesById = useMemo(() => new Map(shipModules.map((module) => [module.id, module])), [shipModules]);
   const motionByCrewId = useCrewMotionStore((state) => state.motionByCrewId);
   const syncTargets = useCrewMotionStore((state) => state.syncTargets);
   const [mapRef, mapSize] = useShipMapSize();
@@ -231,10 +257,20 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
             : crisis
               ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" }
               : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
+          const clickable = operational && Boolean(onRoomClick);
           return (
-            <div key={room.id} title={roomTooltip(room, roomState, assigned)} className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`} style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}>
+            <div
+              key={room.id}
+              title={roomTooltip(room, roomState, assigned)}
+              role={clickable ? "button" : undefined}
+              tabIndex={clickable ? 0 : undefined}
+              onClick={clickable ? () => onRoomClick(room.id) : undefined}
+              className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${clickable ? "cursor-pointer transition hover:brightness-125" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""}`}`}
+              style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}
+            >
               <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
               {operational && !compact && <div className="mt-1 flex flex-wrap gap-1"><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">C{Math.round(roomState?.condition ?? 0)}</span><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">L{Math.round(roomState?.load ?? 0)}</span></div>}
+              {operational && showEquipment && <EquipmentBadges roomId={room.id} installed={installed} modulesById={modulesById} compact={compact} />}
               {operational && <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>}
               {operational && !compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers?.slots ?? 1)}</span>}
               {!crisis && diagnostic && <span className={`absolute left-1 top-7 max-w-[calc(100%-0.5rem)] truncate rounded border px-1.5 py-0.5 text-[9px] font-black ${diagnostic.tone}`}>{diagnostic.label}</span>}

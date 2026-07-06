@@ -190,6 +190,27 @@ export const SHIP_GRADES = {
 
 export const MODULE_SLOTS = ["engine", "weapon-a", "weapon-b", "shield", "cargo", "special"];
 
+export const SLOT_ROOM = {
+  engine: "engineering",
+  shield: "engineering",
+  cargo: "cargo",
+  special: "ops",
+  "weapon-a": "ops",
+  "weapon-b": "ops",
+};
+
+export const ROOM_SLOTS = {
+  engineering: ["engine", "shield"],
+  ops: ["weapon-a", "weapon-b", "special"],
+  cargo: ["cargo"],
+};
+
+export const POWER = {
+  reactorBaseByGrade: { shuttle: 7, corvette: 9, frigate: 11, cruiser: 14 },
+  reactorPerEngineeringTier: 2,
+  moduleCostByRarity: { common: 1, uncommon: 1, rare: 2, epic: 3, legendary: 4 },
+};
+
 export const MENU_ITEMS = [
   { id: "overview", label: "홈", sub: "대시보드" },
   { id: "exploration", label: "지도", sub: "성계 탐사" },

@@ -1,20 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG } from "../data/constants";
+import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG, SLOT_ROOM } from "../data/constants";
 import { jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 
 const ACTIVE = new Set(["backlog", "assigned", "in_progress"]);
 const LEGACY_MIGRATION_VERSION = 3;
-const MODULE_ROOM_BY_SLOT = {
-  engine: "engineering",
-  shield: "engineering",
-  cargo: "cargo",
-  special: "ops",
-  "weapon-a": "ops",
-  "weapon-b": "ops",
-};
+const MODULE_ROOM_BY_SLOT = SLOT_ROOM;
 
 function createId() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `job-${Date.now()}`;
