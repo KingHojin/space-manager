@@ -105,8 +105,15 @@ function applyTreatment(member, task) {
 
 function applyRecovery(member, task = {}) {
   if (!member.alive) return member;
-  const needs = applyNeedDelta(member.needs, { hunger: -12, mood: 10, stress: -18, sleepDebt: -26, hygiene: 8 });
+  const needs = applyNeedDelta(member.needs, { hunger: 14, mood: 6, stress: -18, sleepDebt: -30, hygiene: -4 });
   return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) - (task.fatigueRecovery ?? 32), 0, 100), morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs) };
+}
+
+function applyMeal(member, quality = "ration") {
+  if (!member.alive) return member;
+  const cooked = quality === "cooked";
+  const needs = applyNeedDelta(member.needs, { hunger: cooked ? -46 : -32, mood: cooked ? 6 : 2, stress: cooked ? -4 : -1, hygiene: -1 });
+  return { ...member, needs, morale: moraleFromNeeds(member.morale, needs) };
 }
 
 function activityTreatmentTargets(crew, activities = []) {
@@ -227,6 +234,12 @@ export const useCrewStore = create(
         const member = get().crew.find((entry) => entry.id === memberId);
         set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyRecovery(entry, task) : entry)) }));
         return `${member?.name ?? "승무원"} 회복 절차 완료.`;
+      },
+      completeMeal: ({ memberId, quality = "ration" }) => {
+        const member = get().crew.find((entry) => entry.id === memberId);
+        if (!member?.alive) return null;
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyMeal(entry, quality) : entry)) }));
+        return `${member.name} 식사 완료.`;
       },
       tickCrewNeeds: ({ deltaMinutes = 0, mode = "normal", severity = 1 }) => {
         if (deltaMinutes <= 0) return [];
