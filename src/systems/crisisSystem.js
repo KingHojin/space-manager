@@ -11,6 +11,7 @@ export const CRISIS_CATALOG = {
     actionLabel: "냉각",
     responderAction: "냉각수 우회",
     fitRoles: ["기관실"],
+    responderSlots: 2,
     baseMinutes: 48,
     escalateMinutes: 70,
     conditionHit: 18,
@@ -25,6 +26,7 @@ export const CRISIS_CATALOG = {
     actionLabel: "진화",
     responderAction: "화재 진압",
     fitRoles: ["기관실"],
+    responderSlots: 3,
     baseMinutes: 72,
     escalateMinutes: 60,
     conditionHit: 30,
@@ -41,6 +43,7 @@ export const CRISIS_CATALOG = {
     actionLabel: "전력 복구",
     responderAction: "전력 계통 복구",
     fitRoles: ["기관실"],
+    responderSlots: 2,
     baseMinutes: 64,
     escalateMinutes: 80,
     conditionHit: 16,
@@ -55,6 +58,7 @@ export const CRISIS_CATALOG = {
     actionLabel: "봉합 수리",
     responderAction: "선체 균열 봉합",
     fitRoles: ["기관실"],
+    responderSlots: 3,
     baseMinutes: 105,
     escalateMinutes: 70,
     conditionHit: 38,
@@ -71,6 +75,7 @@ export const CRISIS_CATALOG = {
     actionLabel: "제압",
     responderAction: "침입자 제압",
     fitRoles: ["포탑", "함교"],
+    responderSlots: 2,
     baseMinutes: 78,
     escalateMinutes: 65,
     conditionHit: 20,
@@ -107,6 +112,7 @@ export function createCrisisRecord({ roomId, type, severity = 1, currentMinute =
     progress: 0,
     escalateAt: currentMinute + config.escalateMinutes,
     assignedCrewId: null,
+    assignedCrewIds: [],
     createdAtMinutes: currentMinute,
   };
 }
@@ -120,6 +126,11 @@ export function getCrisisLabel(crisis) {
   return `${config.icon} ${config.label}`;
 }
 
+export function getCrisisResponderSlots(crisis) {
+  const config = getCrisisConfig(crisis?.type);
+  return Math.max(1, config.responderSlots ?? 1);
+}
+
 export function canCrewRespondToCrisis(member) {
   if (!member?.alive) return false;
   if (!canWorkWithInjury(member.injury)) return false;
@@ -131,7 +142,6 @@ export function canCrewRespondToCrisis(member) {
 
 export function scoreCrisisForMember(member, crisis) {
   if (!canCrewRespondToCrisis(member) || !crisis) return null;
-  if (crisis.assignedCrewId && crisis.assignedCrewId !== member.id) return null;
 
   const config = getCrisisConfig(crisis.type);
   const roleFit = config.fitRoles.includes(member.role);
@@ -141,7 +151,7 @@ export function scoreCrisisForMember(member, crisis) {
 
   let score = 200 + crisis.severity * 50;
   if (roleFit) score += 85;
-  if (crisis.assignedCrewId === member.id) score += 35;
+  if (crisis.assignedCrewId === member.id || (crisis.assignedCrewIds ?? []).includes(member.id)) score += 35;
   score += statBoost;
   score -= (member.fatigue ?? 0) * 0.35;
   score *= injuryWorkSpeedMultiplier(member.injury);
