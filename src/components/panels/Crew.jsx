@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
+import { Compass, Cross, Crosshair, User, Users, Utensils, Wrench } from "lucide-react";
 import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
@@ -20,6 +20,7 @@ import { useGameStore } from "../../stores/gameStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { statLabel } from "../../utils/format";
+import CrewFacilityStatus from "../crew/CrewFacilityStatus";
 import ShipInterior from "../ship/ShipInterior";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
@@ -29,6 +30,7 @@ const ROLE_ICONS = {
   포탑: { icon: Crosshair, color: "text-red-300", mark: "🎯" },
   기관실: { icon: Wrench, color: "text-amber-300", mark: "🛠" },
   의무실: { icon: Cross, color: "text-emerald-300", mark: "✚" },
+  조리실: { icon: Utensils, color: "text-orange-300", mark: "🍳" },
 };
 
 const TRAINING_COST = JOB_ECONOMY.training.credits;
@@ -49,6 +51,7 @@ const trainingByRole = {
   포탑: "gunnery",
   기관실: "engineering",
   의무실: "medicine",
+  조리실: "cooking",
 };
 
 const defaultNeeds = {
@@ -92,13 +95,11 @@ function needTone(key, value) {
     if (value <= 50) return "hud-chip-warn";
     return "hud-chip-success";
   }
-
   if (key === "hygiene") {
     if (value <= 25) return "hud-chip-danger";
     if (value <= 55) return "hud-chip-warn";
     return "hud-chip-success";
   }
-
   if (value >= 75) return "hud-chip-danger";
   if (value >= 45) return "hud-chip-warn";
   return "hud-chip-success";
@@ -119,7 +120,6 @@ function Progress({ task, currentMinute, label }) {
   const progress = Math.max(0, Math.min(100, Math.round(raw)));
   const priority = getPriorityConfig(task.priority);
   const completeAt = task.completeAt ?? (task.startedAt ? task.startedAt + task.duration : null);
-
   return (
     <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3">
       <div className="mb-1 flex items-center justify-between text-xs">
@@ -140,9 +140,7 @@ function Progress({ task, currentMinute, label }) {
 function InjuryProgress({ injury }) {
   const normalized = normalizeInjury(injury);
   if (normalized.state === "healthy") return null;
-
   const label = INJURY_CATALOG[normalized.state]?.label ?? "부상";
-
   return (
     <div className="mt-3 rounded-xl border border-red-400/25 bg-red-400/10 p-3">
       <div className="mb-1 flex items-center justify-between text-xs">
@@ -154,9 +152,7 @@ function InjuryProgress({ injury }) {
       </div>
       <div className="mt-2 flex flex-wrap gap-1.5 text-xs">
         {normalized.treatedBy && <span className="hud-chip hud-chip-accent">치료 중</span>}
-        {(normalized.untreatedMinutes ?? 0) > 0 && (
-          <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>
-        )}
+        {(normalized.untreatedMinutes ?? 0) > 0 && <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>}
       </div>
     </div>
   );
@@ -180,7 +176,6 @@ function NeedGrid({ member }) {
     ["sleepDebt", "수면", needs.sleepDebt],
     ["hygiene", "위생", needs.hygiene],
   ];
-
   return (
     <div className="mt-3 grid grid-cols-5 gap-1.5 text-xs">
       {entries.map(([key, label, value]) => (
@@ -194,12 +189,8 @@ function NeedGrid({ member }) {
 }
 
 function ActivityCard({ activity }) {
-  if (!activity) {
-    return <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/55 p-3 text-sm text-slate-400">AI 대기 중</div>;
-  }
-
+  if (!activity) return <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/55 p-3 text-sm text-slate-400">AI 대기 중</div>;
   const priority = getPriorityConfig(activity.priority);
-
   return (
     <div className="mt-3 rounded-xl border border-sky-400/30 bg-sky-400/10 p-3 text-sm">
       <div className="flex items-start justify-between gap-2">
@@ -217,7 +208,6 @@ function CrewPortrait({ member }) {
   const config = ROLE_ICONS[member.role] ?? { mark: "👤" };
   const fatigue = Math.round(member.fatigue ?? 0);
   const condition = Math.max(0, 100 - fatigue);
-
   return (
     <div className="relative grid h-28 place-items-center overflow-hidden rounded-2xl border border-cyan-300/20 bg-cyan-300/10">
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(125,211,252,0.22),transparent_56%)]" />
@@ -247,11 +237,7 @@ export default function Crew() {
   const coverageCounts = coverage.counts ?? {};
   const missingRoles = coverage.missingRoles ?? [];
   const roomCount = Object.keys(rooms ?? {}).length;
-
-  const injuredCrewCount = useMemo(
-    () => crew.filter((member) => member.alive && isInjured(member.injury)).length,
-    [crew],
-  );
+  const injuredCrewCount = useMemo(() => crew.filter((member) => member.alive && isInjured(member.injury)).length, [crew]);
   const taskByMemberId = useMemo(
     () => ({
       training: indexByMemberId(trainingQueue),
@@ -328,7 +314,6 @@ export default function Crew() {
             return (
               <article key={member.id} className={`mission-contract-card rounded-2xl border p-3 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
                 <CrewPortrait member={member} />
-
                 <div className="mt-3 flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
@@ -339,47 +324,31 @@ export default function Crew() {
                   </div>
                   <span className={`hud-chip shrink-0 ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span>
                 </div>
-
                 <ActivityCard activity={activity} />
-
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm">
                   <Info label="피로" value={`${Math.round(member.fatigue ?? 0)}%`} tone={fatigueTone(member.fatigue ?? 0)} />
                   <Info label="사기" value={member.morale ?? "보통"} />
                   <Info label="경험" value={member.experience ?? 0} />
                 </div>
-
                 <NeedGrid member={member} />
                 <InjuryProgress injury={member.injury} />
                 {trainingTask && <Progress task={trainingTask} currentMinute={currentMinute} label="훈련 진행" />}
                 {treatmentTask && <Progress task={treatmentTask} currentMinute={currentMinute} label="치료 진행" />}
                 {recoveryTask && <Progress task={recoveryTask} currentMinute={currentMinute} label="회복 진행" />}
-
                 {injury.permanentTraits.length > 0 && (
                   <div className="mt-3 flex flex-wrap gap-1.5">
-                    {injury.permanentTraits.map((trait) => (
-                      <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>
-                    ))}
+                    {injury.permanentTraits.map((trait) => <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>)}
                   </div>
                 )}
-
                 <div className="mt-3 flex flex-wrap gap-1.5">
                   {Object.entries(member.stats ?? {}).map(([key, value]) => (
-                    <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>
-                      {statLabel[key] ?? key} {value}
-                    </span>
+                    <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>{statLabel[key] ?? key} {value}</span>
                   ))}
                 </div>
-
                 <div className="mt-4 grid grid-cols-3 gap-2">
-                  <button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>
-                    {trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}
-                  </button>
-                  <button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < RECOVERY_COST} onClick={() => recover(member)}>
-                    {recoveryTask ? "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}
-                  </button>
-                  <button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>
-                    {treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : !isInjured(member.injury) ? "정상" : "치료"}
-                  </button>
+                  <button className="secondary-button justify-center" disabled={!member.alive || isBusy || !isHealthy(member.injury) || resources.credits < TRAINING_COST} onClick={() => train(member)}>{trainingTask ? "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button>
+                  <button className="secondary-button justify-center" disabled={!member.alive || isBusy || resources.credits < RECOVERY_COST} onClick={() => recover(member)}>{recoveryTask ? "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button>
+                  <button className="secondary-button justify-center" disabled={!member.alive || !isInjured(member.injury) || isBusy || resources.credits < rule.cost} onClick={() => treat(member)}>{treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : !isInjured(member.injury) ? "정상" : "치료"}</button>
                 </div>
               </article>
             );
@@ -389,13 +358,12 @@ export default function Crew() {
 
       <div className="grid gap-4">
         <ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} />
+        <CrewFacilityStatus />
 
         <section>
           <div className="section-title">역할 커버리지</div>
           <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            {Object.entries(coverageCounts).map(([role, value]) => (
-              <Info key={role} label={role} value={`${value}명`} />
-            ))}
+            {Object.entries(coverageCounts).map(([role, value]) => <Info key={role} label={role} value={`${value}명`} />)}
           </div>
         </section>
 
@@ -411,14 +379,8 @@ export default function Crew() {
         <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="section-title">최근 AI 배정</div>
           <div className="mt-3 grid gap-2">
-            {(crewActivityLog ?? []).slice(0, 6).map((entry, index) => (
-              <div key={`${entry}-${index}`} className="rounded-xl border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">
-                {entry}
-              </div>
-            ))}
-            {(crewActivityLog ?? []).length === 0 && (
-              <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>
-            )}
+            {(crewActivityLog ?? []).slice(0, 6).map((entry, index) => <div key={`${entry}-${index}`} className="rounded-xl border border-slate-700/70 bg-slate-900/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}
+            {(crewActivityLog ?? []).length === 0 && <div className="text-sm text-slate-500">게임 시간이 흐르면 승무원 AI 배정 기록이 여기에 표시됩니다.</div>}
           </div>
         </section>
       </div>
