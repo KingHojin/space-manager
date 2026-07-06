@@ -55,6 +55,7 @@ function mergeCrises(savedCrises) {
       progress: clamp(crisis.progress ?? 0, 0, 100),
       escalateAt: crisis.escalateAt ?? crisis.createdAtMinutes ?? 0,
       assignedCrewId: crisis.assignedCrewId ?? null,
+      assignedCrewIds: crisis.assignedCrewIds ?? (crisis.assignedCrewId ? [crisis.assignedCrewId] : []),
       createdAtMinutes: crisis.createdAtMinutes ?? 0,
     }));
 }
@@ -97,6 +98,12 @@ function isCrewUsable(member) {
 
 function clearOverflowAssignments(room) {
   return normalizeRoom(room);
+}
+
+function normalizeCrisisActivityList(activity) {
+  if (!activity) return [];
+  if (Array.isArray(activity)) return activity.filter(Boolean);
+  return [activity];
 }
 
 export const useShipInteriorStore = create(
@@ -169,7 +176,7 @@ export const useShipInteriorStore = create(
         });
         return spawned;
       },
-      assignCrisisResponder: (crisisId, crewId) => set((state) => ({ activeCrises: (state.activeCrises ?? []).map((crisis) => (crisis.id === crisisId ? { ...crisis, assignedCrewId: crewId } : crisis)) })),
+      assignCrisisResponder: (crisisId, crewId) => set((state) => ({ activeCrises: (state.activeCrises ?? []).map((crisis) => (crisis.id === crisisId ? { ...crisis, assignedCrewId: crewId, assignedCrewIds: crewId ? [crewId] : [] } : crisis)) })),
       progressCrisis: (crisisId, amount = 0, currentMinute = 0) => {
         let resolved = null;
         set((state) => {
@@ -209,7 +216,7 @@ export const useShipInteriorStore = create(
         const effects = [];
         const logs = [];
         const crewById = new Map(crew.map((member) => [member.id, member]));
-        const responderByCrisisId = new Map(Object.entries(crisisActivities).map(([crisisId, activity]) => [crisisId, activity.memberId]));
+        const respondersByCrisisId = new Map(Object.entries(crisisActivities).map(([crisisId, activity]) => [crisisId, normalizeCrisisActivityList(activity).map((entry) => entry.memberId).filter(Boolean)]));
         const missingRoles = new Set(roleCoverage?.missingRoles ?? []);
         set((state) => {
           const rooms = { ...state.rooms };
@@ -229,13 +236,13 @@ export const useShipInteriorStore = create(
             const room = rooms[crisis.roomId];
             if (!room) return null;
             const modifiers = calculateRoomModifiers(room);
-            const responderId = responderByCrisisId.get(crisis.id) ?? null;
-            const responder = isCrewUsable(crewById.get(responderId)) ? crewById.get(responderId) : null;
-            let next = { ...crisis, assignedCrewId: responder?.id ?? null };
-            if (responder) {
-              const gained = crisisResponseRatePerMinute(responder, next) * deltaMinutes * (1 + (modifiers.crisisResist ?? 0));
+            const responderIds = respondersByCrisisId.get(crisis.id) ?? [];
+            const responders = responderIds.map((id) => crewById.get(id)).filter(isCrewUsable);
+            let next = { ...crisis, assignedCrewId: responders[0]?.id ?? null, assignedCrewIds: responders.map((member) => member.id) };
+            if (responders.length > 0) {
+              const gained = responders.reduce((sum, responder) => sum + crisisResponseRatePerMinute(responder, next) * deltaMinutes * (1 + (modifiers.crisisResist ?? 0)), 0);
               next = { ...next, progress: clamp((next.progress ?? 0) + gained, 0, 100) };
-              maybeInjureResponder({ effects, crisis: next, responder, chanceMultiplier: deltaMinutes / 90, room });
+              responders.forEach((responder) => maybeInjureResponder({ effects, crisis: next, responder, chanceMultiplier: deltaMinutes / 120 / Math.max(1, responders.length), room }));
             } else {
               const hours = deltaMinutes / 60;
               const rolePenalty = missingRoles.has("기관실") ? 1.35 : 1;
