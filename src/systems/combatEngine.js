@@ -1,3 +1,5 @@
+import { isHealthy } from "./injurySystem";
+
 const moraleScore = {
   나쁨: -4,
   보통: 0,
@@ -65,7 +67,7 @@ export const calculateCombatPower = ({ modules, crew, activeCards }) => {
       Math.floor(member.stats.scouting / 4) +
       (moraleScore[member.morale] ?? 0) -
       Math.floor((member.fatigue ?? 0) / 20) -
-      (member.injury === "정상" ? 0 : 8),
+      (isHealthy(member.injury) ? 0 : 8),
     0,
   );
   const cardBonus = activeCards.some((card) => card.id === "battle-focus") ? 1.05 : 1;
