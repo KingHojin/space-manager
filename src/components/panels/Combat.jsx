@@ -135,19 +135,36 @@ function EnemySubsystemPanel({ enemy }) {
   );
 }
 
+function combatOutcomeSummary({ isMissionCombat, won, failed }) {
+  if (isMissionCombat && won) return "임무 전투에서 승리했습니다. 임무는 유지되며 탐사 화면에서 보상을 수령할 수 있습니다.";
+  if (isMissionCombat && failed) return "임무 전투가 실패로 종료되어 계약이 실패 처리되었습니다. 새 임무를 고르거나 함선을 정비하세요.";
+  if (won) return "교전에서 승리했습니다. 전리품과 피해 상황을 확인한 뒤 다음 작전을 준비하세요.";
+  return "교전이 종료되었습니다. 피해와 승무원 상태를 점검한 뒤 브리핑을 정리하세요.";
+}
+
+function combatOutcomeNextAction({ isMissionCombat, won, failed }) {
+  if (isMissionCombat && won) return "탐사 화면으로 복귀 → 임무 완료 보상 수령";
+  if (isMissionCombat && failed) return "임무 게시판 확인 → 새 계약 선택 또는 정비";
+  if (won) return "브리핑 초기화 → 다음 교전 또는 항해 준비";
+  return "브리핑 초기화 → 함선/승무원 피해 점검";
+}
+
 function CombatOutcomeActions({ combat, onNavigate, onOpenModal, onResetCombat }) {
   if (!combat || combat.status === "engaged") return null;
   const isMissionCombat = combat.source?.kind === "missionEncounter";
   const won = combat.status === "won";
   const failed = combat.status === "retreated" || combat.status === "lost";
   if (!won && !failed) return null;
+  const summary = combatOutcomeSummary({ isMissionCombat, won, failed });
+  const nextAction = combatOutcomeNextAction({ isMissionCombat, won, failed });
 
   return (
     <section className={`mt-3 rounded-2xl border p-3 ${won ? "border-emerald-300/35 bg-emerald-300/10" : "border-red-300/35 bg-red-400/10"}`}>
       <div className="flex items-center justify-between gap-2"><div className="section-title"><CheckCircleIcon won={won} />전투 결과 처리</div><span className={`hud-chip ${won ? "hud-chip-success" : "hud-chip-danger"}`}>{missionCombatOutcomeLabel(combat.status)}</span></div>
-      {isMissionCombat && won && <p className="mt-2 text-sm leading-6 text-emerald-100">임무 전투 승리. 탐사 화면으로 돌아가 임무 완료 보상을 수령할 수 있습니다.</p>}
-      {isMissionCombat && failed && <p className="mt-2 text-sm leading-6 text-red-100">임무 전투 {missionCombatOutcomeLabel(combat.status)}로 계약이 실패 처리되었습니다. 브리핑을 정리하거나 임무 게시판으로 돌아가세요.</p>}
-      {!isMissionCombat && <p className="mt-2 text-sm leading-6 text-slate-300">교전이 종료되었습니다. 브리핑을 초기화하거나 새 조우를 준비하세요.</p>}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        <div className="rounded-xl border border-slate-700/70 bg-slate-950/65 p-3"><div className="hud-label">결과 요약</div><p className="mt-1 text-sm leading-6 text-slate-200">{summary}</p></div>
+        <div className="rounded-xl border border-slate-700/70 bg-slate-950/65 p-3"><div className="hud-label">다음 행동</div><p className={`mt-1 text-sm font-bold leading-6 ${won ? "text-emerald-100" : "text-red-100"}`}>{nextAction}</p></div>
+      </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {isMissionCombat && won && <button className="primary-button justify-center" onClick={() => onNavigate?.("exploration")}>탐사로 돌아가 임무 완료</button>}
         {isMissionCombat && failed && <button className="primary-button justify-center" onClick={() => onOpenModal?.("missions")}>임무 게시판 열기</button>}
@@ -199,6 +216,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const maxDanger = Math.max(1, ...getAllZones().filter((zone) => discoveredZoneIds.includes(zone.id)).map((zone) => zone.danger));
   const activeTravel = legacyTravel ?? navTravel;
   const combatEngaged = combat?.status === "engaged";
+  const combatTerminal = Boolean(combat && ["won", "retreated", "lost"].includes(combat.status));
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter && !combatEngaged);
   const selectedTarget = COMBAT_TARGETS[targetId] ?? COMBAT_TARGETS.hull;
 
@@ -289,7 +307,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
           {enemy && <EnemySubsystemPanel enemy={enemy} />}
           <CombatOutcomeActions combat={combat} onNavigate={onNavigate} onOpenModal={onOpenModal} onResetCombat={resetCombat} />
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
-          {combat && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
+          {combat && !combatTerminal && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
         <section className="mt-4 rounded-2xl border border-cyan-300/25 bg-cyan-300/10 p-3"><div className="section-title"><Target size={16} />타겟 서브시스템</div><div className="mt-3 grid grid-cols-2 gap-2">{Object.values(COMBAT_TARGETS).map((target) => <TargetCard key={target.id} target={target} active={target.id === targetId} disabled={!combatEngaged} onSelect={selectTarget} />)}</div></section>
         <div className="mt-4 grid grid-cols-2 gap-2">{directives.map(([id, label, icon, desc]) => <ActionCard key={id} icon={icon} title={label} desc={`${desc} · ${selectedTarget.label} 조준`} disabled={!canIssueDirective} onClick={() => issueDirective(id)} />)}</div>
