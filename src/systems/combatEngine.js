@@ -179,7 +179,7 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
 
   const baseDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage * target.damage * (tactical.damageMul ?? 1)));
   const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * target.shieldRatio * shieldDamageMul));
-  const hullDamage = Math.max(0, baseDamage - Math.round(baseDamage * target.shieldRatio));
+  const hullDamage = Math.max(0, baseDamage - shieldDamage);
   next.enemy.shieldNow = Math.max(0, next.enemy.shieldNow - shieldDamage);
   next.enemy.hullNow = Math.max(0, next.enemy.hullNow - hullDamage);
   next.lastDamage = shieldDamage + hullDamage;
