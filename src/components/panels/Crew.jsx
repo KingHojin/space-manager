@@ -116,26 +116,14 @@ function Progress({ task, currentMinute, label }) {
   const progress = Math.max(0, Math.min(100, Math.round(raw)));
   const priority = getPriorityConfig(task.priority);
   const completeAt = task.completeAt ?? (task.startedAt ? task.startedAt + task.duration : null);
-  return (
-    <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3">
-      <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div>
-      <div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div>
-      <div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">{completeAt ? `완료 ${formatGameDate(completeAt)}` : "슬롯 대기"}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span></div>
-    </div>
-  );
+  return <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div><div className="hud-gauge"><span className="hud-gauge-fill" style={{ width: `${progress}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs"><span className="hud-chip">{completeAt ? `완료 ${formatGameDate(completeAt)}` : "슬롯 대기"}</span><span className={`hud-chip ${priority.tone}`}>우선 {priority.shortLabel}</span></div></div>;
 }
 
 function InjuryProgress({ injury }) {
   const normalized = normalizeInjury(injury);
   if (normalized.state === "healthy") return null;
   const label = INJURY_CATALOG[normalized.state]?.label ?? "부상";
-  return (
-    <div className="mt-3 rounded-xl border border-red-400/25 bg-red-400/10 p-3">
-      <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label} 회복률</span><span className="hud-value">{Math.round(normalized.recoveryProgress ?? 0)}%</span></div>
-      <div className="hud-gauge hud-gauge-warn"><span className="hud-gauge-fill" style={{ width: `${normalized.recoveryProgress ?? 0}%` }} /></div>
-      <div className="mt-2 flex flex-wrap gap-1.5 text-xs">{normalized.treatedBy && <span className="hud-chip hud-chip-accent">치료 중</span>}{(normalized.untreatedMinutes ?? 0) > 0 && <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>}</div>
-    </div>
-  );
+  return <div className="mt-3 rounded-xl border border-red-400/25 bg-red-400/10 p-3"><div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label} 회복률</span><span className="hud-value">{Math.round(normalized.recoveryProgress ?? 0)}%</span></div><div className="hud-gauge hud-gauge-warn"><span className="hud-gauge-fill" style={{ width: `${normalized.recoveryProgress ?? 0}%` }} /></div><div className="mt-2 flex flex-wrap gap-1.5 text-xs">{normalized.treatedBy && <span className="hud-chip hud-chip-accent">치료 중</span>}{(normalized.untreatedMinutes ?? 0) > 0 && <span className="hud-chip hud-chip-warn">미치료 {formatMinutes(Math.round(normalized.untreatedMinutes))}</span>}</div></div>;
 }
 
 function Info({ label, value, tone = "" }) {
@@ -212,11 +200,12 @@ export default function Crew() {
   const treat = (member) => {
     if (!member.alive || !isInjured(member.injury) || busy(member.id)) return addLog(`${member.name} 치료 불가: 상태 또는 작업 큐를 확인하세요.`);
     const rule = treatmentRule(member.injury);
+    const label = injuryLabel(member.injury);
     if (!spendCredits(rule.cost)) return addLog(`${member.name} 치료 실패: 크레딧 부족.`);
     const completeAt = currentMinute + rule.minutes;
-    const priority = inferTreatmentPriority(injuryLabel(member.injury));
-    startTreatment({ memberId: member.id, injury: member.injury, completeAt, cost: rule.cost, duration: rule.minutes, fatiguePenalty: rule.fatiguePenalty, priority, createdAt: currentMinute });
-    return addLog(`${member.name} 치료 대기열 등록: ${injuryLabel(member.injury)}, 우선순위 ${getPriorityConfig(priority).label}, ₢${rule.cost}, ${formatMinutes(rule.minutes)}.`);
+    const priority = inferTreatmentPriority(label);
+    startTreatment({ memberId: member.id, injury: label, completeAt, cost: rule.cost, duration: rule.minutes, fatiguePenalty: rule.fatiguePenalty, priority, createdAt: currentMinute });
+    return addLog(`${member.name} 치료 대기열 등록: ${label}, 우선순위 ${getPriorityConfig(priority).label}, ₢${rule.cost}, ${formatMinutes(rule.minutes)}.`);
   };
 
   return (
