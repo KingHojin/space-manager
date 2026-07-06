@@ -1,11 +1,19 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG } from "../data/constants";
-import { jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
+import { jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 
 const ACTIVE = new Set(["backlog", "assigned", "in_progress"]);
+const MODULE_ROOM_BY_SLOT = {
+  engine: "engineering",
+  shield: "engineering",
+  cargo: "cargo",
+  special: "ops",
+  "weapon-a": "ops",
+  "weapon-b": "ops",
+};
 
 function createId() {
   return globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `job-${Date.now()}`;
@@ -64,6 +72,10 @@ function makeJob(input = {}) {
   });
 }
 
+function moduleRoom(slot) {
+  return MODULE_ROOM_BY_SLOT[slot] ?? "engineering";
+}
+
 export const useJobStore = create(
   persist(
     (set, get) => ({
@@ -84,6 +96,19 @@ export const useJobStore = create(
         const jobType = type === "hullRepair" ? "hull_repair" : type === "salvageProcessing" ? "salvage" : type;
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
         return get().enqueueJob({ type: jobType, roomId, cost, duration, priority, createdAt: start, payload });
+      },
+      enqueueModuleWork: ({ action = "upgrade", slot = null, moduleId, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null, payload = {} }) => {
+        const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
+        const roomId = moduleRoom(slot);
+        return get().enqueueJob({
+          type: "module_upgrade",
+          roomId,
+          cost,
+          duration,
+          priority,
+          createdAt: start,
+          payload: { ...payload, action, slot, moduleId },
+        });
       },
       enqueueTraining: ({ memberId, statKey, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null }) => {
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
@@ -181,6 +206,7 @@ export const useJobStore = create(
       },
       recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
       getLegacyShipWorkQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyShipWork).filter(Boolean),
+      getLegacyModuleQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyModuleWork).filter(Boolean),
       getLegacyTrainingQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTraining).filter(Boolean),
       getLegacyTreatmentQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTreatment).filter(Boolean),
       getLegacyRecoveryQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyRecovery).filter(Boolean),
