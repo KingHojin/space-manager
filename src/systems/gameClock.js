@@ -174,13 +174,23 @@ function processCrewHealth(currentMinute, deltaMinutes) {
   logs.forEach((message) => useGameStore.getState().addLog(`의무실: ${message}`));
 }
 
+function applyShipWork(task) {
+  if (task.type === "hullRepair") {
+    const hullDelta = task.payload?.hullDelta ?? 0;
+    if (hullDelta > 0) useGameStore.getState().addResources({ hull: hullDelta });
+    return `선체 정비 완료: 선체 +${hullDelta}%.`;
+  }
+  return `함선 작업 완료: ${task.type}.`;
+}
+
 export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
   const recoveryLogs = useCrewStore.getState().completeReadyRecovery(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
-  [...crewLogs, ...treatmentLogs, ...recoveryLogs, ...moduleLogs].forEach((message) => useGameStore.getState().addLog(message));
+  const shipWorkLogs = useShipStore.getState().completeReadyShipWork(currentMinute).map(applyShipWork);
+  [...crewLogs, ...treatmentLogs, ...recoveryLogs, ...moduleLogs, ...shipWorkLogs].forEach((message) => useGameStore.getState().addLog(message));
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrewAI(currentMinute);
