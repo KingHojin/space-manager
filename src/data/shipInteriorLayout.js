@@ -1,6 +1,6 @@
 import { DISPLAY_ROOMS, ROOMS, ROUTES } from "./shipRooms";
 
-export const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay" };
+export const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay", 조리실: "galley" };
 
 export const ROOM_ANCHORS = [
   { x: 0, y: 0 },
@@ -29,7 +29,8 @@ export function roomForCrewActivity(member, activity) {
   if (/의무|치료|응급|산소|피로/.test(text)) return "medbay";
   if (/기관|엔진|추진|수리|연료|선체|출력|냉각|전력/.test(text)) return "engineering";
   if (/창고|화물|보급|적재|장비/.test(text)) return "cargo";
-  if (/생활|휴식|식사|대화|훈련/.test(text)) return "living";
+  if (/식당|조리|식사|배식|요리|식량/.test(text)) return "galley";
+  if (/생활|휴식|대화|훈련/.test(text)) return "living";
   return ROLE_ROOM[member.role] ?? "living";
 }
 
