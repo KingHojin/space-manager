@@ -73,6 +73,7 @@ export const ROOM_CONFIG = {
   cargo: { label: "창고", slotCapacity: 2, loadThreshold: 4 },
   medbay: { label: "의무실", slotCapacity: 1, loadThreshold: 2 },
   living: { label: "생활구역", slotCapacity: 1, loadThreshold: 2 },
+  galley: { label: "식당/조리실", slotCapacity: 2, loadThreshold: 3 },
 };
 
 export const JOB_ECONOMY = {
