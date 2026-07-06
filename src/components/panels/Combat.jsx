@@ -135,7 +135,33 @@ function EnemySubsystemPanel({ enemy }) {
   );
 }
 
-export default function Combat() {
+function CombatOutcomeActions({ combat, onNavigate, onOpenModal, onResetCombat }) {
+  if (!combat || combat.status === "engaged") return null;
+  const isMissionCombat = combat.source?.kind === "missionEncounter";
+  const won = combat.status === "won";
+  const failed = combat.status === "retreated" || combat.status === "lost";
+  if (!won && !failed) return null;
+
+  return (
+    <section className={`mt-3 rounded-2xl border p-3 ${won ? "border-emerald-300/35 bg-emerald-300/10" : "border-red-300/35 bg-red-400/10"}`}>
+      <div className="flex items-center justify-between gap-2"><div className="section-title"><CheckCircleIcon won={won} />전투 결과 처리</div><span className={`hud-chip ${won ? "hud-chip-success" : "hud-chip-danger"}`}>{missionCombatOutcomeLabel(combat.status)}</span></div>
+      {isMissionCombat && won && <p className="mt-2 text-sm leading-6 text-emerald-100">임무 전투 승리. 탐사 화면으로 돌아가 임무 완료 보상을 수령할 수 있습니다.</p>}
+      {isMissionCombat && failed && <p className="mt-2 text-sm leading-6 text-red-100">임무 전투 {missionCombatOutcomeLabel(combat.status)}로 계약이 실패 처리되었습니다. 브리핑을 정리하거나 임무 게시판으로 돌아가세요.</p>}
+      {!isMissionCombat && <p className="mt-2 text-sm leading-6 text-slate-300">교전이 종료되었습니다. 브리핑을 초기화하거나 새 조우를 준비하세요.</p>}
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {isMissionCombat && won && <button className="primary-button justify-center" onClick={() => onNavigate?.("exploration")}>탐사로 돌아가 임무 완료</button>}
+        {isMissionCombat && failed && <button className="primary-button justify-center" onClick={() => onOpenModal?.("missions")}>임무 게시판 열기</button>}
+        <button className="secondary-button justify-center" onClick={onResetCombat}>브리핑 초기화</button>
+      </div>
+    </section>
+  );
+}
+
+function CheckCircleIcon({ won }) {
+  return <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${won ? "bg-emerald-300 text-emerald-950" : "bg-red-300 text-red-950"}`}>{won ? "✓" : "!"}</span>;
+}
+
+export default function Combat({ onNavigate, onOpenModal }) {
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
@@ -261,6 +287,7 @@ export default function Combat() {
           <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combatStatusChip(combat?.status, combatEngaged)}`}>{combat?.status ?? "대기"}</span></div>
           {enemy && <div className="mt-3 grid grid-cols-2 gap-2"><StatTile icon={Shield} label="적 선체" value={`${enemyHull}%`} /><StatTile icon={Zap} label="적 방어막" value={`${enemyShield}%`} /></div>}
           {enemy && <EnemySubsystemPanel enemy={enemy} />}
+          <CombatOutcomeActions combat={combat} onNavigate={onNavigate} onOpenModal={onOpenModal} onResetCombat={resetCombat} />
           <button className="primary-button mt-4 w-full justify-center" disabled={!canStart} onClick={startEncounter}>{combatEngaged ? "교전 진행 중" : pendingCombatEncounter ? "긴급 교전 대응" : travelLocked ? "항해 중 수동 교전 불가" : "새 교전 생성"}</button>
           {combat && <button className="secondary-button mt-2 w-full justify-center" onClick={resetCombat}>브리핑 초기화</button>}
         </div>
