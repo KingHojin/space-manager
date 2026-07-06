@@ -15,6 +15,8 @@ import { useRecruitStore } from "../stores/recruitStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
+const MEAL_COOLDOWN_MINUTES = 120;
+
 export const formatGameDate = (totalMinutes) => {
   const year = Math.floor(totalMinutes / 525600);
   const remYear = totalMinutes % 525600;
@@ -132,31 +134,32 @@ function processCrewAI(currentMinute) {
   logs.forEach((message) => useGameStore.getState().addLog(`승무원 AI: ${message}`));
 }
 
-function processCrewMeals() {
+function processCrewMeals(currentMinute) {
   const crewStore = useCrewStore.getState();
-  const inventoryStore = useInventoryStore.getState();
   const mealActivities = (crewStore.crewActivities ?? []).filter((activity) => activity.intent === "meal").slice(0, 2);
   if (mealActivities.length === 0) return;
 
   const hasCook = crewStore.crew.some((member) => member.alive && member.role === "조리실");
   mealActivities.forEach((activity) => {
-    const member = crewStore.crew.find((entry) => entry.id === activity.memberId);
-    if (!member?.alive || (member.needs?.hunger ?? 0) < 45) return;
+    const member = useCrewStore.getState().crew.find((entry) => entry.id === activity.memberId);
+    if (!member?.alive || (member.needs?.hunger ?? 0) < 58) return;
+    if (member.lastMealAt && currentMinute - member.lastMealAt < MEAL_COOLDOWN_MINUTES) return;
 
-    const items = useInventoryStore.getState().items;
+    const inventoryStore = useInventoryStore.getState();
+    const items = inventoryStore.items;
     const ingredients = itemQty(items, "raw-ingredients");
     const rations = itemQty(items, "food-ration");
 
     if (hasCook && ingredients > 0) {
       inventoryStore.removeItem("raw-ingredients", 1);
-      const message = crewStore.completeMeal({ memberId: member.id, quality: "cooked" });
+      const message = useCrewStore.getState().completeMeal({ memberId: member.id, quality: "cooked", currentMinute });
       if (message) useGameStore.getState().addLog(`식당: ${message} 식재료 1개 사용.`);
       return;
     }
 
     if (rations > 0) {
       inventoryStore.removeItem("food-ration", 1);
-      const message = crewStore.completeMeal({ memberId: member.id, quality: "ration" });
+      const message = useCrewStore.getState().completeMeal({ memberId: member.id, quality: "ration", currentMinute });
       if (message) useGameStore.getState().addLog(`식당: ${message} 표준 식량 1개 사용.`);
       return;
     }
@@ -267,7 +270,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrewAI(currentMinute);
-  processCrewMeals();
+  processCrewMeals(currentMinute);
   processCrewNeeds(deltaMinutes);
   processRoomJobs(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
