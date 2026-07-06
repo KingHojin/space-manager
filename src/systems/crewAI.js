@@ -17,6 +17,15 @@ const ROLE_DEFAULTS = {
 
 const IDLE_ACTIONS = ["식사", "휴식", "생활구역 정리", "함내 순찰", "동료와 대화", "개인 장비 점검"];
 
+const MODULE_SLOT_WORK_ROOM = {
+  engine: { roomId: "engineering", station: "기관실", action: "추진계 작업" },
+  shield: { roomId: "engineering", station: "기관실", action: "방어막 계통 작업" },
+  cargo: { roomId: "cargo", station: "창고", action: "화물 모듈 작업" },
+  special: { roomId: "ops", station: "관제실", action: "특수 장비 작업" },
+  "weapon-a": { roomId: "ops", station: "포탑 관제", action: "무장 슬롯 A 작업" },
+  "weapon-b": { roomId: "ops", station: "포탑 관제", action: "무장 슬롯 B 작업" },
+};
+
 function stableIndex(seed, offset, length) {
   const value = Math.abs(Math.sin(seed * 12.9898 + offset * 78.233) * 43758.5453);
   return Math.floor(value) % length;
@@ -39,8 +48,9 @@ function idleAction(member, currentMinute, index) {
 
 function assignedQueueTask(member, queues) {
   const tasks = [
-    ...queues.treatmentQueue.filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "treatment" })),
-    ...queues.trainingQueue.filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "training" })),
+    ...(queues.treatmentQueue ?? []).filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "treatment" })),
+    ...(queues.recoveryQueue ?? []).filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "recovery" })),
+    ...(queues.trainingQueue ?? []).filter((task) => task.memberId === member.id).map((task) => ({ ...task, queueType: "training" })),
   ].sort(comparePriorityTasks);
   return tasks[0] ?? null;
 }
@@ -48,13 +58,52 @@ function assignedQueueTask(member, queues) {
 function queueActivity(member, queueTask, currentMinute) {
   if (queueTask?.queueType === "treatment") {
     const priority = normalizePriority(queueTask.priority ?? "high");
-    return { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? injuryLabel(member.injury)} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
+    return { memberId: member.id, station: "의무실", action: `${queueTask.injury ?? injuryLabel(member.injury)} 치료 중`, intent: "medical", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, roomId: "medbay", taskId: queueTask.id, updatedAt: currentMinute };
+  }
+  if (queueTask?.queueType === "recovery") {
+    const priority = normalizePriority(queueTask.priority ?? "normal");
+    return { memberId: member.id, station: "의무실 회복실", action: "회복 절차 중", intent: "rest", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, roomId: "medbay", taskId: queueTask.id, updatedAt: currentMinute };
   }
   if (queueTask?.queueType === "training") {
     const priority = normalizePriority(queueTask.priority ?? "normal");
     return { memberId: member.id, station: "훈련실", action: "역할 훈련 중", intent: "training", priority, detail: `완료 대기 · ${getPriorityConfig(priority).label}`, taskId: queueTask.id, updatedAt: currentMinute };
   }
   return null;
+}
+
+function moduleNameForTask(task, snapshot) {
+  return (snapshot.modules ?? []).find((module) => module.id === task.moduleId)?.name ?? task.moduleId ?? "모듈";
+}
+
+function slotForModuleTask(task, snapshot) {
+  if (task.slot) return task.slot;
+  return (snapshot.modules ?? []).find((module) => module.id === task.moduleId)?.slot ?? "engine";
+}
+
+function pickInstallationWork(member, snapshot, claimedTaskIds) {
+  if (member.role !== "기관실" || !canWorkWithInjury(member.injury)) return null;
+  const task = (snapshot.installationQueue ?? [])
+    .filter((entry) => entry?.id && !claimedTaskIds.has(entry.id))
+    .sort(comparePriorityTasks)[0];
+  if (!task) return null;
+  claimedTaskIds.add(task.id);
+  const slot = slotForModuleTask(task, snapshot);
+  const room = MODULE_SLOT_WORK_ROOM[slot] ?? MODULE_SLOT_WORK_ROOM.engine;
+  const priority = normalizePriority(task.priority ?? (task.type === "equip" ? "high" : "normal"));
+  const moduleName = moduleNameForTask(task, snapshot);
+  const action = task.type === "upgrade" ? `${moduleName} 개선 절차` : `${moduleName} 장착 절차`;
+  return {
+    memberId: member.id,
+    station: room.station,
+    action,
+    intent: "engineering",
+    priority,
+    detail: `${room.action} · 완료 대기 ${getPriorityConfig(priority).label}`,
+    roomId: room.roomId,
+    taskId: task.id,
+    moduleId: task.moduleId,
+    updatedAt: snapshot.currentMinute ?? 0,
+  };
 }
 
 function pickCrisisAssignment(member, snapshot, claimedCrisisIds) {
@@ -148,6 +197,8 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
   const roomJobCandidates = [];
   const fixedActivities = new Map();
   const claimedCrisisIds = new Set();
+  const claimedInstallationTaskIds = new Set();
+  const enrichedSnapshot = { ...snapshot, currentMinute };
 
   crew.forEach((member, index) => {
     if (!member.alive) {
@@ -159,6 +210,12 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     const queuedTreatment = queueTask?.queueType === "treatment" ? queueActivity(member, queueTask, currentMinute) : null;
     if (queuedTreatment) {
       fixedActivities.set(member.id, queuedTreatment);
+      return;
+    }
+
+    const queuedRecovery = queueTask?.queueType === "recovery" ? queueActivity(member, queueTask, currentMinute) : null;
+    if (queuedRecovery) {
+      fixedActivities.set(member.id, queuedRecovery);
       return;
     }
 
@@ -181,7 +238,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     }
 
     if ((member.fatigue ?? 0) >= 85) {
-      fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", updatedAt: currentMinute });
+      fixedActivities.set(member.id, { memberId: member.id, station: "생활구역", action: "강제 휴식", intent: "rest", priority: "high", detail: "피로 한계", roomId: "living", updatedAt: currentMinute });
       return;
     }
 
@@ -194,6 +251,12 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     const crisis = roleCrisisAssignment(member, snapshot);
     if (crisis) {
       fixedActivities.set(member.id, { memberId: member.id, ...crisis, updatedAt: currentMinute });
+      return;
+    }
+
+    const installationWork = pickInstallationWork(member, enrichedSnapshot, claimedInstallationTaskIds);
+    if (installationWork) {
+      fixedActivities.set(member.id, installationWork);
       return;
     }
 
