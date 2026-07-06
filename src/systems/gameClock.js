@@ -197,7 +197,12 @@ function processRoomJobs(currentMinute, deltaMinutes) {
     list.push({ memberId: activity.memberId, roomId: activity.roomId, jobId: activity.jobId, speedMultiplier: activity.speedMultiplier ?? 1 });
     roomActivities[activity.roomId] = list;
   });
-  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities, roleCoverage: crewStore.getRoleCoverage() });
+  const usageByRoom = {};
+  useJobStore.getState().jobs.forEach((job) => {
+    if (job.status !== "in_progress" || !job.roomId) return;
+    usageByRoom[job.roomId] = (usageByRoom[job.roomId] ?? 0) + 1;
+  });
+  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities, roleCoverage: crewStore.getRoleCoverage(), usageByRoom });
   completedJobs.forEach((job) => applyRoomJobEffect(job.effect, job.roomId));
   logs.forEach((message) => useGameStore.getState().addLog(`함선: ${message}`));
 }

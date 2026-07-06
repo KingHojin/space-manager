@@ -13,6 +13,7 @@ import {
   shouldSpawnInternalCrisis,
 } from "../systems/crisisSystem";
 import { applyRoomTick, createInitialRoomState, deriveRoomStatus } from "../systems/roomJobs";
+import { WEAR } from "../data/constants";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -161,8 +162,8 @@ export const useShipInteriorStore = create(
         });
         return result;
       },
-      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {}, roleCoverage = null }) => {
-        const { nextRooms, completedJobs, logs } = applyRoomTick({ rooms: get().rooms, roomActivities, deltaMinutes, currentMinute, roleCoverage });
+      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {}, roleCoverage = null, usageByRoom = {} }) => {
+        const { nextRooms, completedJobs, logs } = applyRoomTick({ rooms: get().rooms, roomActivities, deltaMinutes, currentMinute, roleCoverage, usageByRoom });
         set({ rooms: nextRooms });
         return { completedJobs, logs };
       },
@@ -227,7 +228,13 @@ export const useShipInteriorStore = create(
             const spawnType = Math.random() < resist ? null : shouldSpawnInternalCrisis({ room, currentMinute, deltaMinutes });
             if (!spawnType) return;
             const spawned = addCrisisToDraft({ rooms, activeCrises, roomId, type: spawnType, severity: 1, currentMinute });
-            if (spawned) logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}).`);
+            if (spawned) {
+              if ((room.condition ?? 0) <= WEAR.dangerCondition) {
+                logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}) — 정비를 미룬 구역에서 발생 (C${Math.round(room.condition ?? 0)}).`);
+              } else {
+                logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}).`);
+              }
+            }
           });
           const newCrises = [];
           const blockedRoomIds = new Set(activeCrises.map((crisis) => crisis.roomId));
