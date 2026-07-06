@@ -96,7 +96,7 @@ function applyTraining(member, statKey) {
   return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) + 12 * fatigueMultiplier(member), 0, 100), experience: (member.experience ?? 0) + 8, morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs), stats: { ...member.stats, [statKey]: (member.stats[statKey] ?? 0) + 1 } };
 }
 
-function applyTreatment(member, task) {
+function applyTreatment(member, task = {}) {
   if (!member.alive) return member;
   const before = normalizeInjury(member.injury);
   const after = improveInjuryOneStage(before);
@@ -123,6 +123,10 @@ function activityTreatmentTargets(crew, activities = []) {
   const target = chooseTreatmentTarget(crew);
   if (!target) return new Map();
   return new Map(medicActivities.map((activity) => [activity.memberId, target.id]));
+}
+
+function activeTreatmentMemberIds(activities = []) {
+  return new Set(activities.filter((activity) => activity.intent === "medical" && activity.roomId === "medbay" && activity.taskId).map((activity) => activity.memberId));
 }
 
 function tickMemberInjury({ member, deltaMinutes, hasMedic, isQueuedTreatment, treatedBy }) {
@@ -200,7 +204,7 @@ export const useCrewStore = create(
         const currentMinute = snapshot.currentMinute ?? 0;
         const state = get();
         if (state.lastCrewAiAt !== null && currentMinute - state.lastCrewAiAt < CREW_AI_INTERVAL) return [];
-        const queues = { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue, recoveryQueue: snapshot.recoveryQueue ?? state.recoveryQueue };
+        const queues = { trainingQueue: snapshot.trainingQueue ?? state.trainingQueue, treatmentQueue: snapshot.treatmentQueue ?? state.treatmentQueue, recoveryQueue: snapshot.recoveryQueue ?? state.recoveryQueue };
         const activities = generateCrewActivities({ crew: state.crew, queues, snapshot, currentMinute });
         const previousByMember = new Map((state.crewActivities ?? []).map((activity) => [activity.memberId, activity]));
         const changed = activities.filter((activity) => previousByMember.get(activity.memberId)?.action !== activity.action || previousByMember.get(activity.memberId)?.station !== activity.station);
@@ -229,6 +233,21 @@ export const useCrewStore = create(
         set((state) => ({ recoveryQueue: state.recoveryQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task ? applyRecovery(member, task) : member; }) }));
         return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 회복 절차 완료.`; });
       },
+      completeTrainingJob: (task) => {
+        const memberId = task?.memberId ?? task?.payload?.targetCrewId;
+        const statKey = task?.statKey ?? task?.payload?.statKey;
+        if (!memberId || !statKey) return null;
+        const member = get().crew.find((entry) => entry.id === memberId);
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyTraining(entry, statKey) : entry)) }));
+        return `${member?.name ?? "승무원"} 역할 훈련 완료.`;
+      },
+      completeTreatmentJob: (task) => {
+        const memberId = task?.memberId ?? task?.payload?.targetCrewId;
+        if (!memberId) return null;
+        const member = get().crew.find((entry) => entry.id === memberId);
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId && isInjured(entry.injury) ? applyTreatment(entry, task?.payload ?? task) : entry)) }));
+        return `${member?.name ?? "승무원"} 의무실 치료 단계 완료.`;
+      },
       completeRecoveryJob: (task) => {
         const memberId = task?.memberId ?? task?.payload?.targetCrewId;
         if (!memberId) return null;
@@ -254,10 +273,11 @@ export const useCrewStore = create(
         set((state) => {
           const coverage = getRoleCoverage(state.crew);
           const hasMedic = (coverage.counts.의무실 ?? 0) > 0;
-          const treatmentByMember = new Map((state.treatmentQueue ?? []).map((task) => [task.memberId, task]));
+          const queuedTreatmentIds = new Set((state.treatmentQueue ?? []).map((task) => task.memberId));
+          activeTreatmentMemberIds(state.crewActivities ?? []).forEach((id) => queuedTreatmentIds.add(id));
           const targetByMedic = activityTreatmentTargets(state.crew, state.crewActivities ?? []);
           const medicTargetIds = new Map([...targetByMedic.entries()].map(([medicId, targetId]) => [targetId, medicId]));
-          const crew = state.crew.map((member) => { const result = tickMemberInjury({ member, deltaMinutes, hasMedic, isQueuedTreatment: treatmentByMember.has(member.id), treatedBy: medicTargetIds.get(member.id) ?? null }); if (result.log) logs.push(result.log); return result.member; });
+          const crew = state.crew.map((member) => { const result = tickMemberInjury({ member, deltaMinutes, hasMedic, isQueuedTreatment: queuedTreatmentIds.has(member.id), treatedBy: medicTargetIds.get(member.id) ?? null }); if (result.log) logs.push(result.log); return result.member; });
           return { crew, treatmentQueue: state.treatmentQueue.filter((task) => { const member = crew.find((entry) => entry.id === task.memberId); return member?.alive && isInjured(member.injury) && task.completeAt > currentMinute; }) };
         });
         return logs;
