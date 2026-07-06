@@ -52,5 +52,5 @@ export const items = [
 
   { id: "seraphim-core", name: "세라핌 코어", rarity: "legendary", qty: 0, type: "artifact" },
   { id: "seraphim-heart", name: "세라핌 심장", rarity: "legendary", qty: 0, type: "legendary-artifact" },
-  { id: "crown-neural-core", name: "왕관 신경핵", rarity: "legendary-artifact", qty: 0, type: "legendary-artifact" },
+  { id: "crown-neural-core", name: "왕관 신경핵", rarity: "legendary", qty: 0, type: "legendary-artifact" },
 ];
