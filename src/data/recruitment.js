@@ -52,6 +52,15 @@ export const CREW_TEMPLATES = [
     portrait: "🎯",
   },
   {
+    templateId: "common-ship-cook",
+    name: "박 노아",
+    role: "조리실",
+    rarity: "common",
+    trait: "함선 급식 담당",
+    baseStats: { piloting: 5, gunnery: 4, engineering: 7, medicine: 8, scouting: 7, cooking: 12 },
+    portrait: "🍳",
+  },
+  {
     templateId: "distress-field-medic",
     name: "백 소율",
     role: "의무실",
@@ -79,6 +88,15 @@ export const CREW_TEMPLATES = [
     portrait: "⚙️",
   },
   {
+    templateId: "rare-galley-chef",
+    name: "유 마리",
+    role: "조리실",
+    rarity: "rare",
+    trait: "영양 관리사",
+    baseStats: { piloting: 6, gunnery: 5, engineering: 8, medicine: 11, scouting: 8, cooking: 16 },
+    portrait: "🥘",
+  },
+  {
     templateId: "epic-tactical-officer",
     name: "차 유건",
     role: "포탑",
@@ -95,6 +113,15 @@ export const CREW_TEMPLATES = [
     trait: "외상 전문의",
     baseStats: { piloting: 7, gunnery: 6, engineering: 9, medicine: 20, scouting: 10 },
     portrait: "🩺",
+  },
+  {
+    templateId: "epic-deep-space-chef",
+    name: "남 하율",
+    role: "조리실",
+    rarity: "epic",
+    trait: "심우주 셰프",
+    baseStats: { piloting: 7, gunnery: 6, engineering: 10, medicine: 13, scouting: 10, cooking: 21 },
+    portrait: "👨‍🍳",
   },
   {
     templateId: "legendary-void-captain",
