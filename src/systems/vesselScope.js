@@ -59,7 +59,7 @@ export function getActiveVesselScope() {
       installed: ship.installed,
       modules: ship.modules,
       installedModules: ship.getInstalledModules(),
-      installationQueue: ship.installationQueue ?? [],
+      installationQueue: [...(ship.installationQueue ?? []), ...jobs.getLegacyModuleQueue()],
       shipWorkQueue: jobs.getLegacyShipWorkQueue(),
     },
   };
@@ -77,7 +77,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     activeTravel: scope.nav.travel,
     pendingTravelEvent: scope.nav.pendingEncounter,
     ["pending" + "CombatEncounter"]: exploration["pending" + "CombatEncounter"] ?? null,
-    installationQueue: scope.shipLoadout.installationQueue,
+    installationQueue: [...(useShipStore.getState().installationQueue ?? []), ...busyQueue(jobStore.getLegacyModuleQueue())],
     shipWorkQueue: jobStore.getLegacyShipWorkQueue(),
     trainingQueue: busyQueue(jobStore.getLegacyTrainingQueue()),
     treatmentQueue: busyQueue(jobStore.getLegacyTreatmentQueue()),
