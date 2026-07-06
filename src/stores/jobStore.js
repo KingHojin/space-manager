@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG } from "../data/constants";
-import { jobToLegacyRecovery, jobToLegacyShipWork, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
+import { jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 
@@ -31,9 +31,6 @@ function normalizeJobs(jobs = [], now = null) {
 function roomsFromJobs(savedRooms = {}, jobs = []) {
   const rooms = createRooms();
   Object.keys(rooms).forEach((roomId) => {
-    const saved = savedRooms?.[roomId] ?? {};
-    rooms[roomId].activeJobIds = Array.isArray(saved.activeJobIds) ? saved.activeJobIds : [];
-    rooms[roomId].currentLoad = Number(saved.currentLoad ?? 0) || 0;
     rooms[roomId].activeJobIds = [];
     rooms[roomId].currentLoad = 0;
   });
@@ -87,6 +84,14 @@ export const useJobStore = create(
         const jobType = type === "hullRepair" ? "hull_repair" : type === "salvageProcessing" ? "salvage" : type;
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
         return get().enqueueJob({ type: jobType, roomId, cost, duration, priority, createdAt: start, payload });
+      },
+      enqueueTraining: ({ memberId, statKey, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null }) => {
+        const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
+        return get().enqueueJob({ type: "training", roomId: "living", cost, duration, priority, createdAt: start, payload: { targetCrewId: memberId, statKey } });
+      },
+      enqueueTreatment: ({ memberId, injury, cost = 0, duration, fatiguePenalty = 10, priority = "high", completeAt = null, createdAt = null }) => {
+        const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
+        return get().enqueueJob({ type: "treatment", roomId: "medbay", cost, duration, priority, createdAt: start, payload: { targetCrewId: memberId, injury, fatiguePenalty } });
       },
       enqueueRecovery: ({ memberId, cost = 0, duration, fatigueRecovery = 32, priority = "normal", completeAt = null, createdAt = null }) => {
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
@@ -176,6 +181,8 @@ export const useJobStore = create(
       },
       recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
       getLegacyShipWorkQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyShipWork).filter(Boolean),
+      getLegacyTrainingQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTraining).filter(Boolean),
+      getLegacyTreatmentQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTreatment).filter(Boolean),
       getLegacyRecoveryQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyRecovery).filter(Boolean),
       getActiveJobs: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)),
       getBacklogJobs: () => normalizeJobs(get().jobs).filter((job) => job.status === "backlog"),
