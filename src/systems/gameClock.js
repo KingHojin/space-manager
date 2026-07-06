@@ -2,12 +2,14 @@ import { useEffect } from "react";
 import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { rollEvent } from "./eventEngine";
+import { jobToLegacyShipWork } from "./jobMigration";
 import { getTravelEncounterChance, rollTravelEncounter, shouldRollTravelEncounter } from "./travelSystem";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
+import { useJobStore } from "../stores/jobStore";
 import { useNavStore } from "../stores/navStore";
 import { useRecruitStore } from "../stores/recruitStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
@@ -197,14 +199,34 @@ function applyShipWork(task) {
   return `함선 작업 완료: ${task.type}.`;
 }
 
+function applyUnifiedJob(job) {
+  if (job.type === "recovery") return useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
+  const shipWork = jobToLegacyShipWork(job);
+  if (shipWork) return applyShipWork(shipWork);
+  return null;
+}
+
+function migrateLegacyJobsOnce() {
+  const jobStore = useJobStore.getState();
+  if (jobStore.legacyMigrationVersion >= 1) return [];
+  const result = jobStore.migrateLegacyQueues({
+    shipWorkQueue: useShipStore.getState().shipWorkQueue ?? [],
+    recoveryQueue: useCrewStore.getState().recoveryQueue ?? [],
+  });
+  if (result.migrated <= 0 && result.errors.length <= 0) return [];
+  const logs = result.migrated > 0 ? [`작업 큐 마이그레이션: 기존 작업 ${result.migrated}개를 통합 Job 시스템으로 이전.`] : [];
+  if (result.errors.length > 0) logs.push(`작업 큐 마이그레이션 경고: ${result.errors.length}개 작업 변환 실패.`);
+  return logs;
+}
+
 export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
+  const migrationLogs = migrateLegacyJobsOnce();
   const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
   const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
-  const recoveryLogs = useCrewStore.getState().completeReadyRecovery(currentMinute);
   const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
-  const shipWorkLogs = useShipStore.getState().completeReadyShipWork(currentMinute).map(applyShipWork);
-  [...crewLogs, ...treatmentLogs, ...recoveryLogs, ...moduleLogs, ...shipWorkLogs].forEach((message) => useGameStore.getState().addLog(message));
+  const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map(applyUnifiedJob).filter(Boolean);
+  [...migrationLogs, ...crewLogs, ...treatmentLogs, ...moduleLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrewAI(currentMinute);
@@ -217,6 +239,9 @@ export function processTimedJobs(deltaMinutes = 0) {
 export const useGameClock = () => {
   const isPaused = useGameStore((state) => state.isPaused);
   const speed = useGameStore((state) => state.speed);
+  useEffect(() => {
+    migrateLegacyJobsOnce().forEach((message) => useGameStore.getState().addLog(message));
+  }, []);
   useEffect(() => {
     const onKeyDown = (event) => {
       if (event.code === "Space" && !["INPUT", "TEXTAREA", "SELECT"].includes(event.target.tagName)) {

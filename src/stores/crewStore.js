@@ -192,7 +192,8 @@ export const useCrewStore = create(
         const currentMinute = snapshot.currentMinute ?? 0;
         const state = get();
         if (state.lastCrewAiAt !== null && currentMinute - state.lastCrewAiAt < CREW_AI_INTERVAL) return [];
-        const activities = generateCrewActivities({ crew: state.crew, queues: { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue, recoveryQueue: state.recoveryQueue }, snapshot, currentMinute });
+        const queues = { trainingQueue: state.trainingQueue, treatmentQueue: state.treatmentQueue, recoveryQueue: snapshot.recoveryQueue ?? state.recoveryQueue };
+        const activities = generateCrewActivities({ crew: state.crew, queues, snapshot, currentMinute });
         const previousByMember = new Map((state.crewActivities ?? []).map((activity) => [activity.memberId, activity]));
         const changed = activities.filter((activity) => previousByMember.get(activity.memberId)?.action !== activity.action || previousByMember.get(activity.memberId)?.station !== activity.station);
         const logEntries = changed.slice(0, 3).map((activity) => { const member = state.crew.find((entry) => entry.id === activity.memberId); return `${member?.name ?? "승무원"}: ${activity.station} · ${activity.action}`; });
@@ -219,6 +220,13 @@ export const useCrewStore = create(
         const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
         set((state) => ({ recoveryQueue: state.recoveryQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task ? applyRecovery(member, task) : member; }) }));
         return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 회복 절차 완료.`; });
+      },
+      completeRecoveryJob: (task) => {
+        const memberId = task?.memberId ?? task?.payload?.targetCrewId;
+        if (!memberId) return null;
+        const member = get().crew.find((entry) => entry.id === memberId);
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyRecovery(entry, task) : entry)) }));
+        return `${member?.name ?? "승무원"} 회복 절차 완료.`;
       },
       tickCrewNeeds: ({ deltaMinutes = 0, mode = "normal", severity = 1 }) => {
         if (deltaMinutes <= 0) return [];

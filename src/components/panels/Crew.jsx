@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { Compass, Cross, Crosshair, User, Users, Wrench } from "lucide-react";
+import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { summarizeCrewAI } from "../../systems/crewAI";
@@ -7,6 +8,7 @@ import { INJURY_CATALOG, PERMANENT_TRAITS, getRoleCoverage, injuryLabel, isHealt
 import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
+import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { statLabel } from "../../utils/format";
 import ShipInterior from "../ship/ShipInterior";
@@ -17,11 +19,11 @@ const ROLE_ICONS = {
   기관실: { icon: Wrench, color: "text-amber-300", mark: "🛠" },
   의무실: { icon: Cross, color: "text-emerald-300", mark: "✚" },
 };
-const TRAINING_COST = 180;
-const TRAINING_MINUTES = 360;
-const RECOVERY_COST = 90;
-const RECOVERY_MINUTES = 180;
-const RECOVERY_FATIGUE = 32;
+const TRAINING_COST = JOB_ECONOMY.training.credits;
+const TRAINING_MINUTES = JOB_DURATION.training;
+const RECOVERY_COST = JOB_ECONOMY.recovery.credits;
+const RECOVERY_MINUTES = JOB_DURATION.recovery;
+const RECOVERY_FATIGUE = JOB_ECONOMY.recovery.fatigueRecovery;
 const TREATMENT = {
   minor: { cost: 140, minutes: 180, fatiguePenalty: 8 },
   serious: { cost: 420, minutes: 720, fatiguePenalty: 18 },
@@ -125,7 +127,9 @@ function CrewPortrait({ member }) {
 }
 
 export default function Crew() {
-  const { crew, trainingQueue, treatmentQueue, recoveryQueue, crewActivities, crewActivityLog, startTraining, startTreatment, startRecovery } = useCrewStore();
+  const { crew, trainingQueue, treatmentQueue, crewActivities, crewActivityLog, startTraining, startTreatment } = useCrewStore();
+  const recoveryQueue = useJobStore((state) => state.getLegacyRecoveryQueue());
+  const startRecovery = useJobStore((state) => state.enqueueRecovery);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const resources = useGameStore((state) => state.resources);
   const spendCredits = useGameStore((state) => state.spendCredits);
