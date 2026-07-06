@@ -2,21 +2,22 @@ import { useMemo } from "react";
 import { Cpu, Hammer, Rocket, Shield, Sparkles, Wrench, Zap } from "lucide-react";
 import Badge from "../common/Badge";
 import RoomCustomization from "../ship/RoomCustomization";
-import { MODULE_SLOTS } from "../../data/constants";
+import { JOB_DURATION, JOB_ECONOMY, MODULE_SLOTS } from "../../data/constants";
 import { formatMinutes, getModuleRule } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useJobStore } from "../../stores/jobStore";
 import { useShipStore } from "../../stores/shipStore";
 
 const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary: 12 };
 const slotIcon = { engine: Rocket, "weapon-a": Zap, "weapon-b": Zap, shield: Shield, cargo: Cpu, special: Sparkles };
-const SCRAP_REPAIR_COST = 6;
-const SCRAP_REPAIR_HULL = 8;
-const SCRAP_REPAIR_MINUTES = 120;
-const SALVAGE_PROCESS_COST = 4;
-const SALVAGE_PROCESS_TRITANIUM = 2;
-const SALVAGE_PROCESS_MINUTES = 90;
+const SCRAP_REPAIR_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
+const SCRAP_REPAIR_HULL = JOB_ECONOMY.hullRepair.hullDelta;
+const SCRAP_REPAIR_MINUTES = JOB_DURATION.hull_repair;
+const SALVAGE_PROCESS_COST = JOB_ECONOMY.salvageProcessing.salvageScrapCost;
+const SALVAGE_PROCESS_TRITANIUM = JOB_ECONOMY.salvageProcessing.tritaniumReward;
+const SALVAGE_PROCESS_MINUTES = JOB_DURATION.salvage;
 
 function getItemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
@@ -110,7 +111,9 @@ function SalvageProcessingCard({ scrap, tritanium, task, currentMinute, onProces
 }
 
 export default function Ship() {
-  const { modules, installed, unlockedModuleIds, installationQueue, shipWorkQueue, startInstallation, startUpgrade, startShipWork } = useShipStore();
+  const { modules, installed, unlockedModuleIds, installationQueue, startInstallation, startUpgrade } = useShipStore();
+  const shipWorkQueue = useJobStore((state) => state.getLegacyShipWorkQueue());
+  const startShipWork = useJobStore((state) => state.enqueueShipWork);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
