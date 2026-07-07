@@ -7,7 +7,7 @@ import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { computeJobRefund } from "../../systems/jobEconomy";
 import { explainBacklogReason } from "../../systems/jobScheduler";
-import { jobToLegacyModuleWork, jobTypeLabel } from "../../systems/jobMigration";
+import { jobTypeLabel } from "../../systems/jobMigration";
 import { reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -98,12 +98,8 @@ function BacklogPanel({ jobs, rooms, crew, onUp, onDown, onCancel }) {
   );
 }
 
-function activeLegacyJobs(rawJobs, converter) {
-  return rawJobs.filter((job) => activeJobStatuses.has(job.status)).map(converter).filter(Boolean);
-}
-
 export default function Ship() {
-  const { modules, installed, installationQueue } = useShipStore();
+  const { modules, installed } = useShipStore();
   const shipGrade = useGameStore((state) => state.shipGrade);
   const crewInterior = useCrewStore((state) => state.crew);
   const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
@@ -112,8 +108,6 @@ export default function Ship() {
   const engineeringTier = interiorRooms.engineering?.tier ?? 1;
   const rawJobs = useJobStore((state) => state.jobs);
   const jobs = useMemo(() => rawJobs.filter((job) => activeJobStatuses.has(job.status)), [rawJobs]);
-  const moduleJobQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyModuleWork), [rawJobs]);
-  const moduleWorkQueue = useMemo(() => [...(installationQueue ?? []), ...moduleJobQueue], [installationQueue, moduleJobQueue]);
   const rooms = useJobStore((state) => state.rooms);
   const startShipWork = useJobStore((state) => state.enqueueShipWork);
   const nudgeJobPriority = useJobStore((state) => state.nudgeJobPriority);
@@ -187,7 +181,7 @@ export default function Ship() {
             <span className="hud-chip hud-chip-accent">Ti {tritanium}</span>
             <span className="hud-chip hud-chip-warn">Scrap {salvageScrap}</span>
             <span className={`hud-chip ${powerDraw > powerCapacity ? "hud-chip-danger" : ""}`}><Zap size={12} className="mr-1 inline" />동력 {powerDraw}/{powerCapacity}</span>
-            <span className="hud-chip">작업 {jobs.length + installationQueue.length}</span>
+            <span className="hud-chip">작업 {jobs.length}</span>
           </div>
         </div>
         <div className="mt-4">

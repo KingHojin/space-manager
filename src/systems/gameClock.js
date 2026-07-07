@@ -306,11 +306,8 @@ export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
   processJobScheduler(currentMinute);
-  const crewLogs = useCrewStore.getState().completeReadyTraining(currentMinute);
-  const treatmentLogs = useCrewStore.getState().completeReadyTreatment(currentMinute);
-  const moduleLogs = useShipStore.getState().completeReadyInstallations(currentMinute);
   const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map(applyUnifiedJob).filter(Boolean);
-  [...migrationLogs, ...crewLogs, ...treatmentLogs, ...moduleLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
+  [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);

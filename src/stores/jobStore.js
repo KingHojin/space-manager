@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG, SLOT_ROOM } from "../data/constants";
 import { getActiveModifiers } from "../systems/cardEffects";
-import { jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
+import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 import { useInventoryStore } from "./inventoryStore";
@@ -204,11 +204,11 @@ export const useJobStore = create(
         return done;
       },
       recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
-      getLegacyShipWorkQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyShipWork).filter(Boolean),
-      getLegacyModuleQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyModuleWork).filter(Boolean),
-      getLegacyTrainingQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTraining).filter(Boolean),
-      getLegacyTreatmentQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyTreatment).filter(Boolean),
-      getLegacyRecoveryQueue: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)).map(jobToLegacyRecovery).filter(Boolean),
+      getLegacyShipWorkQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyShipWork),
+      getLegacyModuleQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyModuleWork),
+      getLegacyTrainingQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyTraining),
+      getLegacyTreatmentQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyTreatment),
+      getLegacyRecoveryQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyRecovery),
       getActiveJobs: () => normalizeJobs(get().jobs).filter((job) => ACTIVE.has(job.status)),
       getBacklogJobs: () => normalizeJobs(get().jobs).filter((job) => job.status === "backlog"),
       getRunningJobs: () => normalizeJobs(get().jobs).filter((job) => ["assigned", "in_progress"].includes(job.status)),

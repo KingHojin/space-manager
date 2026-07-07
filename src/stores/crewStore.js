@@ -194,12 +194,6 @@ export const useCrewStore = create(
         });
         return result;
       },
-      startTraining: ({ memberId, statKey, completeAt, cost, duration, priority = "normal" }) => set((state) => ({ trainingQueue: [...state.trainingQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, statKey, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
-      startTreatment: ({ memberId, injury, completeAt, cost, duration, fatiguePenalty, priority = "high" }) => set((state) => ({ treatmentQueue: [...state.treatmentQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, injury: injuryLabel(injury), completeAt, cost, duration, fatiguePenalty, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
-      startRecovery: ({ memberId, completeAt, cost = 0, duration, fatigueRecovery = 32, priority = "normal" }) => set((state) => ({ recoveryQueue: [...state.recoveryQueue.filter((task) => task.memberId !== memberId), { id: crypto.randomUUID(), memberId, completeAt, cost, duration, fatigueRecovery, priority: normalizePriority(priority), startedAt: completeAt - duration }] })),
-      setTrainingPriority: (taskId, priority) => set((state) => ({ trainingQueue: state.trainingQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
-      setTreatmentPriority: (taskId, priority) => set((state) => ({ treatmentQueue: state.treatmentQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
-      setRecoveryPriority: (taskId, priority) => set((state) => ({ recoveryQueue: state.recoveryQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)) })),
       runCrewAI: (snapshot) => {
         const currentMinute = snapshot.currentMinute ?? 0;
         const state = get();
@@ -211,27 +205,6 @@ export const useCrewStore = create(
         const logEntries = changed.slice(0, 3).map((activity) => { const member = state.crew.find((entry) => entry.id === activity.memberId); return `${member?.name ?? "승무원"}: ${activity.station} · ${activity.action}`; });
         set((nextState) => ({ crewActivities: activities, lastCrewAiAt: currentMinute, crewActivityLog: [...logEntries, ...(nextState.crewActivityLog ?? [])].slice(0, 12) }));
         return logEntries;
-      },
-      completeReadyTraining: (currentMinute) => {
-        const ready = get().trainingQueue.filter((task) => task.completeAt <= currentMinute);
-        if (ready.length === 0) return [];
-        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
-        set((state) => ({ trainingQueue: state.trainingQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task ? applyTraining(member, task.statKey) : member; }) }));
-        return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 역할 훈련 완료.`; });
-      },
-      completeReadyTreatment: (currentMinute) => {
-        const ready = get().treatmentQueue.filter((task) => task.completeAt <= currentMinute);
-        if (ready.length === 0) return [];
-        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
-        set((state) => ({ treatmentQueue: state.treatmentQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task && isInjured(member.injury) ? applyTreatment(member, task) : member; }) }));
-        return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 의무실 치료 단계 완료.`; });
-      },
-      completeReadyRecovery: (currentMinute) => {
-        const ready = get().recoveryQueue.filter((task) => task.completeAt <= currentMinute);
-        if (ready.length === 0) return [];
-        const readyByMember = new Map(ready.map((task) => [task.memberId, task]));
-        set((state) => ({ recoveryQueue: state.recoveryQueue.filter((task) => task.completeAt > currentMinute), crew: state.crew.map((member) => { const task = readyByMember.get(member.id); return task ? applyRecovery(member, task) : member; }) }));
-        return ready.map((task) => { const member = get().crew.find((entry) => entry.id === task.memberId); return `${member?.name ?? "승무원"} 회복 절차 완료.`; });
       },
       completeTrainingJob: (task) => {
         const memberId = task?.memberId ?? task?.payload?.targetCrewId;

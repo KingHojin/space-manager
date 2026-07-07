@@ -1,10 +1,13 @@
+import { useMemo } from "react";
 import { Clock3, Cross, Cpu, Users, Wrench } from "lucide-react";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { injuryLabel } from "../../systems/injurySystem";
+import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
 import { comparePriorityTasks, getNextPriority, getPriorityConfig, normalizePriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
+import { useJobStore } from "../../stores/jobStore";
 import { useShipStore } from "../../stores/shipStore";
 import { statLabel } from "../../utils/format";
 
@@ -68,13 +71,14 @@ export default function TaskQueuePanel({ onNavigate }) {
   const currentMinute = useGameStore((state) => state.currentMinute);
   const addLog = useGameStore((state) => state.addLog);
   const crew = useCrewStore((state) => state.crew);
-  const trainingQueue = useCrewStore((state) => state.trainingQueue ?? []);
-  const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
-  const setTrainingPriority = useCrewStore((state) => state.setTrainingPriority);
-  const setTreatmentPriority = useCrewStore((state) => state.setTreatmentPriority);
+  const rawJobs = useJobStore((state) => state.jobs);
+  const setJobPriority = useJobStore((state) => state.setJobPriority);
+  // Panel shows only jobs actively being worked (assigned/in_progress) — backlog
+  // jobs (not yet crewed) have no meaningful startedAt/progress to render here.
+  const trainingQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTraining).filter((task) => task.status !== "backlog"), [rawJobs]);
+  const treatmentQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTreatment).filter((task) => task.status !== "backlog"), [rawJobs]);
+  const installationQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyModuleWork).filter((task) => task.status !== "backlog"), [rawJobs]);
   const modules = useShipStore((state) => state.modules);
-  const installationQueue = useShipStore((state) => state.installationQueue ?? []);
-  const setInstallationPriority = useShipStore((state) => state.setInstallationPriority);
 
   const crewById = new Map(crew.map((member) => [member.id, member]));
   const moduleById = new Map(modules.map((module) => [module.id, module]));
@@ -127,9 +131,7 @@ export default function TaskQueuePanel({ onNavigate }) {
 
   const onCyclePriority = (task) => {
     const nextPriority = getNextPriority(task.priority);
-    if (task.queueType === "training") setTrainingPriority(task.id, nextPriority);
-    if (task.queueType === "treatment") setTreatmentPriority(task.id, nextPriority);
-    if (task.queueType === "ship") setInstallationPriority(task.id, nextPriority);
+    setJobPriority(task.id, nextPriority);
     addLog(`${task.title} 작업 우선순위 변경: ${getPriorityConfig(nextPriority).label}.`);
   };
 
