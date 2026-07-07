@@ -249,23 +249,41 @@ function applyPolicyActions(actions, currentMinute) {
       if (!job) return;
       if (!useGameStore.getState().spendCredits(job.cost ?? 0)) return;
       useJobStore.getState().enqueueTreatment({ ...job, createdAt: currentMinute });
+      return;
+    }
+    if (action.kind === "resolve-encounter") {
+      const detail = action.detail ?? {};
+      // Defensive re-check against the *current* store, not the snapshot
+      // policyEngine.js scored against: another path could have resolved or
+      // replaced pendingEncounter earlier in this same tick (e.g. a
+      // different effect chain), so only proceed if it's still the exact
+      // encounter this action was computed for.
+      const pending = useNavStore.getState().pendingEncounter;
+      if (!pending) return;
+      if (detail.encounterId && pending.id !== detail.encounterId) return;
+      if (!detail.optionId) return;
+      // applyNavigationEncounter already does resolveEncounter() +
+      // applyNavEffect() for every effect in the chosen option's outcome —
+      // reuse it verbatim instead of re-implementing that combination here.
+      applyNavigationEncounter(detail.optionId, currentMinute);
     }
   });
 }
 
-// Phase 19-A/19-B: reads policyStore + snapshots of the stores a policy
-// might care about (including jobStore's active jobs and inventoryStore's
-// items, so policyEngine.js can decide things like "is a repair already
-// queued" / "do we have enough scrap" without ever importing a store
-// itself), hands them to the pure systems/policyEngine.js (same
-// orchestration shape as every other process* function here: read stores ->
-// call a pure system -> apply the returned effects to stores), then applies
-// both the returned `logs` (subject to the repeat-warning throttle above)
-// and `actions` (via applyPolicyActions) to their respective stores. Every
-// catalog policy defaults to disabled (see data/policies.js), so with no
-// player interaction this function evaluates to `{ actions: [], logs: [] }`
-// and is a no-op — see gameClock.integration.test.js's "policies default
-// OFF" case.
+// Phase 19-A/19-B/19-D: reads policyStore + snapshots of the stores a
+// policy might care about (including jobStore's active jobs,
+// inventoryStore's items, navStore's pendingEncounter and
+// explorationStore's pendingCombatEncounter, so policyEngine.js can decide
+// things like "is a repair already queued" / "do we have enough scrap" /
+// "is there an encounter waiting" without ever importing a store itself),
+// hands them to the pure systems/policyEngine.js (same orchestration shape
+// as every other process* function here: read stores -> call a pure system
+// -> apply the returned effects to stores), then applies both the returned
+// `logs` (subject to the repeat-warning throttle above) and `actions` (via
+// applyPolicyActions) to their respective stores. Every catalog policy
+// defaults to disabled (see data/policies.js), so with no player
+// interaction this function evaluates to `{ actions: [], logs: [] }` and is
+// a no-op — see gameClock.integration.test.js's "policies default OFF" case.
 function processPolicies(currentMinute, deltaMinutes) {
   const { policies } = usePolicyStore.getState();
   const resources = useGameStore.getState().resources;
@@ -273,7 +291,20 @@ function processPolicies(currentMinute, deltaMinutes) {
   const rooms = useShipInteriorStore.getState().rooms;
   const jobs = useJobStore.getState().getActiveJobs();
   const items = useInventoryStore.getState().items;
-  const { actions, logs } = evaluatePolicies({ policies, resources, crew, rooms, currentMinute, deltaMinutes, jobs, items });
+  const pendingEncounter = useNavStore.getState().pendingEncounter;
+  const pendingCombatEncounter = useExplorationStore.getState().pendingCombatEncounter;
+  const { actions, logs } = evaluatePolicies({
+    policies,
+    resources,
+    crew,
+    rooms,
+    currentMinute,
+    deltaMinutes,
+    jobs,
+    items,
+    pendingEncounter,
+    pendingCombatEncounter,
+  });
   // actions/logs are index-aligned by policyEngine.js's contract (see its
   // file header), so actions[i] is always the action that produced logs[i].
   logs.forEach((message, index) => {

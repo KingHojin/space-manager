@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 import { processTimedJobs } from "../gameClock";
 import { isHealthy, TREATMENT_RULES } from "../injurySystem";
 import { useCrewStore } from "../../stores/crewStore";
+import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
+import { useNavStore } from "../../stores/navStore";
 import { usePolicyStore } from "../../stores/policyStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { createDefaultPolicyState } from "../../data/policies";
@@ -340,5 +342,105 @@ describe("gameClock.processTimedJobs — auto-treatment enqueues and completes a
 
     expect(useJobStore.getState().jobs.some((job) => job.type === "treatment" && job.payload?.targetCrewId === INJURED_MEMBER_ID)).toBe(false);
     resetCrewJobsAndCredits("healthy");
+  });
+});
+
+// Phase 19-D: encounter-default-choice goes from a recognized-but-inert
+// catalog entry to a real automation. navStore's pendingEncounter has no
+// timeout (see navStore.js/policyEngine.js's file-header comments), so this
+// policy resolves the encounter the same tick it sees one pending, by
+// reusing gameClock's own applyNavigationEncounter — the exact function a
+// player's manual "조우 결재" click goes through — so an auto-resolved
+// encounter is indistinguishable from a manually-resolved one once applied.
+describe("gameClock.processTimedJobs — encounter-default-choice resolves pending encounters (Phase 19-D)", () => {
+  const SINGLE_OPTION_ENCOUNTER = {
+    id: "gc-test-single-option",
+    title: "통합 테스트 조우",
+    options: [{ id: "only", label: "유일한 선택", outcome: [{ kind: "resource", delta: { credits: 75 } }] }],
+  };
+
+  const ALL_COMBAT_ENCOUNTER = {
+    id: "gc-test-all-combat",
+    title: "통합 테스트 총력전 조우",
+    options: [{ id: "engage", label: "정면 교전", outcome: [{ kind: "combat", enemyId: "gc-test-foe" }] }],
+  };
+
+  function resetNavAndPolicy() {
+    useNavStore.setState({ pendingEncounter: null });
+    useExplorationStore.getState().clearPendingCombatEncounter();
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", false);
+  }
+
+  it("disabled (default) never touches a pending encounter, even across many ticks", () => {
+    resetNavAndPolicy();
+    useNavStore.setState({ pendingEncounter: SINGLE_OPTION_ENCOUNTER });
+    expect(usePolicyStore.getState().policies["encounter-default-choice"].enabled).toBe(false);
+
+    const TICKS = 5;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    // The regression this project cares about most: with the policy off,
+    // gameplay must be completely unchanged — the encounter is still
+    // sitting there waiting for a manual "조우 결재".
+    expect(useNavStore.getState().pendingEncounter).toEqual(SINGLE_OPTION_ENCOUNTER);
+    resetNavAndPolicy();
+  });
+
+  it("enabled: resolves the pending encounter this tick, clears pendingEncounter, and applies the chosen option's effect", () => {
+    resetNavAndPolicy();
+    useNavStore.setState({ pendingEncounter: SINGLE_OPTION_ENCOUNTER });
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", true);
+    usePolicyStore.getState().setPolicyParam("encounter-default-choice", "stance", "safe");
+
+    const creditsBefore = useGameStore.getState().resources.credits;
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    // navStore.resolveEncounter (via applyNavigationEncounter) cleared it —
+    // exactly what a manual "조우 결재" click would have done.
+    expect(useNavStore.getState().pendingEncounter).toBeNull();
+    // The single option's resource effect was applied through the normal
+    // applyNavEffect path (gameStore.addResources), same as any other
+    // encounter resolution.
+    expect(useGameStore.getState().resources.credits).toBe(creditsBefore + 75);
+    // A policy log fired, describing which option was auto-selected.
+    expect(useGameStore.getState().logs.some((message) => message.includes("정책") && message.includes("조우 자동 대응"))).toBe(true);
+
+    resetNavAndPolicy();
+  });
+
+  it("enabled but every option leads to combat: pendingEncounter is left untouched, only a diagnostic log fires", () => {
+    resetNavAndPolicy();
+    useNavStore.setState({ pendingEncounter: ALL_COMBAT_ENCOUNTER });
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", true);
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    // Never auto-selected the combat option — this project's standing rule
+    // is that emergency combat is never triggered automatically.
+    expect(useNavStore.getState().pendingEncounter).toEqual(ALL_COMBAT_ENCOUNTER);
+    expect(useExplorationStore.getState().pendingCombatEncounter).toBeNull();
+    expect(useGameStore.getState().logs.some((message) => message.includes("정책") && message.includes("전투"))).toBe(true);
+
+    resetNavAndPolicy();
+  });
+
+  it("enabled but explorationStore already has a pendingCombatEncounter: leaves the pending nav encounter alone", () => {
+    resetNavAndPolicy();
+    useNavStore.setState({ pendingEncounter: SINGLE_OPTION_ENCOUNTER });
+    useExplorationStore.getState().setPendingCombatEncounter({ id: "already-pending", title: "이미 대기 중인 전투" });
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", true);
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    expect(useNavStore.getState().pendingEncounter).toEqual(SINGLE_OPTION_ENCOUNTER);
+
+    resetNavAndPolicy();
   });
 });

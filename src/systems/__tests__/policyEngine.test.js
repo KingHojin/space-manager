@@ -3,6 +3,7 @@ import { evaluatePolicies } from "../policyEngine";
 import { TREATMENT_RULES } from "../injurySystem";
 import { createDefaultPolicyState } from "../../data/policies";
 import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
+import { ENCOUNTER_TABLE } from "../../data/navEncounters";
 
 const SCRAP_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
 const HULL_DELTA = JOB_ECONOMY.hullRepair.hullDelta;
@@ -298,7 +299,7 @@ describe("evaluatePolicies", () => {
     });
   });
 
-  it("encounter-default-choice is recognized but produces no actions/logs even when enabled (19-D territory)", () => {
+  it("encounter-default-choice enabled but with no pending encounter produces no actions/logs", () => {
     const policies = createDefaultPolicyState();
     policies["encounter-default-choice"] = { enabled: true, params: { stance: "aggressive" } };
     const result = evaluatePolicies({
@@ -307,8 +308,171 @@ describe("evaluatePolicies", () => {
       crew: [{ id: "m1", alive: true, injury: "중상" }],
       rooms: {},
       currentMinute: 0,
+      // pendingEncounter deliberately omitted -> defaults to null.
     });
     expect(result).toEqual({ actions: [], logs: [] });
+  });
+
+  describe("encounter-default-choice", () => {
+    // A synthetic three-option encounter whose risk/reward/net scores are
+    // hand-picked so "safe", "aggressive" and "balanced" each land on a
+    // *different* option (see the score table in the comment on each case
+    // below) — a real navEncounters.js entry rarely has enough options to
+    // separate all three stances at once, so this fixture is what actually
+    // exercises the three branches of evaluateEncounterDefaultChoice.
+    //
+    //   option      risk   reward   net (reward-risk)
+    //   cautious       0       20    20
+    //   moderate       5      100    95
+    //   risky         50      140    90
+    const scoredEncounter = {
+      id: "test-scored-encounter",
+      title: "테스트 조우",
+      options: [
+        { id: "cautious", label: "신중 대응", outcome: [{ kind: "resource", delta: { credits: 20 } }] },
+        { id: "moderate", label: "균형 대응", outcome: [{ kind: "resource", delta: { credits: 100, hull: -5 } }] },
+        { id: "risky", label: "고위험 강행", outcome: [{ kind: "resource", delta: { credits: 140, hull: -50 } }] },
+      ],
+    };
+
+    function policiesWithStance(stance) {
+      const policies = createDefaultPolicyState();
+      policies["encounter-default-choice"] = { enabled: true, params: { stance } };
+      return policies;
+    }
+
+    it("disabled never fires even with a pending encounter", () => {
+      const policies = policiesWithStance("balanced");
+      policies["encounter-default-choice"].enabled = false;
+      const result = evaluatePolicies({ policies, pendingEncounter: scoredEncounter });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("'safe' picks the lowest-risk option (cautious, risk 0)", () => {
+      const result = evaluatePolicies({ policies: policiesWithStance("safe"), pendingEncounter: scoredEncounter });
+      expect(result.actions).toEqual([
+        {
+          policyId: "encounter-default-choice",
+          kind: "resolve-encounter",
+          detail: { encounterId: "test-scored-encounter", optionId: "cautious", stance: "safe", label: "신중 대응" },
+        },
+      ]);
+      expect(result.logs[0]).toContain("정책");
+      expect(result.logs[0]).toContain("신중 대응");
+      expect(result.logs[0]).toContain("safe");
+    });
+
+    it("'aggressive' picks the highest-reward option (risky, reward 140)", () => {
+      const result = evaluatePolicies({ policies: policiesWithStance("aggressive"), pendingEncounter: scoredEncounter });
+      expect(result.actions[0].detail.optionId).toBe("risky");
+      expect(result.actions[0].detail.stance).toBe("aggressive");
+    });
+
+    it("'balanced' picks the highest net (reward - risk) option (moderate, net 95, beating risky's net 90)", () => {
+      const result = evaluatePolicies({ policies: policiesWithStance("balanced"), pendingEncounter: scoredEncounter });
+      expect(result.actions[0].detail.optionId).toBe("moderate");
+      expect(result.actions[0].detail.stance).toBe("balanced");
+    });
+
+    it("defaults to 'balanced' when params.stance is missing", () => {
+      const policies = createDefaultPolicyState();
+      policies["encounter-default-choice"] = { enabled: true, params: {} };
+      const result = evaluatePolicies({ policies, pendingEncounter: scoredEncounter });
+      expect(result.actions[0].detail.optionId).toBe("moderate");
+      expect(result.actions[0].detail.stance).toBe("balanced");
+    });
+
+    it("ties in risk keep option array order for 'safe'", () => {
+      const tiedEncounter = {
+        id: "test-tied-encounter",
+        title: "동률 조우",
+        options: [
+          { id: "first", label: "첫번째", outcome: [{ kind: "resource", delta: { credits: 10 } }] },
+          { id: "second", label: "두번째", outcome: [{ kind: "resource", delta: { credits: 999 } }] },
+        ],
+      };
+      const result = evaluatePolicies({ policies: policiesWithStance("safe"), pendingEncounter: tiedEncounter });
+      expect(result.actions[0].detail.optionId).toBe("first");
+    });
+
+    it("a real navEncounters.js entry (nebula-hidden-cache): 'safe' avoids the oxygen-cost option, 'aggressive'/'balanced' take the bigger payout", () => {
+      // harvest: credits +180, oxygen -4 -> risk 4, reward 180, net 176.
+      // safe-scan: credits +60 -> risk 0, reward 60, net 60.
+      const nebulaEncounter = ENCOUNTER_TABLE.nebula.find((entry) => entry.id === "nebula-hidden-cache");
+      const safeResult = evaluatePolicies({ policies: policiesWithStance("safe"), pendingEncounter: nebulaEncounter });
+      expect(safeResult.actions[0].detail.optionId).toBe("safe-scan");
+
+      const aggressiveResult = evaluatePolicies({ policies: policiesWithStance("aggressive"), pendingEncounter: nebulaEncounter });
+      expect(aggressiveResult.actions[0].detail.optionId).toBe("harvest");
+
+      const balancedResult = evaluatePolicies({ policies: policiesWithStance("balanced"), pendingEncounter: nebulaEncounter });
+      expect(balancedResult.actions[0].detail.optionId).toBe("harvest");
+    });
+
+    it("REGRESSION: a combat option is never chosen even when it would score best on both risk and reward", () => {
+      // "greedy-combat" bundles a huge credit reward with a combat effect —
+      // if the combat exclusion ran *after* scoring instead of before, this
+      // option would win on both "safe" (risk 0, tied for lowest) and
+      // "aggressive" (reward 999, far and away the highest). It must never
+      // be selected, no matter the stance.
+      const temptingEncounter = {
+        id: "test-tempting-combat",
+        title: "탐욕스러운 조우",
+        options: [
+          {
+            id: "greedy-combat",
+            label: "고위험 교전 확보",
+            outcome: [{ kind: "resource", delta: { credits: 999 } }, { kind: "combat", enemyId: "test-foe" }],
+          },
+          { id: "modest-safe", label: "무난한 대응", outcome: [{ kind: "resource", delta: { credits: 50 } }] },
+        ],
+      };
+
+      ["safe", "aggressive", "balanced"].forEach((stance) => {
+        const result = evaluatePolicies({ policies: policiesWithStance(stance), pendingEncounter: temptingEncounter });
+        expect(result.actions[0].detail.optionId).toBe("modest-safe");
+        expect(result.actions[0].detail.optionId).not.toBe("greedy-combat");
+      });
+    });
+
+    it("REGRESSION: a real navEncounters.js entry with a combat option ('unknown-contact') never auto-selects 'hail'", () => {
+      const unknownEncounter = ENCOUNTER_TABLE.unknown.find((entry) => entry.id === "unknown-contact");
+      ["safe", "aggressive", "balanced"].forEach((stance) => {
+        const result = evaluatePolicies({ policies: policiesWithStance(stance), pendingEncounter: unknownEncounter });
+        expect(result.actions[0].detail.optionId).toBe("dark");
+        expect(result.actions[0].detail.optionId).not.toBe("hail");
+      });
+    });
+
+    it("when every option leads to combat, produces a diagnostic log only, no resolve-encounter action", () => {
+      const allCombatEncounter = {
+        id: "test-all-combat",
+        title: "총력전 조우",
+        options: [
+          { id: "engage-1", label: "정면 교전", outcome: [{ kind: "combat", enemyId: "foe-a" }] },
+          { id: "engage-2", label: "측면 교전", outcome: [{ kind: "combat", enemyId: "foe-b" }] },
+        ],
+      };
+      const result = evaluatePolicies({ policies: policiesWithStance("aggressive"), pendingEncounter: allCombatEncounter });
+      expect(result.actions).toEqual([
+        {
+          policyId: "encounter-default-choice",
+          kind: "diagnostic",
+          detail: { reason: "all-combat", encounterId: "test-all-combat" },
+        },
+      ]);
+      expect(result.logs[0]).toContain("정책");
+      expect(result.logs[0]).toContain("전투");
+    });
+
+    it("does nothing when explorationStore's pendingCombatEncounter snapshot is already set, even with a pending nav encounter and the policy enabled", () => {
+      const result = evaluatePolicies({
+        policies: policiesWithStance("aggressive"),
+        pendingEncounter: scoredEncounter,
+        pendingCombatEncounter: { id: "raider-scout", title: "미확인 적성 함선 접촉" },
+      });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
   });
 
   it("ignores unknown policy ids in the policies map without throwing", () => {

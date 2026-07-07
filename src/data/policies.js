@@ -61,7 +61,7 @@ export const POLICY_CATALOG = [
   {
     id: "encounter-default-choice",
     label: "항해 조우 기본 대응",
-    description: "플레이어 개입 없이 항해 조우 시간이 만료되면 지정한 성향으로 자동 대응을 선택합니다.",
+    description: "조우 발생 시 지정한 성향으로 자동 대응을 선택합니다. 전투로 이어지는 선택지는 자동 선택하지 않습니다.",
     category: "navigation",
     defaultEnabled: false,
     // See ENCOUNTER_STANCES for the full set of allowed values.
