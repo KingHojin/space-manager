@@ -1,9 +1,10 @@
 import { ROOM_IDS } from "../data/shipRooms";
 import { calculateRoomModifiers } from "../data/roomModules";
 import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
+import { WEAR } from "../data/constants";
 
-export const ROOM_CONDITION_DECAY_PER_HOUR = 0.5;
-export const ROOM_LOAD_GROWTH_PER_HOUR = 0.8;
+export const ROOM_CONDITION_DECAY_PER_HOUR = WEAR.conditionDecayPerHour;
+export const ROOM_LOAD_GROWTH_PER_HOUR = WEAR.loadGrowthPerHour;
 
 const ROLE_ROOM = { 함교: "bridge", 포탑: "ops", 기관실: "engineering", 의무실: "medbay", 조리실: "galley" };
 const SUPPORT_ROOMS = new Set(["cargo", "living", "galley"]);
@@ -129,7 +130,7 @@ function jobCompletionEffect(job) {
   return {};
 }
 
-export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0, roleCoverage = null }) {
+export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0, roleCoverage = null, usageByRoom = {} }) {
   const hours = deltaMinutes / 60;
   const nextRooms = {};
   const completedJobs = [];
@@ -179,6 +180,14 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
       progress = 0;
       condition = clamp(condition - ROOM_CONDITION_DECAY_PER_HOUR * hours * decayMultiplier, 0, 100);
       load = clamp(load + ROOM_LOAD_GROWTH_PER_HOUR * hours * loadGrowthMultiplier, 0, 100);
+    }
+    condition = clamp(condition - WEAR.usageWearPerJobHour * (usageByRoom[roomId] ?? 0) * hours, 0, 100);
+    const previousCondition = room.condition;
+    if (previousCondition > WEAR.warnCondition && condition <= WEAR.warnCondition) {
+      logs.push(`정비 권고: ${roomId} 상태 저하 (C${Math.round(condition)}). 정비를 미루면 위기 위험이 커집니다.`);
+    }
+    if (previousCondition > WEAR.dangerCondition && condition <= WEAR.dangerCondition) {
+      logs.push(`정비 경고: ${roomId} 상태 위험 (C${Math.round(condition)}). 위기 발생 확률이 크게 상승합니다.`);
     }
     const draftRoom = { ...room, id: roomId, condition, load, jobId, assignedMemberId: primaryAssignedId(assignedMemberIds), assignedMemberIds, progress, activeCrisisId };
     nextRooms[roomId] = { ...draftRoom, status: deriveRoomStatus(draftRoom), updatedAt: currentMinute };

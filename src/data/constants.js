@@ -88,6 +88,16 @@ export const ROOM_CONFIG = {
   galley: { label: "식당/조리실", slotCapacity: 2, loadThreshold: 3 },
 };
 
+export const WEAR = {
+  conditionDecayPerHour: 0.5,
+  loadGrowthPerHour: 0.8,
+  usageWearPerJobHour: 1.2,
+  warnCondition: 70,
+  dangerCondition: 40,
+  crisisChancePerHourAtDanger: 0.1,
+  crisisChancePerHourAtZero: 0.3,
+};
+
 export const JOB_ECONOMY = {
   defaultPriority: JOB_PRIORITY.normal,
   cancelRefundRatio: 0.5,

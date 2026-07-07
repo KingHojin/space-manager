@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DEV_FLAGS, GAME_TIME, RESOURCES } from "../data/constants";
+import { getActiveModifiers } from "../systems/cardEffects";
+import { useInventoryStore } from "./inventoryStore";
 
 const PERCENT_RESOURCES = new Set(["fuel", "oxygen", "hull"]);
 const LOW_RESOURCE_WARNING_COOLDOWN_MINUTES = 60;
@@ -93,12 +95,13 @@ export const useGameStore = create(
       repairHull: (amount) => set((state) => ({ resources: { ...state.resources, hull: clampResource("hull", state.resources.hull + amount) } })),
       advanceMinutes: (minutes) => {
         const hours = minutes / 60;
+        const mods = getActiveModifiers(useInventoryStore.getState().getActiveCards());
         set((state) => ({
           currentMinute: state.currentMinute + minutes,
           resources: normalizeResources({
             ...state.resources,
-            fuel: state.resources.fuel - RESOURCES.FUEL_PER_GAME_HOUR * hours,
-            oxygen: state.resources.oxygen - RESOURCES.OXYGEN_PER_GAME_HOUR * hours,
+            fuel: state.resources.fuel - RESOURCES.FUEL_PER_GAME_HOUR * hours * mods.fuelConsumptionMult,
+            oxygen: state.resources.oxygen - RESOURCES.OXYGEN_PER_GAME_HOUR * hours * mods.oxygenConsumptionMult,
           }),
         }));
         const state = get();

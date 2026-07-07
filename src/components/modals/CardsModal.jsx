@@ -1,11 +1,29 @@
 import Badge from "../common/Badge";
+import { JOB_DURATION } from "../../data/constants";
+import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useJobStore } from "../../stores/jobStore";
 
 const rarityOrder = { legendary: 0, epic: 1, rare: 2, uncommon: 3, common: 4 };
 
 export default function CardsModal() {
-  const { cards, activeCardIds, toggleActiveCard } = useInventoryStore();
+  const { cards, activeCardIds, toggleActiveCard, consumeCard } = useInventoryStore();
   const sortedCards = [...cards].sort((a, b) => (rarityOrder[a.rarity] ?? 9) - (rarityOrder[b.rarity] ?? 9));
+
+  const useConsumable = (card) => {
+    const result = consumeCard(card.instanceId);
+    if (!result.ok) return useGameStore.getState().addLog(result.message);
+    useJobStore.getState().enqueueShipWork({
+      type: "hullRepair",
+      roomId: "engineering",
+      cost: 0,
+      duration: JOB_DURATION.hull_repair,
+      priority: "high",
+      createdAt: useGameStore.getState().currentMinute,
+      payload: { hullDelta: 30 },
+    });
+    return useGameStore.getState().addLog("즉시 보수 카드 사용: 선체 정비 작업(+30%)이 대기열에 등록되었습니다.");
+  };
 
   return (
     <div className="grid gap-4">
@@ -33,19 +51,32 @@ export default function CardsModal() {
         ) : (
           sortedCards.map((card) => {
             const active = activeCardIds.includes(card.instanceId);
+            const consumable = card.family === "consumable";
+            const usable = card.id === "instant-patch";
             return (
-              <button
+              <div
                 key={card.instanceId}
                 className={`rounded border p-4 text-left ${active ? "border-cyan-300 bg-cyan-400/10" : "border-slate-700 bg-slate-950/60"}`}
-                onClick={() => toggleActiveCard(card.instanceId)}
               >
-                <div className="mb-3 flex items-center justify-between">
-                  <Badge rarity={card.rarity}>{card.rarity}</Badge>
-                  <span className="text-xs text-slate-500">{active ? "활성" : card.family}</span>
-                </div>
-                <div className="font-semibold text-slate-50">{card.name}</div>
-                <p className="mt-2 text-sm text-slate-400">{card.effect}</p>
-              </button>
+                <button className="w-full text-left" onClick={() => toggleActiveCard(card.instanceId)}>
+                  <div className="mb-3 flex items-center justify-between">
+                    <Badge rarity={card.rarity}>{card.rarity}</Badge>
+                    <span className="text-xs text-slate-500">{active ? "활성" : card.family}</span>
+                  </div>
+                  <div className="font-semibold text-slate-50">{card.name}</div>
+                  <p className="mt-2 text-sm text-slate-400">{card.effect}</p>
+                </button>
+                {consumable && (
+                  <button
+                    className="secondary-button mt-3 min-h-8 w-full justify-center text-xs"
+                    disabled={!usable}
+                    title={usable ? "카드를 소모해 효과를 발동합니다" : "아직 사용할 수 없습니다"}
+                    onClick={() => useConsumable(card)}
+                  >
+                    사용
+                  </button>
+                )}
+              </div>
             );
           })
         )}

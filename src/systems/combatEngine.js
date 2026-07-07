@@ -1,3 +1,4 @@
+import { getActiveModifiers } from "./cardEffects";
 import { isHealthy } from "./injurySystem";
 
 const moraleScore = {
@@ -70,7 +71,7 @@ export const calculateCombatPower = ({ modules, crew, activeCards }) => {
       (isHealthy(member.injury) ? 0 : 8),
     0,
   );
-  const cardBonus = activeCards.some((card) => card.id === "battle-focus") ? 1.05 : 1;
+  const cardBonus = getActiveModifiers(activeCards).combatPowerMult;
   return Math.max(1, Math.round((modulePower + crewPower) * cardBonus));
 };
 

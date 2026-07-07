@@ -1,5 +1,6 @@
 import { ROOM_IDS, ROUTES } from "../data/shipRooms";
 import { canWorkWithInjury, injuryWorkSpeedMultiplier, normalizeInjury } from "./injurySystem";
+import { WEAR } from "../data/constants";
 
 export const CRISIS_TYPES = ["overheat", "fire", "power_loss", "hull_breach", "intruder"];
 
@@ -181,6 +182,15 @@ export function shouldSpawnInternalCrisis({ room, currentMinute = 0, deltaMinute
   }
   if (load >= 92 && Math.random() < 0.28) return "power_loss";
   if (condition <= 32 && load >= 72 && Math.random() < 0.2) return "fire";
+
+  if (condition <= WEAR.dangerCondition) {
+    const t = 1 - condition / WEAR.dangerCondition;
+    const chancePerHour = WEAR.crisisChancePerHourAtDanger + (WEAR.crisisChancePerHourAtZero - WEAR.crisisChancePerHourAtDanger) * t;
+    if (Math.random() < chancePerHour) {
+      if (room.id === "engineering") return Math.random() < 0.5 ? "overheat" : "fire";
+      return Math.random() < 0.6 ? "power_loss" : "fire";
+    }
+  }
   return null;
 }
 
