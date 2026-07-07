@@ -1,3 +1,5 @@
+import { getRoomDef } from "./shipRooms";
+
 export const GAME_TIME = {
   START_MINUTE: 2377 * 525600 + 2 * 43200 + 11 * 1440 + 14 * 60 + 20,
   REAL_SECOND_TO_GAME_MINUTES: 2.4,
@@ -87,15 +89,25 @@ export const JOB_PRIORITY = {
 
 export const ROOM_TRAVEL_MINUTES = 10;
 
-export const ROOM_CONFIG = {
-  bridge: { label: "브릿지", slotCapacity: 2, loadThreshold: 3 },
-  ops: { label: "관제실", slotCapacity: 2, loadThreshold: 3 },
-  engineering: { label: "기관실", slotCapacity: 2, loadThreshold: 3 },
-  cargo: { label: "창고", slotCapacity: 2, loadThreshold: 4 },
-  medbay: { label: "의무실", slotCapacity: 1, loadThreshold: 2 },
-  living: { label: "생활구역", slotCapacity: 1, loadThreshold: 2 },
-  galley: { label: "식당/조리실", slotCapacity: 2, loadThreshold: 3 },
+// Job-scheduling-only metadata per room (slot capacity + display load threshold
+// for jobStore's derived job-slot index — see stores/jobStore.js). Room
+// identity/order/label is NOT owned here: data/shipRooms.js (ROOM_IDS /
+// getRoomDef) is the single source of truth for which rooms exist and what
+// they're called. Values below are unchanged from before Phase 18-D; only the
+// key set + label now come from that single source so the two can't drift.
+const ROOM_JOB_SLOTS = {
+  bridge: { slotCapacity: 2, loadThreshold: 3 },
+  ops: { slotCapacity: 2, loadThreshold: 3 },
+  engineering: { slotCapacity: 2, loadThreshold: 3 },
+  cargo: { slotCapacity: 2, loadThreshold: 4 },
+  medbay: { slotCapacity: 1, loadThreshold: 2 },
+  living: { slotCapacity: 1, loadThreshold: 2 },
+  galley: { slotCapacity: 2, loadThreshold: 3 },
 };
+
+export const ROOM_CONFIG = Object.fromEntries(
+  Object.keys(ROOM_JOB_SLOTS).map((id) => [id, { label: getRoomDef(id)?.label ?? id, ...ROOM_JOB_SLOTS[id] }]),
+);
 
 export const WEAR = {
   conditionDecayPerHour: 0.5,
