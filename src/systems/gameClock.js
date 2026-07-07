@@ -4,7 +4,6 @@ import { getZoneById } from "../data/sectors";
 import { getActiveModifiers } from "./cardEffects";
 import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
-import { getTravelEncounterChance, rollTravelEncounter, shouldRollTravelEncounter } from "./travelSystem";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
@@ -33,49 +32,6 @@ export const formatGameDate = (totalMinutes) => {
 
 function itemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
-}
-
-function consumeTravelFuel(activeTravel, currentMinute) {
-  const lastFuelAt = activeTravel.lastFuelAt ?? activeTravel.startedAt;
-  const elapsed = Math.max(0, currentMinute - lastFuelAt);
-  if (elapsed <= 0 || activeTravel.duration <= 0) return;
-  const mods = getActiveModifiers(useInventoryStore.getState().getActiveCards());
-  const fuelBurn = Math.min(activeTravel.fuelCost, (activeTravel.fuelCost / activeTravel.duration) * elapsed) * mods.fuelConsumptionMult;
-  if (fuelBurn > 0) {
-    useGameStore.getState().addResources({ fuel: -fuelBurn });
-    useExplorationStore.getState().registerTravelFuelTick(currentMinute);
-  }
-  const fuel = useGameStore.getState().resources.fuel;
-  if (fuel <= 0) useGameStore.getState().addLog("항해 경고: 연료가 고갈되었습니다. 표류 위험이 급상승합니다.");
-}
-
-function processTravel(currentMinute) {
-  const exploration = useExplorationStore.getState();
-  const activeTravel = exploration.activeTravel;
-  if (!activeTravel) return;
-  consumeTravelFuel(activeTravel, currentMinute);
-  if (shouldRollTravelEncounter(activeTravel, currentMinute)) {
-    const chance = getTravelEncounterChance(activeTravel);
-    let summary = null;
-    let happened = false;
-    if (Math.random() <= chance) {
-      if (exploration.pendingTravelEvent) summary = `미해결 항해 이벤트 지속: ${exploration.pendingTravelEvent.title}. 항해는 계속 진행 중입니다.`;
-      else {
-        const eventCard = rollTravelEncounter(activeTravel, currentMinute);
-        useExplorationStore.getState().setPendingTravelEvent(eventCard);
-        summary = `항해 이벤트 카드: ${eventCard.title} — ${eventCard.message}`;
-        useGameStore.getState().addLog(summary);
-        happened = true;
-      }
-    }
-    useExplorationStore.getState().registerTravelRoll(summary, currentMinute, happened);
-  }
-  const latestTravel = useExplorationStore.getState().activeTravel;
-  if (latestTravel && currentMinute >= latestTravel.completeAt) {
-    const destination = getZoneById(latestTravel.toZoneId);
-    useExplorationStore.getState().completeTravel();
-    useGameStore.getState().addLog(`${destination?.name ?? "목적지"} 도착. 항해 완료.`);
-  }
 }
 
 function applyNavEffect(effect, currentMinute) {
@@ -308,7 +264,6 @@ export function processTimedJobs(deltaMinutes = 0) {
   processJobScheduler(currentMinute);
   const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map(applyUnifiedJob).filter(Boolean);
   [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
-  processTravel(currentMinute);
   processNavigation(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);
   refreshCrewAiImmediatelyForCrisis();

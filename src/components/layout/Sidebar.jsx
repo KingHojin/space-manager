@@ -27,12 +27,13 @@ const quickActions = [
 ];
 
 export default function Sidebar({ activePanel, onChange, onOpenModal }) {
-  const legacyTravel = useExplorationStore((state) => state.activeTravel);
-  const navTravel = useNavStore((state) => state.travel);
+  const activeTravel = useNavStore((state) => state.travel);
   const pendingBlockedEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
+  // pendingTravelEvent is a save-compat-only read of the removed legacy travel
+  // system (see stores/explorationStore.js) — kept so a badge still shows if an
+  // old save happens to carry a stale value; nothing writes it going forward.
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
-  const activeTravel = legacyTravel ?? navTravel;
 
   const handlePanel = (item) => {
     if (item.id === "menu") {

@@ -65,62 +65,16 @@ export const useExplorationStore = create(
         }));
         return result;
       },
-      startTravel: (plan) =>
-        set({
-          activeTravel: plan,
-          pendingTravelEvent: null,
-          pendingCombatEncounter: null,
-          selectedZoneId: plan.toZoneId,
-          travelLog: [`항로 설정: ${plan.distanceLy} LY · ${plan.duration}분 소요`],
-        }),
-      registerTravelFuelTick: (currentMinute) =>
-        set((state) => ({
-          activeTravel: state.activeTravel ? { ...state.activeTravel, lastFuelAt: currentMinute } : null,
-        })),
-      registerTravelRoll: (summary, currentMinute, happened = false) =>
-        set((state) => ({
-          activeTravel: state.activeTravel
-            ? {
-                ...state.activeTravel,
-                lastEncounterAt: currentMinute,
-                encounterCount: (state.activeTravel.encounterCount ?? 0) + (happened ? 1 : 0),
-              }
-            : null,
-          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
-        })),
-      setPendingTravelEvent: (eventCard) =>
-        set((state) => ({
-          pendingTravelEvent: eventCard,
-          travelLog: eventCard ? [`이벤트 카드 발생: ${eventCard.title}`, ...state.travelLog].slice(0, 8) : state.travelLog,
-        })),
-      resolvePendingTravelEvent: (nextTravel, summary) =>
-        set((state) => ({
-          activeTravel: nextTravel ?? state.activeTravel,
-          pendingTravelEvent: null,
-          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
-        })),
-      dismissPendingTravelEvent: (summary) =>
-        set((state) => ({
-          pendingTravelEvent: null,
-          travelLog: summary ? [summary, ...state.travelLog].slice(0, 8) : state.travelLog,
-        })),
+      // NOTE (Phase 18-C): the legacy zone-travel action set (startTravel,
+      // registerTravelFuelTick, registerTravelRoll, setPendingTravelEvent,
+      // resolvePendingTravelEvent, dismissPendingTravelEvent, completeTravel)
+      // was removed here — it had zero callers (navStore.planRoute/tickTravel
+      // is the live travel path, see systems/gameClock.js processNavigation).
+      // The `activeTravel`/`pendingTravelEvent` state fields stay above for
+      // save-compatibility with existing localStorage saves; nothing writes
+      // them anymore going forward.
       setPendingCombatEncounter: (encounter) => set({ pendingCombatEncounter: encounter }),
       clearPendingCombatEncounter: () => set({ pendingCombatEncounter: null }),
-      completeTravel: () =>
-        set((state) => {
-          const destinationId = state.activeTravel?.toZoneId;
-          if (!destinationId) return state;
-          return {
-            currentZoneId: destinationId,
-            selectedZoneId: null,
-            activeTravel: null,
-            pendingTravelEvent: null,
-            pendingCombatEncounter: null,
-            route: [...state.route, destinationId].slice(-8),
-            discoveredZoneIds: Array.from(new Set([...state.discoveredZoneIds, destinationId])),
-            travelLog: [`목적지 도착: ${getAllZones().find((zone) => zone.id === destinationId)?.name ?? destinationId}`, ...state.travelLog].slice(0, 8),
-          };
-        }),
       moveToZone: (zoneId) =>
         set((state) => ({
           currentZoneId: zoneId,

@@ -187,8 +187,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
-  const legacyTravel = useExplorationStore((state) => state.activeTravel);
-  const navTravel = useNavStore((state) => state.travel);
+  const activeTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const clearPendingCombatEncounter = useExplorationStore((state) => state.clearPendingCombatEncounter);
   const currentMinute = useGameStore((state) => state.currentMinute);
@@ -217,7 +216,6 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const activeCards = useMemo(() => cards.filter((card) => activeCardIds.includes(card.instanceId)), [cards, activeCardIds]);
   const power = calculateCombatPower({ modules: installedModules, crew, activeCards });
   const maxDanger = Math.max(1, ...getAllZones().filter((zone) => discoveredZoneIds.includes(zone.id)).map((zone) => zone.danger));
-  const activeTravel = legacyTravel ?? navTravel;
   const combatEngaged = combat?.status === "engaged";
   const combatTerminal = Boolean(combat && ["won", "retreated", "lost"].includes(combat.status));
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter && !combatEngaged);
