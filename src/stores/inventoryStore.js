@@ -57,6 +57,17 @@ export const useInventoryStore = create(
         });
         return { ok: true, drawn };
       },
+      getActiveCards: () => get().cards.filter((card) => get().activeCardIds.includes(card.instanceId)),
+      consumeCard: (instanceId) => {
+        const card = get().cards.find((entry) => entry.instanceId === instanceId);
+        if (!card) return { ok: false, message: "카드를 찾을 수 없습니다." };
+        if (card.id !== "instant-patch") return { ok: false, message: "이 카드는 아직 사용할 수 없습니다." };
+        set((state) => ({
+          cards: state.cards.filter((entry) => entry.instanceId !== instanceId),
+          activeCardIds: state.activeCardIds.filter((id) => id !== instanceId),
+        }));
+        return { ok: true, card };
+      },
       toggleActiveCard: (instanceId) =>
         set((state) => {
           const exists = state.activeCardIds.includes(instanceId);

@@ -1,9 +1,11 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG, SLOT_ROOM } from "../data/constants";
+import { getActiveModifiers } from "../systems/cardEffects";
 import { jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
+import { useInventoryStore } from "./inventoryStore";
 
 const ACTIVE = new Set(["backlog", "assigned", "in_progress"]);
 const LEGACY_MIGRATION_VERSION = 3;
@@ -46,6 +48,7 @@ function roomsFromJobs(savedRooms = {}, jobs = []) {
 
 function makeJob(input = {}) {
   const type = input.type ?? "training";
+  const speedMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).jobSpeedMult;
   return normalizeJob({
     id: input.id ?? createId(),
     type,
@@ -55,7 +58,7 @@ function makeJob(input = {}) {
     requiredRole: input.requiredRole ?? JOB_REQUIRED_ROLE[type] ?? null,
     priority: normalizeJobPriority(input.priority),
     progress: input.progress ?? 0,
-    duration: Math.max(1, input.duration ?? JOB_DURATION[type] ?? 60),
+    duration: Math.max(1, Math.round((input.duration ?? JOB_DURATION[type] ?? 60) / Math.max(0.1, speedMult))),
     loadCost: input.loadCost ?? JOB_LOAD_COST[type] ?? 1,
     createdAt: input.createdAt ?? input.startedAt ?? 0,
     startedAt: input.startedAt ?? null,

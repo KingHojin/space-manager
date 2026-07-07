@@ -1,6 +1,6 @@
 export const cards = [
-  { id: "lean-burn", name: "린 번 항법", rarity: "common", family: "exploration", effect: "연료 소모 -10%" },
-  { id: "calm-bridge", name: "차분한 함교", rarity: "common", family: "crew", effect: "산소 소모 -5%" },
+  { id: "lean-burn", name: "린 번 항법", rarity: "common", family: "exploration", effect: "연료 소모 -10%", modifiers: { fuelConsumptionMult: 0.9 } },
+  { id: "calm-bridge", name: "차분한 함교", rarity: "common", family: "crew", effect: "산소 소모 -5%", modifiers: { oxygenConsumptionMult: 0.95 } },
   { id: "basic-patch", name: "응급 패치킷", rarity: "common", family: "consumable", effect: "선체 소폭 수리" },
   { id: "survey-drone", name: "정찰 드론", rarity: "common", family: "exploration", effect: "스캔 보상 소폭 증가" },
   { id: "cargo-sorter", name: "화물 정렬기", rarity: "common", family: "ship", effect: "아이템 획득 로그 정리" },
@@ -8,8 +8,8 @@ export const cards = [
   { id: "wreck-scouts", name: "잔해 탐색조", rarity: "common", family: "exploration", effect: "난파선 보상 증가" },
   { id: "coolant-kit", name: "냉각 키트", rarity: "common", family: "ship", effect: "열 피해 이벤트 완화" },
 
-  { id: "collector-tune", name: "집진기 튜닝", rarity: "uncommon", family: "buff", effect: "먼지 수집 +20%" },
-  { id: "fast-scan", name: "고속 스캔", rarity: "uncommon", family: "exploration", effect: "스캔 시간 -30%" },
+  { id: "collector-tune", name: "집진기 튜닝", rarity: "uncommon", family: "buff", effect: "먼지 수집 +20%", modifiers: { dustCollectionMult: 1.2 } },
+  { id: "fast-scan", name: "고속 스캔", rarity: "uncommon", family: "exploration", effect: "스캔 시간 -30%", modifiers: { scanTimeMult: 0.7 } },
   { id: "supply-coupon", name: "정거장 보급권", rarity: "uncommon", family: "market", effect: "시장 보급 비용 절감" },
   { id: "diplomatic-ping", name: "외교 핑", rarity: "uncommon", family: "diplomacy", effect: "검문 이벤트 위험 감소" },
   { id: "engine-overclock", name: "엔진 오버클럭", rarity: "uncommon", family: "ship", effect: "이동 가능 거리 증가, 선체 부담 증가" },
@@ -18,7 +18,7 @@ export const cards = [
   { id: "cryo-rounds", name: "냉각탄 적재", rarity: "uncommon", family: "combat", effect: "생체·열 계열 몬스터 대응 보정" },
   { id: "probe-bundle", name: "프로브 묶음", rarity: "uncommon", family: "exploration", effect: "탐사 프로브 보급 확률 증가" },
 
-  { id: "battle-focus", name: "전술 집중", rarity: "rare", family: "combat", effect: "전술력 +5%" },
+  { id: "battle-focus", name: "전술 집중", rarity: "rare", family: "combat", effect: "전술력 +5%", modifiers: { combatPowerMult: 1.05 } },
   { id: "instant-patch", name: "즉시 보수", rarity: "rare", family: "consumable", effect: "선체 30% 수리" },
   { id: "artifact-lens", name: "유물 렌즈", rarity: "rare", family: "science", effect: "유적 스캔 보상 증가" },
   { id: "salvage-team", name: "회수팀 편성", rarity: "rare", family: "exploration", effect: "난파선 이벤트 보상 증가" },
@@ -42,9 +42,9 @@ export const cards = [
 
   { id: "auric-cache", name: "오릭 보관함", rarity: "legendary", family: "artifact", effect: "희귀 재료와 크레딧 획득" },
   { id: "star-shepherd", name: "별무리 목자", rarity: "legendary", family: "exploration", effect: "새 섹터 발견률 대폭 증가" },
-  { id: "omega-reactor", name: "오메가 반응로", rarity: "legendary", family: "ship", effect: "연료·에너지 관련 페널티 대폭 완화" },
+  { id: "omega-reactor", name: "오메가 반응로", rarity: "legendary", family: "ship", effect: "연료·에너지 관련 페널티 대폭 완화", modifiers: { fuelConsumptionMult: 0.75 } },
   { id: "star-witness", name: "별의 목격자", rarity: "legendary", family: "exploration", effect: "새 섹터 발견률 대폭 증가" },
-  { id: "zero-point-overload", name: "제로포인트 과부하", rarity: "legendary", family: "ship", effect: "전투력 대폭 증가, 자원 페널티" },
+  { id: "zero-point-overload", name: "제로포인트 과부하", rarity: "legendary", family: "ship", effect: "전투력 대폭 증가, 자원 페널티", modifiers: { combatPowerMult: 1.25, fuelConsumptionMult: 1.15 } },
   { id: "time-stop-command", name: "시간 정지 명령", rarity: "legendary", family: "combat", effect: "치명 피해 1회 무효" },
   { id: "abyss-contract", name: "심연의 계약", rarity: "legendary", family: "diplomacy", effect: "위험 세력 특수 계약 해금" },
   { id: "omega-blueprint", name: "오메가 설계도", rarity: "legendary", family: "artifact", effect: "전설 모듈 구매·제작 해금" },

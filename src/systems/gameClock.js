@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
+import { getActiveModifiers } from "./cardEffects";
 import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
 import { getTravelEncounterChance, rollTravelEncounter, shouldRollTravelEncounter } from "./travelSystem";
@@ -38,7 +39,8 @@ function consumeTravelFuel(activeTravel, currentMinute) {
   const lastFuelAt = activeTravel.lastFuelAt ?? activeTravel.startedAt;
   const elapsed = Math.max(0, currentMinute - lastFuelAt);
   if (elapsed <= 0 || activeTravel.duration <= 0) return;
-  const fuelBurn = Math.min(activeTravel.fuelCost, (activeTravel.fuelCost / activeTravel.duration) * elapsed);
+  const mods = getActiveModifiers(useInventoryStore.getState().getActiveCards());
+  const fuelBurn = Math.min(activeTravel.fuelCost, (activeTravel.fuelCost / activeTravel.duration) * elapsed) * mods.fuelConsumptionMult;
   if (fuelBurn > 0) {
     useGameStore.getState().addResources({ fuel: -fuelBurn });
     useExplorationStore.getState().registerTravelFuelTick(currentMinute);
@@ -336,7 +338,8 @@ export const useGameClock = () => {
       const legacyZone = getZoneById(useExplorationStore.getState().currentZoneId);
       const collector = useShipStore.getState().modules.find((module) => module.id === "dust-collector");
       const richness = node?.richness ?? legacyZone?.richness ?? 1;
-      const dustRate = DUST.BASE_COLLECTION_PER_HOUR * (collector?.level || 1) * richness;
+      const dustMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).dustCollectionMult;
+      const dustRate = DUST.BASE_COLLECTION_PER_HOUR * (collector?.level || 1) * richness * dustMult;
       useInventoryStore.getState().addDust((dustRate * minutes) / 60);
       const event = rollEvent();
       if (event) useGameStore.getState().addLog(event);
