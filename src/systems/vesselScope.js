@@ -42,6 +42,16 @@ export function getActiveVesselScope() {
       pendingEncounter: nav.pendingEncounter,
       driftState: nav.driftState,
     },
+    // Phase 18-D: two distinct room models coexist by design, not by accident.
+    // interior.rooms (shipInteriorStore) is the physical room state — condition/
+    // load/tier/modules/activeCrisisId — driven by wear and the Phase 6 crisis
+    // system (systems/roomJobs.js, systems/crisisSystem.js). jobs.rooms
+    // (jobStore) is a derived job-slot index — slotCapacity/currentLoad/
+    // activeJobIds recomputed from the `jobs` array on every mutation (see
+    // roomsFromJobs in stores/jobStore.js) — used only for job-scheduling UI
+    // (backlog "slot full" state, per-room job load gauges). Their `load`
+    // fields look similar but measure different things: ship maintenance wear
+    // vs job-queue occupancy. Do not merge them.
     interior: {
       rooms: interior.rooms,
       activeCrises: interior.activeCrises ?? [],
@@ -86,7 +96,12 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     treatmentQueue: busyQueue(jobStore.getLegacyTreatmentQueue()),
     recoveryQueue: busyQueue(jobStore.getLegacyRecoveryQueue()),
     jobs: jobStore.getActiveJobs(),
-    jobRooms: jobStore.rooms,
+    // Phase 18-D: previously also exposed `jobRooms: jobStore.rooms` here, but
+    // grep across src/ found zero reads of snapshot.jobRooms anywhere (crewAI.js
+    // only ever reads snapshot.rooms, which is shipInteriorStore's physical room
+    // state below) — removed as dead. jobStore.rooms is still reachable directly
+    // via useJobStore.getState().rooms and via getActiveVesselScope().jobs.rooms
+    // for job-scheduling UI (see the comment above getActiveVesselScope's return).
     modules: scope.shipLoadout.modules,
     rooms: scope.interior.rooms,
     activeCrises: scope.interior.activeCrises,

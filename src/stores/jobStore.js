@@ -32,12 +32,17 @@ function normalizeJobs(jobs = [], now = null) {
   });
 }
 
-function roomsFromJobs(savedRooms = {}, jobs = []) {
+// Phase 18-D: jobStore.rooms is a pure "job-slot index" — slotCapacity/
+// loadThreshold from ROOM_CONFIG plus activeJobIds/currentLoad derived from
+// the in-progress `jobs` array. It is NOT an independent source of truth and
+// carries no state of its own: it is fully recomputable from `jobs` at any
+// time, which is exactly what this function does. This is a different
+// concept from shipInteriorStore.rooms' `condition`/`load`, which track
+// physical room wear/crisis state and decay over time independent of job
+// scheduling (see systems/roomJobs.js). Do not conflate the two "load"
+// fields — one is job-queue occupancy, the other is ship maintenance wear.
+function roomsFromJobs(jobs = []) {
   const rooms = createRooms();
-  Object.keys(rooms).forEach((roomId) => {
-    rooms[roomId].activeJobIds = [];
-    rooms[roomId].currentLoad = 0;
-  });
   jobs.forEach((job) => {
     if (job.status !== "in_progress" || !rooms[job.roomId]) return;
     rooms[job.roomId].activeJobIds.push(job.id);
@@ -85,7 +90,7 @@ export const useJobStore = create(
         const job = makeJob(input);
         set((state) => {
           const jobs = [...normalizeJobs(state.jobs), job];
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+          return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return job;
       },
@@ -136,7 +141,7 @@ export const useJobStore = create(
             result = { ok: true, reason: "cancelled", job };
             return { ...job, status: "failed", assignedCrewId: null, arrivalAt: null };
           });
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+          return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return result;
       },
@@ -146,18 +151,18 @@ export const useJobStore = create(
         set((state) => {
           const ids = new Set(normalizeJobs(state.jobs).map((job) => job.id));
           const jobs = [...normalizeJobs(state.jobs), ...result.jobs.filter((job) => !ids.has(job.id))];
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs), legacyMigrationVersion: LEGACY_MIGRATION_VERSION, legacyMigrationErrors: result.errors };
+          return { jobs, rooms: roomsFromJobs(jobs), legacyMigrationVersion: LEGACY_MIGRATION_VERSION, legacyMigrationErrors: result.errors };
         });
         return { migrated: result.jobs.length, errors: result.errors };
       },
       migrateProgressJobs: (currentMinute) => {
         if (get().legacyMigrationVersion >= 2) return { migrated: 0 };
         const jobs = normalizeJobs(get().jobs, currentMinute);
-        set((state) => ({ jobs, rooms: roomsFromJobs(state.rooms, jobs), legacyMigrationVersion: 2 }));
+        set((state) => ({ jobs, rooms: roomsFromJobs(jobs), legacyMigrationVersion: 2 }));
         return { migrated: jobs.length };
       },
       runScheduler: ({ currentMinute = 0, crew = [] } = {}) => {
-        const { results, warnings } = scheduleJobs(normalizeJobs(get().jobs), roomsFromJobs(get().rooms, get().jobs), crew, currentMinute);
+        const { results, warnings } = scheduleJobs(normalizeJobs(get().jobs), roomsFromJobs(get().jobs), crew, currentMinute);
         set((state) => {
           const jobs = normalizeJobs(state.jobs).map((job) => {
             const action = results.find((entry) => entry.jobId === job.id);
@@ -167,7 +172,7 @@ export const useJobStore = create(
             if (action.kind === "start") return { ...job, status: "in_progress", arrivalAt: null, startedAt: job.startedAt ?? currentMinute };
             return job;
           });
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+          return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return [...results.map((entry) => `작업 스케줄: ${entry.kind}`), ...warnings.map((entry) => `작업 대기: ${entry.roomId} 방 없음`)];
       },
@@ -184,7 +189,7 @@ export const useJobStore = create(
             done.push(finished);
             return finished;
           });
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+          return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return done;
       },
@@ -199,11 +204,11 @@ export const useJobStore = create(
             done.push(finished);
             return finished;
           });
-          return { jobs, rooms: roomsFromJobs(state.rooms, jobs) };
+          return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return done;
       },
-      recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.rooms, state.jobs) })),
+      recomputeRoomLoad: () => set((state) => ({ rooms: roomsFromJobs(state.jobs) })),
       getLegacyShipWorkQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyShipWork),
       getLegacyModuleQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyModuleWork),
       getLegacyTrainingQueue: () => activeLegacyJobs(normalizeJobs(get().jobs), jobToLegacyTraining),
@@ -215,9 +220,20 @@ export const useJobStore = create(
     }),
     {
       name: "space-manager-jobs",
+      // rooms is a derived job-slot index (see roomsFromJobs above), not
+      // independent state, so it is excluded from what gets written to
+      // storage going forward. Older saves may still carry a `rooms` field
+      // (from before Phase 18-D) — merge below always recomputes rooms from
+      // `jobs` and ignores whatever shape persistedState.rooms happens to be
+      // in, so those old saves keep loading correctly without any special
+      // migration step.
+      partialize: (state) => {
+        const { rooms: _rooms, ...persisted } = state;
+        return persisted;
+      },
       merge: (persistedState, currentState) => {
         const jobs = normalizeJobs(persistedState?.jobs ?? currentState.jobs);
-        return { ...currentState, ...(persistedState ?? {}), jobs, rooms: roomsFromJobs(persistedState?.rooms ?? currentState.rooms, jobs), legacyMigrationVersion: persistedState?.legacyMigrationVersion ?? 0, legacyMigrationErrors: persistedState?.legacyMigrationErrors ?? [] };
+        return { ...currentState, ...(persistedState ?? {}), jobs, rooms: roomsFromJobs(jobs), legacyMigrationVersion: persistedState?.legacyMigrationVersion ?? 0, legacyMigrationErrors: persistedState?.legacyMigrationErrors ?? [] };
       },
     },
   ),

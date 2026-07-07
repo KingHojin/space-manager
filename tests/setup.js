@@ -34,3 +34,17 @@ class MemoryStorage {
 if (!globalThis.localStorage) {
   globalThis.localStorage = new MemoryStorage();
 }
+
+// zustand's persist middleware resolves its default storage via
+// `window.localStorage` (not `globalThis.localStorage`) at store-creation
+// time; wrapped in a try/catch that silently swallows the ReferenceError and
+// leaves `storage` undefined when `window` doesn't exist. In that state the
+// middleware early-returns before ever assigning `api.persist`, so
+// `useXStore.persist` (getOptions/merge/partialize/etc.) is unavailable —
+// this is otherwise invisible because normal app code never touches
+// `.persist` directly. Aliasing `window` to `globalThis` here (Node has no
+// browser `window`) lets `window.localStorage` resolve to the stub above so
+// persist-merge/migration tests can exercise the real `.persist` API.
+if (!globalThis.window) {
+  globalThis.window = globalThis;
+}
