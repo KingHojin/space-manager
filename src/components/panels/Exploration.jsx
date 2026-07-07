@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
-import { NAVIGATION_TRAVEL } from "../../data/constants";
+import { DUST, NAVIGATION_TRAVEL } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useCombatStore } from "../../stores/combatStore";
@@ -107,6 +107,7 @@ export default function Exploration({ onNavigate }) {
   const addResources = useGameStore((state) => state.addResources);
   const addLog = useGameStore((state) => state.addLog);
   const addItem = useInventoryStore((state) => state.addItem);
+  const addDust = useInventoryStore((state) => state.addDust);
   const crew = useCrewStore((state) => state.crew);
   const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const zoneRuntime = useExplorationStore((state) => state.zoneRuntime ?? {});
@@ -181,11 +182,14 @@ export default function Exploration({ onNavigate }) {
     result.items.forEach((item) => addItem(item.id, item.qty));
     if (result.creditGain > 0) addResources({ credits: result.creditGain });
     if (result.hullDamage > 0) addResources({ hull: -result.hullDamage });
+    const dustGain = Math.round(DUST.EXPLORE_PER_DANGER * Math.max(1, current.danger ?? 1));
+    addDust(dustGain);
     const rewardText = formatRewardItems(result.items);
     const creditText = result.creditGain > 0 ? ` · ₢${result.creditGain}` : "";
     const damageText = result.hullDamage > 0 ? ` · 선체 -${result.hullDamage}` : "";
     const fuelText = result.fuelCost > 0 ? ` · 연료 -${result.fuelCost.toFixed(1)}` : "";
-    return addLog(`탐험 완료: ${current.name} · ${rewardText}${creditText}${damageText}${fuelText}. 창고에서 폐자재를 분해 작업으로 등록할 수 있습니다.`);
+    const dustText = ` · 먼지 +${dustGain}`;
+    return addLog(`탐험 완료: ${current.name} · ${rewardText}${creditText}${damageText}${fuelText}${dustText}. 창고에서 폐자재를 분해 작업으로 등록할 수 있습니다.`);
   };
 
   const handlePlanMission = (mission) => {

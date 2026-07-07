@@ -1,8 +1,9 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DUST } from "../data/constants";
+import { DUST, SHARD_CRAFT_COST } from "../data/constants";
+import { cards as cardCatalog } from "../data/cards";
 import { items as baseItems } from "../data/items";
-import { drawCards } from "../systems/gachaEngine";
+import { drawCard, drawPityCard } from "../systems/gachaEngine";
 
 function mergeItems(savedItems = []) {
   const savedById = new Map(savedItems.map((item) => [item.id, item]));
@@ -20,6 +21,7 @@ export const useInventoryStore = create(
       cards: [],
       activeCardIds: [],
       lastDraw: [],
+      pityCount: 0,
       addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
       addItem: (itemId, qty = 1) =>
         set((state) => {
@@ -44,7 +46,16 @@ export const useInventoryStore = create(
       draw: (count) => {
         const cost = count >= 10 ? DUST.TEN_DRAW_COST : DUST.SINGLE_DRAW_COST;
         if (get().dust < cost) return { ok: false, message: "우주 먼지가 부족합니다." };
-        const drawn = drawCards(count);
+        // Draw cards one at a time so the pity counter can force an epic-or-better
+        // card the moment it crosses DUST.PITY_THRESHOLD, then resets.
+        let runningPity = get().pityCount;
+        const drawn = [];
+        for (let index = 0; index < count; index += 1) {
+          const forcedPity = runningPity + 1 >= DUST.PITY_THRESHOLD;
+          const card = forcedPity ? drawPityCard() : drawCard(count >= 10 && index === count - 1);
+          drawn.push(card);
+          runningPity = ["epic", "legendary"].includes(card.rarity) ? 0 : runningPity + 1;
+        }
         set((state) => {
           const ownedIds = new Set(state.cards.map((card) => card.id));
           const duplicates = drawn.filter((card) => ownedIds.has(card.id)).length;
@@ -53,9 +64,22 @@ export const useInventoryStore = create(
             shards: state.shards + duplicates * DUST.DUPLICATE_SHARDS,
             cards: [...state.cards, ...drawn.map((card) => ({ ...card, instanceId: crypto.randomUUID() }))],
             lastDraw: drawn,
+            pityCount: runningPity,
           };
         });
         return { ok: true, drawn };
+      },
+      craftCard: (cardId) => {
+        const template = cardCatalog.find((card) => card.id === cardId);
+        if (!template) return { ok: false, message: "카드를 찾을 수 없습니다." };
+        const cost = SHARD_CRAFT_COST[template.rarity] ?? SHARD_CRAFT_COST.common;
+        if (get().shards < cost) return { ok: false, message: "먼지 조각이 부족합니다." };
+        const card = { ...template, instanceId: crypto.randomUUID() };
+        set((state) => ({
+          shards: state.shards - cost,
+          cards: [...state.cards, card],
+        }));
+        return { ok: true, card };
       },
       getActiveCards: () => get().cards.filter((card) => get().activeCardIds.includes(card.instanceId)),
       consumeCard: (instanceId) => {

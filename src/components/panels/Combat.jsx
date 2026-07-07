@@ -14,6 +14,7 @@ import {
   pickEnemyFleet,
   resolveCombatRound,
 } from "../../systems/combatEngine";
+import { DUST } from "../../data/constants";
 import { getAllZones } from "../../data/sectors";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
@@ -198,6 +199,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const cards = useInventoryStore((state) => state.cards);
   const activeCardIds = useInventoryStore((state) => state.activeCardIds);
   const addItem = useInventoryStore((state) => state.addItem);
+  const addDust = useInventoryStore((state) => state.addDust);
   const failMission = useMissionStore((state) => state.failMission);
   const combat = useCombatStore((state) => state.combatByVesselId[activeVesselId] ?? null);
   const feed = useCombatStore((state) => state.feedByVesselId[activeVesselId] ?? DEFAULT_FEED);
@@ -269,6 +271,11 @@ export default function Combat({ onNavigate, onOpenModal }) {
     if (casualty) {
       applyCombatCasualty({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
       casualtyLogs.push(casualty.injury === "전사" ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.` : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`);
+    }
+    if (result.combat.status === "won") {
+      const dustGain = Math.round(DUST.COMBAT_REWARD_PER_RISK * (combat.enemy?.risk ?? 1));
+      addDust(dustGain);
+      casualtyLogs.push(`전투 승리 보상: 먼지 +${dustGain}.`);
     }
     if (result.combat.status === "won" && activeTravel) {
       casualtyLogs.push("긴급 교전 종료. 항해를 계속 진행할 수 있습니다.");

@@ -173,7 +173,13 @@ export const DUST = {
   TEN_DRAW_COST: 900,
   BASE_COLLECTION_PER_HOUR: 1.8,
   DUPLICATE_SHARDS: 20,
+  EXPLORE_PER_DANGER: 6,
+  CRISIS_REWARD: 12,
+  COMBAT_REWARD_PER_RISK: 5,
+  PITY_THRESHOLD: 50,
 };
+
+export const SHARD_CRAFT_COST = { common: 40, uncommon: 90, rare: 200, epic: 480, legendary: 1200 };
 
 export const GACHA_RATES = [
   { rarity: "common", label: "일반", rate: 0.55 },
