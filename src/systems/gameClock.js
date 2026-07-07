@@ -193,24 +193,77 @@ function processCrewHealth(currentMinute, deltaMinutes) {
   logs.forEach((message) => useGameStore.getState().addLog(`의무실: ${message}`));
 }
 
-// Phase 19-A: policy foundation only. Reads policyStore + snapshots of the
-// stores a policy might care about, hands them to the pure
-// systems/policyEngine.js (same orchestration shape as every other
-// process* function here: read stores -> call a pure system -> apply the
-// returned effects to stores), and applies only the returned `logs` to
-// gameStore. `actions` are intentionally NOT applied to anything yet (no
-// job enqueue, no resource/crew mutation) — that lands in 19-B onward, once
-// per-policy action handlers exist. Every catalog policy defaults to
-// disabled (see data/policies.js), so with no player interaction this
-// function evaluates to `{ actions: [], logs: [] }` and is a no-op — see
-// gameClock.integration.test.js's "policies default OFF" case.
+// Phase 19-B: throttle state for repeated policy *warning* logs
+// ("diagnostic" actions only — a real "enqueue-ship-work" always logs
+// immediately, since it's already self-limiting: the next tick sees the
+// freshly-enqueued job via jobStore.getActiveJobs() and skips re-firing).
+// Deliberately a module-level in-memory Map, NOT stored in policyStore or
+// gameStore: it is purely a display-spam guard, not game state, so it does
+// not need to survive a save/reload — a fresh page load just re-warns on
+// the next tick past the threshold, which is harmless. Keying is
+// `${policyId}:${reason}` so e.g. auto-hull-repair's "insufficient-scrap"
+// warning and fuel-reserve's "low-fuel" warning throttle independently.
+const policyWarningLastLoggedMinute = new Map();
+const POLICY_WARNING_THROTTLE_MINUTES = 60;
+
+function shouldLogPolicyMessage(action, currentMinute) {
+  if (action.kind !== "diagnostic") return true;
+  const key = `${action.policyId}:${action.detail?.reason ?? action.kind}`;
+  const last = policyWarningLastLoggedMinute.get(key);
+  if (last !== undefined && currentMinute - last < POLICY_WARNING_THROTTLE_MINUTES) return false;
+  policyWarningLastLoggedMinute.set(key, currentMinute);
+  return true;
+}
+
+// applyPolicyActions: the only action kind that mutates gameplay state today
+// is "enqueue-ship-work" (auto-hull-repair's real repair-job enqueue).
+// Mirrors Ship.jsx's ScrapRepairCard.onRepair (handleRepair) exactly: remove
+// the consumed inputItems from inventoryStore, then hand the same job
+// payload shape to jobStore.enqueueShipWork — so a policy-triggered repair
+// is indistinguishable from a manually-queued one once it's in the job
+// queue. "diagnostic" actions are intentionally ignored here; they only
+// ever produce a log (see processPolicies below).
+function applyPolicyActions(actions, currentMinute) {
+  actions.forEach((action) => {
+    if (action.kind !== "enqueue-ship-work") return;
+    const job = action.detail?.job;
+    if (!job) return;
+    (job.payload?.inputItems ?? []).forEach(({ itemId, qty }) => {
+      if (itemId && qty) useInventoryStore.getState().removeItem(itemId, qty);
+    });
+    useJobStore.getState().enqueueShipWork({ ...job, createdAt: currentMinute });
+  });
+}
+
+// Phase 19-A/19-B: reads policyStore + snapshots of the stores a policy
+// might care about (including jobStore's active jobs and inventoryStore's
+// items, so policyEngine.js can decide things like "is a repair already
+// queued" / "do we have enough scrap" without ever importing a store
+// itself), hands them to the pure systems/policyEngine.js (same
+// orchestration shape as every other process* function here: read stores ->
+// call a pure system -> apply the returned effects to stores), then applies
+// both the returned `logs` (subject to the repeat-warning throttle above)
+// and `actions` (via applyPolicyActions) to their respective stores. Every
+// catalog policy defaults to disabled (see data/policies.js), so with no
+// player interaction this function evaluates to `{ actions: [], logs: [] }`
+// and is a no-op — see gameClock.integration.test.js's "policies default
+// OFF" case.
 function processPolicies(currentMinute, deltaMinutes) {
   const { policies } = usePolicyStore.getState();
   const resources = useGameStore.getState().resources;
   const crew = useCrewStore.getState().crew;
   const rooms = useShipInteriorStore.getState().rooms;
-  const { logs } = evaluatePolicies({ policies, resources, crew, rooms, currentMinute, deltaMinutes });
-  logs.forEach((message) => useGameStore.getState().addLog(message));
+  const jobs = useJobStore.getState().getActiveJobs();
+  const items = useInventoryStore.getState().items;
+  const { actions, logs } = evaluatePolicies({ policies, resources, crew, rooms, currentMinute, deltaMinutes, jobs, items });
+  // actions/logs are index-aligned by policyEngine.js's contract (see its
+  // file header), so actions[i] is always the action that produced logs[i].
+  logs.forEach((message, index) => {
+    const action = actions[index];
+    if (action && !shouldLogPolicyMessage(action, currentMinute)) return;
+    useGameStore.getState().addLog(message);
+  });
+  applyPolicyActions(actions, currentMinute);
 }
 
 function applyItemOutputs(outputItems = []) {
