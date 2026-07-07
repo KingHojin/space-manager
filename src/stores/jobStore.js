@@ -119,6 +119,8 @@ export const useJobStore = create(
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
         return get().enqueueJob({ type: "recovery", roomId: "medbay", cost, duration, priority, createdAt: start, payload: { targetCrewId: memberId, fatigueRecovery } });
       },
+      enqueueDecode: ({ itemId, priority = "normal", createdAt = null }) =>
+        get().enqueueJob({ type: "decode", roomId: "ops", duration: JOB_DURATION.decode, priority, createdAt: createdAt ?? 0, payload: { itemId } }),
       setJobPriority: (jobId, priority) => set((state) => ({ jobs: normalizeJobs(state.jobs).map((job) => (job.id === jobId ? { ...job, priority: normalizeJobPriority(priority) } : job)) })),
       nudgeJobPriority: (jobId, direction) => set((state) => ({ jobs: normalizeJobs(state.jobs).map((job) => (job.id === jobId && job.status === "backlog" ? { ...job, priority: Math.max(0, job.priority + direction) } : job)) })),
       cancelJob: (jobId) => {

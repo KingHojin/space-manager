@@ -40,7 +40,7 @@ export const CREW_NEEDS = {
 
 export const JOB_STATUS = ["backlog", "assigned", "in_progress", "done", "failed"];
 
-export const JOB_TYPES = ["recovery", "treatment", "hull_repair", "salvage", "module_upgrade", "training"];
+export const JOB_TYPES = ["recovery", "treatment", "hull_repair", "salvage", "module_upgrade", "training", "decode"];
 
 export const JOB_DURATION = {
   recovery: 180,
@@ -49,6 +49,7 @@ export const JOB_DURATION = {
   salvage: 90,
   module_upgrade: 120,
   training: 360,
+  decode: 240,
 };
 
 export const JOB_LOAD_COST = {
@@ -58,6 +59,7 @@ export const JOB_LOAD_COST = {
   salvage: 2,
   module_upgrade: 3,
   training: 1,
+  decode: 2,
 };
 
 export const JOB_REQUIRED_ROLE = {
@@ -67,6 +69,13 @@ export const JOB_REQUIRED_ROLE = {
   salvage: "engineer",
   module_upgrade: "engineer",
   training: null,
+  decode: null,
+};
+
+export const DECODE_RULES = {
+  blackbox: { reveals: 1, dustReward: 30, label: "함선 블랙박스" },
+  "ancient-coordinate": { reveals: 1, dustReward: 20, label: "고대 좌표 조각" },
+  "void-map": { reveals: 3, dustReward: 60, label: "공허 성도" },
 };
 
 export const JOB_PRIORITY = {

@@ -12,6 +12,7 @@ const DEFAULT_ROOM_BY_TYPE = {
   salvage: "cargo",
   module_upgrade: "engineering",
   training: "living",
+  decode: "ops",
 };
 
 const ROOM_ALIASES = {
@@ -91,6 +92,7 @@ export function jobTypeLabel(type) {
   if (type === "salvage") return "잔해 분해";
   if (type === "module_upgrade") return "모듈 작업";
   if (type === "training") return "역할 훈련";
+  if (type === "decode") return "단서 해독";
   return type ?? "작업";
 }
 

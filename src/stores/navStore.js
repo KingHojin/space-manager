@@ -209,6 +209,24 @@ export const useNavStore = create(
           return { effects, logs };
         },
         refuel: (amount = 100) => set((state) => ({ fuel: clamp(state.fuel + amount, 0, 100), driftState: state.fuel + amount > 0 ? null : state.driftState, navLog: state.fuel + amount > 0 && state.driftState ? ["긴급 보급 성공: 표류 상태 해제.", ...state.navLog].slice(0, 10) : state.navLog })),
+        revealHiddenNodes: (count = 1) => {
+          const state = get();
+          const discoveredSet = new Set(state.discovered);
+          const currentNode = state.sector.nodes.find((node) => node.id === state.currentNodeId);
+          const hiddenNodes = state.sector.nodes.filter((node) => !discoveredSet.has(node.id));
+          if (hiddenNodes.length === 0) return [];
+          const sorted = [...hiddenNodes].sort((a, b) => {
+            const distA = currentNode ? Math.hypot((a.pos?.x ?? 0) - (currentNode.pos?.x ?? 0), (a.pos?.y ?? 0) - (currentNode.pos?.y ?? 0)) : 0;
+            const distB = currentNode ? Math.hypot((b.pos?.x ?? 0) - (currentNode.pos?.x ?? 0), (b.pos?.y ?? 0) - (currentNode.pos?.y ?? 0)) : 0;
+            return distA - distB;
+          });
+          const revealed = sorted.slice(0, Math.max(0, count));
+          if (revealed.length === 0) return [];
+          const discovered = Array.from(new Set([...state.discovered, ...revealed.map((node) => node.id)]));
+          const sector = withNodeFlags(state.sector, state.visited, discovered);
+          set({ sector, discovered, navLog: [`해독으로 새 좌표 확보: ${revealed.map((node) => node.name).join(", ")}`, ...state.navLog].slice(0, 10) });
+          return revealed;
+        },
         addRecruitCandidate: (templateId) => set((state) => ({ recruitCandidates: Array.from(new Set([...(state.recruitCandidates ?? []), templateId])) })),
         getNavCard: () => {
           const state = get();

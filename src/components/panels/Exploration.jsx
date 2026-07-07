@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
-import { DUST, NAVIGATION_TRAVEL } from "../../data/constants";
+import { DECODE_RULES, DUST, JOB_DURATION, NAVIGATION_TRAVEL } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useCombatStore } from "../../stores/combatStore";
@@ -8,6 +8,7 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useJobStore } from "../../stores/jobStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
@@ -108,6 +109,10 @@ export default function Exploration({ onNavigate }) {
   const addLog = useGameStore((state) => state.addLog);
   const addItem = useInventoryStore((state) => state.addItem);
   const addDust = useInventoryStore((state) => state.addDust);
+  const removeItem = useInventoryStore((state) => state.removeItem);
+  const inventoryItems = useInventoryStore((state) => state.items ?? []);
+  const jobs = useJobStore((state) => state.jobs ?? []);
+  const enqueueJob = useJobStore((state) => state.enqueueJob);
   const crew = useCrewStore((state) => state.crew);
   const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const zoneRuntime = useExplorationStore((state) => state.zoneRuntime ?? {});
@@ -271,6 +276,16 @@ export default function Exploration({ onNavigate }) {
     return null;
   };
 
+  const handleDecode = (itemId) => {
+    const rule = DECODE_RULES[itemId];
+    if (!rule) return;
+    const hasActiveDecode = jobs.some((job) => job.type === "decode" && job.payload?.itemId === itemId && ["backlog", "assigned", "in_progress"].includes(job.status));
+    if (hasActiveDecode) return addLog("이미 해독 작업이 진행 중입니다.");
+    removeItem(itemId, 1);
+    enqueueJob({ type: "decode", roomId: "ops", duration: JOB_DURATION.decode, priority: "normal", createdAt: currentMinute, payload: { itemId, inputItems: [{ itemId, qty: 1 }] } });
+    return addLog(`단서 해독 작업 등록: ${rule.label} · 관제실 슬롯 필요 · 4시간.`);
+  };
+
   const handleEmergencyRefuel = () => {
     refuel(25);
     addLog("긴급 구조 보급 수신: 항해 연료 +25.");
@@ -290,6 +305,25 @@ export default function Exploration({ onNavigate }) {
         {travel && <section><div className="section-title"><Clock3 size={18} />{travel.missionId ? "임무 항해 상황판" : "항해 상황판"}</div><div className="mission-travel-card mt-4 rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4"><div className="flex items-start justify-between gap-3"><div>{travel.missionTitle && <div className="mb-1 text-xs font-bold text-cyan-200">{travel.missionTitle}</div>}<div className="font-semibold text-amber-100">{travelFrom?.name} → {travelTo?.name}</div><div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(travel.completeAt)}</div></div><span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span></div><div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(travel.completeAt - currentMinute)))} /><Info label="예상 연료" value={`${travel.fuelCost.toFixed(1)}`} /></div></div></section>}
         {driftState && <section className="rounded border border-red-400/45 bg-red-400/10 p-4"><div className="section-title"><Fuel size={18} />표류 상태</div><p className="mt-2 text-sm leading-6 text-slate-300">연료가 고갈되어 이동이 정지했습니다.</p><button className="primary-button mt-4 w-full" onClick={handleEmergencyRefuel}>긴급 보급 수신</button></section>}
         {!pendingEncounter && !pendingMissionEncounter && !travel && !driftState && !combatEngaged && selected && <section><div className="section-title"><Route size={18} />목적지 결재</div><div className="mt-4 rounded border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="flex items-start justify-between gap-3"><div><div className="text-lg font-black text-slate-50">{NODE_TYPE_ICONS[selected.type] ?? "❔"} {selected.name}</div><div className="mt-1 text-sm text-slate-400">{NODE_TYPE_LABELS[selected.type] ?? selected.type} · 위험 {selected.danger} · 자원 {selected.richness}</div></div><span className={`hud-chip ${dangerChipClass(selected.danger)}`}>위험 {selected.danger}</span></div>{isCurrent ? <p className="mt-3 text-sm text-slate-400">현재 위치입니다. 연결된 노드를 선택하거나 주변 잔해를 수거하세요.</p> : <div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="거리" value={`${plannedDistance.toFixed(1)}u`} /><Info label="예상 시간" value={formatMinutes(plannedMinutes)} /></div>}<button className="primary-button mt-4 w-full" disabled={isCurrent || fuel <= 0} onClick={handlePlan}><Rocket size={16} />이 경로로 항해</button><ExplorationRewardPanel zone={selected} runtime={zoneRuntime[selected.id]} currentMinute={currentMinute} fuel={fuel} isCurrent={isCurrent} onExplore={handleExplore} /></div></section>}
+        <section>
+          <div className="section-title"><Briefcase size={18} />단서 해독</div>
+          <div className="mt-3 grid gap-2">
+            {Object.keys(DECODE_RULES).every((itemId) => (inventoryItems.find((item) => item.id === itemId)?.qty ?? 0) <= 0) ? (
+              <p className="text-sm text-slate-500">해독할 단서가 없습니다. 난파선·유적 탐험에서 단서를 찾아보세요.</p>
+            ) : (
+              Object.entries(DECODE_RULES).map(([itemId, rule]) => {
+                const qty = inventoryItems.find((item) => item.id === itemId)?.qty ?? 0;
+                if (qty <= 0) return null;
+                return (
+                  <div key={itemId} className="flex items-center justify-between gap-3 rounded border border-slate-700/70 bg-slate-950/70 px-3 py-2">
+                    <div><div className="text-sm font-semibold text-slate-100">{rule.label}</div><div className="text-xs text-slate-400">보유 {qty}개</div></div>
+                    <button className="secondary-button" onClick={() => handleDecode(itemId)}>해독 지시 ({rule.label})</button>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </section>
         <section><div className="section-title">항해 로그</div><div className="mt-3 grid gap-2">{navLog.slice(0, 5).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/70 px-3 py-2 text-xs text-slate-300">{entry}</div>)}</div></section>
       </aside>
     </div>
