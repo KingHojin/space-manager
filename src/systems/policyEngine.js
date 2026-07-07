@@ -26,12 +26,26 @@
 //     if that fails — a race against the credits snapshot this module was
 //     handed) and, only on success, calls
 //     jobStore.enqueueTreatment(action.detail.job).
+//   - "resolve-encounter" (19-D, encounter-default-choice): gameClock.js's
+//     applyPolicyActions() re-checks that navStore's pendingEncounter is
+//     still the same encounter (by id) and, if so, calls the existing
+//     applyNavigationEncounter(action.detail.optionId, currentMinute) —
+//     this module never decides *how* an encounter option is applied, only
+//     *which* optionId to pick.
 //
 // 19-B implements auto-hull-repair (real enqueue, not just diagnostic) and
 // fuel-reserve (diagnostic warning only — auto-refuel needs a market/price
 // model that's out of scope here). 19-C implements auto-treatment (real
-// enqueue, mirroring 19-B's shape). encounter-default-choice remains a
-// no-op, recognized by id, until 19-D.
+// enqueue, mirroring 19-B's shape). 19-D implements encounter-default-choice
+// (see evaluateEncounterDefaultChoice below): navStore's pendingEncounter has
+// no timeout/expiry concept (see navStore.js — arriveNode sets it, and it
+// blocks planRoute indefinitely until resolveEncounter is called), so this
+// policy is "resolve immediately on encounter, by stance" rather than
+// "resolve after a wait". Any option whose outcome contains a
+// `{kind:"combat"}` effect is *never* auto-selected, no matter how it would
+// score — gameClock.js's applyNavEffect turns that effect into
+// explorationStore.setPendingCombatEncounter(...), and this project's
+// standing rule is that emergency combat is never triggered automatically.
 
 import { JOB_DURATION, JOB_ECONOMY } from "../data/constants";
 import { INJURY_STATE_ORDER, injuryLabel, injuryRank, isInjured, treatmentRule } from "./injurySystem";
@@ -42,6 +56,37 @@ const DEFAULT_FUEL_RESERVE_THRESHOLD = 30;
 const DEFAULT_TREATMENT_MIN_SEVERITY = "minor";
 const HULL_REPAIR_SCRAP_ITEM_ID = "salvage-scrap";
 const HULL_REPAIR_ROOM_ID = "engineering";
+const DEFAULT_ENCOUNTER_STANCE = "balanced";
+
+// Scoring weights for evaluateEncounterDefaultChoice, below. These are a
+// deliberately simple, transparent heuristic over navEncounters.js's outcome
+// effect shapes — there is no "true" risk/reward number attached to an
+// encounter option in the data, so this module derives one from the same
+// effect kinds gameClock.js's applyNavEffect already knows how to apply.
+//
+// - Resource loss (negative `resource`/`fuel` deltas) contributes to risk.
+//   `credits` is excluded from risk entirely: losing credits is a cost, not
+//   a survival risk, and every real "hail/ambush"-style option in
+//   navEncounters.js that costs credits is a safe, deliberate trade (e.g.
+//   station-refuel's "buy-fuel"), not a hazard a "safe" stance should be
+//   scared away from.
+// - Resource gain (positive `resource`/`fuel` deltas) contributes to
+//   reward, `credits` included at full weight — per the design brief,
+//   reward is "특히 credits"-driven.
+// - `spawnCrisis` adds a flat risk penalty proportional to severity: it has
+//   no resource delta of its own but is unambiguously a hazard (it's the
+//   same effect crisisSystem.js turns into an active ship crisis).
+// - `recruitOffer` / `nextSector` add a flat reward bonus: both are
+//   strategic upside (a new crew candidate, sector progression) that a
+//   pure resource-delta sum would otherwise score as zero.
+// - `combat` is deliberately NOT scored here — options containing it are
+//   filtered out of the candidate pool entirely, before scoring ever runs
+//   (see evaluateEncounterDefaultChoice).
+const ENCOUNTER_RISK_RESOURCE_WEIGHTS = { hull: 1, oxygen: 1, fuel: 1 };
+const ENCOUNTER_REWARD_RESOURCE_WEIGHTS = { hull: 1, oxygen: 1, fuel: 1, credits: 1 };
+const ENCOUNTER_CRISIS_RISK_PER_SEVERITY = 15;
+const ENCOUNTER_RECRUIT_OFFER_REWARD = 40;
+const ENCOUNTER_NEXT_SECTOR_REWARD = 30;
 
 function itemQty(items, itemId) {
   return (items ?? []).find((item) => item.id === itemId)?.qty ?? 0;
@@ -195,17 +240,124 @@ function evaluateAutoTreatment(policyState, resources, crew, jobs) {
   };
 }
 
-// evaluatePolicies({ policies, resources, crew, rooms, currentMinute, jobs, items })
+function optionHasCombatOutcome(option) {
+  return (option?.outcome ?? []).some((effect) => effect?.kind === "combat");
+}
+
+// Sums a single encounter option's outcome effects into { risk, reward }
+// scalars, per the weighting scheme documented above the *_WEIGHTS
+// constants. Never called on an option that contains a `combat` effect —
+// evaluateEncounterDefaultChoice filters those out before scoring.
+function scoreEncounterOption(option) {
+  let risk = 0;
+  let reward = 0;
+  (option?.outcome ?? []).forEach((effect) => {
+    if (effect?.kind === "resource" && effect.delta) {
+      Object.entries(effect.delta).forEach(([key, value]) => {
+        if (typeof value !== "number" || value === 0) return;
+        if (value < 0) {
+          if (key === "credits") return; // credits excluded from risk — see weights comment.
+          risk += Math.abs(value) * (ENCOUNTER_RISK_RESOURCE_WEIGHTS[key] ?? 1);
+        } else {
+          reward += value * (ENCOUNTER_REWARD_RESOURCE_WEIGHTS[key] ?? 1);
+        }
+      });
+    } else if (effect?.kind === "fuel" && typeof effect.delta === "number" && effect.delta !== 0) {
+      if (effect.delta < 0) risk += Math.abs(effect.delta) * ENCOUNTER_RISK_RESOURCE_WEIGHTS.fuel;
+      else reward += effect.delta * ENCOUNTER_REWARD_RESOURCE_WEIGHTS.fuel;
+    } else if (effect?.kind === "spawnCrisis") {
+      risk += (effect.severity ?? 1) * ENCOUNTER_CRISIS_RISK_PER_SEVERITY;
+    } else if (effect?.kind === "recruitOffer") {
+      reward += ENCOUNTER_RECRUIT_OFFER_REWARD;
+    } else if (effect?.kind === "nextSector") {
+      reward += ENCOUNTER_NEXT_SECTOR_REWARD;
+    }
+  });
+  return { risk, reward };
+}
+
+// encounter-default-choice (19-D): navStore's pendingEncounter has no
+// timeout — see the file header comment — so this rule fires immediately
+// whenever a pending encounter exists and picks one option by `stance`:
+//   - "safe": lowest riskScore (ties keep option array order).
+//   - "aggressive": highest rewardScore.
+//   - "balanced" (default): highest (rewardScore - riskScore).
+// Any option whose outcome contains a `combat` effect is removed from the
+// candidate pool *before* scoring, unconditionally — this policy must never
+// be the thing that starts a fight (see this project's standing "no
+// automated emergency combat" rule, and gameClock.js's applyNavEffect,
+// which turns `combat` into explorationStore.setPendingCombatEncounter).
+// pendingCombatEncounter: `encounter` (a snapshot of navStore.pendingEncounter)
+// and `pendingCombatEncounter` (a snapshot of
+// explorationStore.pendingCombatEncounter) are both plain data handed in by
+// gameClock.js — this function never reaches into either store.
+function evaluateEncounterDefaultChoice(policyState, encounter, pendingCombatEncounter) {
+  if (!policyState?.enabled) return null;
+  if (!encounter) return null;
+  // A combat encounter is already awaiting manual resolution elsewhere
+  // (e.g. spawned by a different navigation effect this same tick) — leave
+  // the pending nav encounter alone until that clears, as an extra safety
+  // margin on top of the per-option combat exclusion below.
+  if (pendingCombatEncounter) return null;
+
+  const stance = policyState.params?.stance ?? DEFAULT_ENCOUNTER_STANCE;
+  const options = encounter.options ?? [];
+  const candidates = options.filter((option) => !optionHasCombatOutcome(option));
+
+  if (candidates.length === 0) {
+    return {
+      action: {
+        policyId: "encounter-default-choice",
+        kind: "diagnostic",
+        detail: { reason: "all-combat", encounterId: encounter.id ?? null },
+      },
+      log: `정책: 조우 자동 대응 보류 — 모든 선택지가 전투로 이어짐, 수동 결재 필요 (${encounter.title ?? "조우"}).`,
+    };
+  }
+
+  const scored = candidates.map((option) => ({ option, ...scoreEncounterOption(option) }));
+  let chosen;
+  if (stance === "safe") {
+    chosen = scored.reduce((best, current) => (current.risk < best.risk ? current : best));
+  } else if (stance === "aggressive") {
+    chosen = scored.reduce((best, current) => (current.reward > best.reward ? current : best));
+  } else {
+    chosen = scored.reduce((best, current) => (current.reward - current.risk > best.reward - best.risk ? current : best));
+  }
+
+  return {
+    action: {
+      policyId: "encounter-default-choice",
+      kind: "resolve-encounter",
+      detail: { encounterId: encounter.id ?? null, optionId: chosen.option.id, stance, label: chosen.option.label },
+    },
+    log: `정책: 조우 자동 대응 — ${encounter.title ?? "조우"} · ${chosen.option.label} (${stance}).`,
+  };
+}
+
+// evaluatePolicies({ policies, resources, crew, rooms, currentMinute, jobs,
+// items, pendingEncounter, pendingCombatEncounter })
 //   -> { actions: [{ policyId, kind, detail }], logs: [string] }
 //
 // `policies` is policyStore's `policies` map ({ [policyId]: { enabled,
-// params } }). `resources`/`crew`/`rooms`/`currentMinute`/`jobs`/`items` are
-// plain snapshots the caller (gameClock.js) reads out of gameStore/
-// crewStore/shipInteriorStore/jobStore/inventoryStore — this function never
+// params } }). `resources`/`crew`/`rooms`/`currentMinute`/`jobs`/`items`/
+// `pendingEncounter`/`pendingCombatEncounter` are plain snapshots the caller
+// (gameClock.js) reads out of gameStore/crewStore/shipInteriorStore/
+// jobStore/inventoryStore/navStore/explorationStore — this function never
 // reaches into a store itself. Unknown/unrecognized policy ids in `policies`
 // are silently ignored (same posture as data/policies.js's catalog-only
 // merge).
-export function evaluatePolicies({ policies = {}, resources = {}, crew = [], rooms = {}, currentMinute = 0, jobs = [], items = [] } = {}) {
+export function evaluatePolicies({
+  policies = {},
+  resources = {},
+  crew = [],
+  rooms = {},
+  currentMinute = 0,
+  jobs = [],
+  items = [],
+  pendingEncounter = null,
+  pendingCombatEncounter = null,
+} = {}) {
   void rooms;
   void currentMinute;
 
@@ -220,8 +372,8 @@ export function evaluatePolicies({ policies = {}, resources = {}, crew = [], roo
   const treatmentResult = evaluateAutoTreatment(policies["auto-treatment"], resources, crew, jobs);
   if (treatmentResult) results.push(treatmentResult);
 
-  // encounter-default-choice: recognized by the catalog, evaluated as a
-  // no-op until 19-D lands.
+  const encounterResult = evaluateEncounterDefaultChoice(policies["encounter-default-choice"], pendingEncounter, pendingCombatEncounter);
+  if (encounterResult) results.push(encounterResult);
 
   return {
     actions: results.map((result) => result.action),
