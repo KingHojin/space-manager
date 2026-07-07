@@ -368,7 +368,16 @@ describe("gameClock.processTimedJobs — encounter-default-choice resolves pendi
   function resetNavAndPolicy() {
     useNavStore.setState({ pendingEncounter: null });
     useExplorationStore.getState().clearPendingCombatEncounter();
-    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", false);
+    // resetPolicy (not just setPolicyEnabled(false)) so the "stance": "safe"
+    // param the second test below sets doesn't leak into later tests in this
+    // file — policyStore is a real module-level singleton with no
+    // between-test reset (see tests/setup.js), so every describe block here
+    // must restore what it touched. This was found by Phase 19-F's combined
+    // multi-policy test: without this reset, that later test observed
+    // "safe" instead of the catalog's "balanced" default and picked the
+    // wrong encounter option, purely because it ran after this block in the
+    // same file.
+    usePolicyStore.getState().resetPolicy("encounter-default-choice");
   }
 
   it("disabled (default) never touches a pending encounter, even across many ticks", () => {
@@ -442,5 +451,252 @@ describe("gameClock.processTimedJobs — encounter-default-choice resolves pendi
     expect(useNavStore.getState().pendingEncounter).toEqual(SINGLE_OPTION_ENCOUNTER);
 
     resetNavAndPolicy();
+  });
+});
+
+// Phase 19-F: stabilization pass. All four policies (auto-hull-repair,
+// auto-treatment, fuel-reserve, encounter-default-choice) enabled
+// simultaneously, all four blocked at once (hull below threshold with no
+// scrap, an injured crew member with no credits, fuel below the reserve
+// threshold, and a pending encounter waiting for auto-resolution), driven
+// across many real ticks. This is the scenario 19-A through 19-E only ever
+// tested one policy at a time for — the goal here is to catch cross-policy
+// interactions (double-spends, log spam, one policy starving another) that
+// none of the single-policy tests above could see.
+describe("gameClock.processTimedJobs — all four policies enabled simultaneously under combined pressure (Phase 19-F)", () => {
+  const DELTA_MINUTES = 15;
+  const SCRAP_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
+  const TREATED_MEMBER_ID = "gunner-kang";
+  // "serious", not "minor": injurySystem.js's tickMemberInjury only lets
+  // "minor" and "incapacitated" injuries recover on their own
+  // (canNaturallyRecover) — with medic-rho alive in the default crew roster,
+  // a "minor" injury heals itself off treatmentRatePerHour's hasMedic rate
+  // (22%/hour) regardless of credits, which would make this scenario's
+  // credit-starvation window meaningless. Even starting at "serious",
+  // crewStore's crew AI can still informally assign an idle medic to the
+  // patient independently of jobStore/credits (the `treatedBy` mechanic in
+  // tickMemberInjury) and improve it by one stage before this test ever
+  // tops up credits — that's why the assertions below check "some real
+  // TREATMENT_RULES cost" rather than a specific severity/cost. What stays
+  // true regardless of that ambient healing is the thing this test actually
+  // cares about: no *policy-driven* treatment job is ever enqueued while
+  // credits are short, on any severity.
+
+  // Two non-combat options so encounter-default-choice's "balanced" stance
+  // (reward - risk) actually has to pick between them, instead of the
+  // single-option fast path already covered by the 19-D tests above.
+  // trade-run's reward (35) minus risk (3, from the hull -3 penalty) beats
+  // aid-run's reward (20) minus risk (0), so "trade-run" is the deterministic
+  // winner under the default "balanced" stance. Both deltas are kept small
+  // on purpose: starting credits (50) plus either option must stay well
+  // below auto-treatment's "serious" cost (420), so the encounter's payout
+  // does not accidentally unblock auto-treatment before the scripted
+  // mid-scenario credit top-up below.
+  const PRESSURE_ENCOUNTER = {
+    id: "gc-test-19f-pressure",
+    title: "F 단계 압박 조우",
+    options: [
+      { id: "aid-run", label: "구호 활동", outcome: [{ kind: "resource", delta: { credits: 20 } }] },
+      { id: "trade-run", label: "물자 거래", outcome: [{ kind: "resource", delta: { credits: 35, hull: -3 } }] },
+    ],
+  };
+
+  function resetAllPolicyState() {
+    useJobStore.setState({ jobs: [] });
+    useJobStore.getState().recomputeRoomLoad();
+    useInventoryStore.setState((state) => ({
+      items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: 0 } : item)),
+    }));
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === TREATED_MEMBER_ID ? { ...member, alive: true, injury: "healthy" } : member)),
+    }));
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 100, fuel: 100, credits: 1800 } }));
+    useNavStore.setState({ pendingEncounter: null });
+    useExplorationStore.getState().clearPendingCombatEncounter();
+    // resetPolicy (not just setPolicyEnabled(false)) so this test is immune
+    // to any params (e.g. "stance") a differently-ordered earlier test in
+    // this file might have left set — see resetNavAndPolicy's comment above
+    // for the concrete case this guards against.
+    ["auto-hull-repair", "auto-treatment", "fuel-reserve", "encounter-default-choice"].forEach((policyId) =>
+      usePolicyStore.getState().resetPolicy(policyId),
+    );
+  }
+
+  it("runs 90 ticks under simultaneous hull/credit/fuel/encounter pressure without throwing, never lets credits or scrap go negative, throttles diagnostic log volume, and resumes blocked policies once resources are replenished", () => {
+    resetAllPolicyState();
+
+    // --- Set up "everything is blocked at once" ---------------------------
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 20, fuel: 10, credits: 50 } }));
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === TREATED_MEMBER_ID ? { ...member, alive: true, injury: "serious" } : member)),
+    }));
+    useNavStore.setState({ pendingEncounter: PRESSURE_ENCOUNTER });
+
+    ["auto-hull-repair", "auto-treatment", "fuel-reserve", "encounter-default-choice"].forEach((policyId) =>
+      usePolicyStore.getState().setPolicyEnabled(policyId, true),
+    );
+
+    // Count every "정책:"-prefixed addLog call live, via subscribe, instead
+    // of reading the final gameStore.logs array — logs is capped to the
+    // most recent 80 entries (see gameStore.js's addLog), and 90 ticks with
+    // four live systems logging per tick will overflow that cap long before
+    // the loop ends, silently undercounting anything read from final state.
+    let policyLogCount = 0;
+    let sawEncounterResolutionLog = false;
+    let lastLogsRef = useGameStore.getState().logs;
+    const unsubscribe = useGameStore.subscribe((state) => {
+      if (state.logs !== lastLogsRef) {
+        const newest = state.logs[0];
+        if (typeof newest === "string" && newest.startsWith("정책:")) {
+          policyLogCount += 1;
+          if (newest.includes("조우 자동 대응") && newest.includes("물자 거래")) sawEncounterResolutionLog = true;
+        }
+        lastLogsRef = state.logs;
+      }
+    });
+
+    try {
+      const TICKS_PHASE1 = 25;
+      const TICKS_PHASE2 = 65;
+
+      // Phase 1: everything stays blocked (no scrap, no credits, low fuel,
+      // pending encounter resolves almost immediately since it has no
+      // threshold of its own to wait on). 25 ticks (375 minutes) is short
+      // enough that gunner-kang's untreated "serious" injury stays well
+      // under injurySystem.js's worsenAfterMinutes threshold (540 minutes
+      // with a medic aboard) despite going untreated the whole phase.
+      // Resources must never go negative even with three policies
+      // simultaneously trying to spend against the same starved
+      // credit/scrap pool.
+      for (let tick = 0; tick < TICKS_PHASE1; tick += 1) {
+        useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+        expect(() => processTimedJobs(DELTA_MINUTES)).not.toThrow();
+
+        expect(useGameStore.getState().resources.credits).toBeGreaterThanOrEqual(0);
+        expect(useGameStore.getState().resources.fuel).toBeGreaterThanOrEqual(0);
+        expect(useGameStore.getState().resources.hull).toBeGreaterThanOrEqual(0);
+        const scrapQty = useInventoryStore.getState().items.find((item) => item.id === "salvage-scrap")?.qty ?? 0;
+        expect(scrapQty).toBeGreaterThanOrEqual(0);
+      }
+
+      // The encounter auto-resolved despite everything else being under
+      // pressure — encounter-default-choice doesn't depend on credits/scrap
+      // at all, so it should never be starved by the other three policies.
+      expect(useNavStore.getState().pendingEncounter).toBeNull();
+      expect(sawEncounterResolutionLog).toBe(true);
+
+      // Both auto-hull-repair and auto-treatment stayed blocked the whole
+      // of phase 1 — no scrap, no credits — so neither ever enqueued a job
+      // it couldn't pay for.
+      expect(useJobStore.getState().jobs.some((job) => job.type === "hull_repair")).toBe(false);
+      expect(useJobStore.getState().jobs.some((job) => job.type === "treatment" && job.payload?.targetCrewId === TREATED_MEMBER_ID)).toBe(
+        false,
+      );
+
+      // --- Mid-scenario replenishment ---------------------------------
+      // Top up exactly what auto-hull-repair and auto-treatment need. Both
+      // policies should pick this up on the very next tick — they evaluate
+      // against a live resource snapshot each tick, not a stale one.
+      useInventoryStore.setState((state) => ({
+        items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: SCRAP_COST } : item)),
+      }));
+      useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 5000 } }));
+
+      const creditsBeforeTreatmentEnqueue = useGameStore.getState().resources.credits;
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+
+      expect(useJobStore.getState().jobs.some((job) => job.type === "hull_repair")).toBe(true);
+      const enqueuedTreatmentJob = useJobStore
+        .getState()
+        .jobs.find((job) => job.type === "treatment" && job.payload?.targetCrewId === TREATED_MEMBER_ID);
+      expect(enqueuedTreatmentJob).toBeTruthy();
+      // Spent exactly the enqueued job's own cost — no double-charge from a
+      // cross-policy race in this same tick (auto-hull-repair also fired
+      // its own real action this tick, spending scrap, not credits).
+      expect(useGameStore.getState().resources.credits).toBe(creditsBeforeTreatmentEnqueue - enqueuedTreatmentJob.cost);
+
+      // Phase 2: let both freshly-enqueued jobs run to completion. The
+      // treatment job's exact severity/cost isn't pinned down here on
+      // purpose: crewAI can informally assign an idle medic to an injured
+      // crew member independently of jobStore/credits (see
+      // stores/crewStore.js's tickMemberInjury `treatedBy` mechanic), which
+      // can improve gunner-kang's injury by a stage before this policy ever
+      // gets a chance to spend credits on it — that's a pre-existing crew
+      // AI behavior, not something Phase 19's policy system controls, so
+      // this test only asserts the job's cost is one of the real
+      // TREATMENT_RULES costs, not a specific severity. 65 ticks (975
+      // minutes, minus the 1 already spent above) comfortably covers the
+      // hull_repair job (120 minutes) and even the slowest treatment rule
+      // (TREATMENT_RULES.incapacitated at 1440 minutes would not fit, but
+      // that state requires the member to be near-dead, far worse than
+      // anything this scenario produces) plus scheduling overhead — and
+      // keeps proving resources never dip negative now that real spends are
+      // happening every tick (not just diagnostics).
+      expect(Object.values(TREATMENT_RULES).some((rule) => rule.cost === enqueuedTreatmentJob.cost)).toBe(true);
+      for (let tick = 0; tick < TICKS_PHASE2 - 1; tick += 1) {
+        useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+        expect(() => processTimedJobs(DELTA_MINUTES)).not.toThrow();
+
+        expect(useGameStore.getState().resources.credits).toBeGreaterThanOrEqual(0);
+        expect(useGameStore.getState().resources.fuel).toBeGreaterThanOrEqual(0);
+        expect(useGameStore.getState().resources.hull).toBeGreaterThanOrEqual(0);
+        const scrapQty = useInventoryStore.getState().items.find((item) => item.id === "salvage-scrap")?.qty ?? 0;
+        expect(scrapQty).toBeGreaterThanOrEqual(0);
+      }
+
+      // Both jobs completed: exactly one of each ever existed (the
+      // active-job/busy-crew guards in policyEngine.js held even with three
+      // other policies also mutating state every tick), and each spent
+      // exactly its cost — no double-charge from any cross-policy race.
+      const hullRepairJobs = useJobStore.getState().jobs.filter((job) => job.type === "hull_repair");
+      expect(hullRepairJobs).toHaveLength(1);
+      expect(hullRepairJobs[0].status).toBe("done");
+      const scrapQtyAfter = useInventoryStore.getState().items.find((item) => item.id === "salvage-scrap")?.qty ?? 0;
+      expect(scrapQtyAfter).toBe(0);
+
+      const treatmentJobs = useJobStore
+        .getState()
+        .jobs.filter((job) => job.type === "treatment" && job.payload?.targetCrewId === TREATED_MEMBER_ID);
+      expect(treatmentJobs).toHaveLength(1);
+      expect(treatmentJobs[0].status).toBe("done");
+      expect(treatmentJobs[0].id).toBe(enqueuedTreatmentJob.id);
+      const treatedMember = useCrewStore.getState().crew.find((member) => member.id === TREATED_MEMBER_ID);
+      expect(isHealthy(treatedMember.injury)).toBe(true);
+
+      // --- Log-spam bound -----------------------------------------------
+      // Every diagnostic log is throttled per `${policyId}:${reason}` key at
+      // a 60-game-minute window (gameClock.js's private
+      // POLICY_WARNING_THROTTLE_MINUTES) — mirrored here as THROTTLE_MINUTES
+      // since it isn't exported. Across this scenario at most 3 distinct
+      // diagnostic keys are ever active (fuel-reserve's "low-fuel", which
+      // never clears because fuel is never replenished; auto-hull-repair's
+      // "insufficient-scrap", active before the top-up and again after the
+      // single repair job completes, since one repair's fixed +hull delta
+      // doesn't necessarily clear the threshold; auto-treatment's
+      // "insufficient-credits", active only before the top-up) plus 2
+      // one-off, never-repeating action logs (the hull repair enqueue and
+      // the treatment enqueue — both silenced on every later tick by their
+      // active-job guards) and one encounter-resolution log. That bounds the
+      // total far below the naive "no throttle" worst case of 4 logs/tick.
+      const TOTAL_TICKS = TICKS_PHASE1 + TICKS_PHASE2;
+      const TOTAL_MINUTES = TOTAL_TICKS * DELTA_MINUTES;
+      const THROTTLE_MINUTES = 60;
+      const MAX_DIAGNOSTIC_KEYS = 3;
+      const maxDiagnosticLogs = MAX_DIAGNOSTIC_KEYS * (Math.ceil(TOTAL_MINUTES / THROTTLE_MINUTES) + 1);
+      const maxActionLogs = 3;
+      const maxPolicyLogs = maxDiagnosticLogs + maxActionLogs;
+
+      expect(policyLogCount).toBeGreaterThan(0);
+      expect(policyLogCount).toBeLessThanOrEqual(maxPolicyLogs);
+      // Sanity check against the naive worst case, independent of the
+      // throttle-window arithmetic above: with no throttling at all, 90
+      // ticks * 4 policies could produce up to 360 log lines. The real
+      // count should be nowhere close.
+      expect(policyLogCount).toBeLessThan(TOTAL_TICKS * 4 * 0.5);
+    } finally {
+      unsubscribe();
+      resetAllPolicyState();
+    }
   });
 });
