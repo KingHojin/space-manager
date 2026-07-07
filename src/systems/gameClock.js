@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { DUST, GAME_TIME } from "../data/constants";
+import { DECODE_RULES, DUST, GAME_TIME } from "../data/constants";
 import { getZoneById } from "../data/sectors";
 import { getActiveModifiers } from "./cardEffects";
 import { rollEvent } from "./eventEngine";
@@ -263,6 +263,16 @@ function applyUnifiedJob(job) {
   if (job.type === "treatment") return useCrewStore.getState().completeTreatmentJob({ memberId: job.payload?.targetCrewId, fatiguePenalty: job.payload?.fatiguePenalty, injury: job.payload?.injury });
   if (job.type === "recovery") return useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
   if (job.type === "module_upgrade") return useShipStore.getState().applyModuleJob({ ...job.payload, cost: job.cost, duration: job.duration });
+  if (job.type === "decode") {
+    const rule = DECODE_RULES[job.payload?.itemId];
+    if (!rule) return "해독 완료: 판독 불가 데이터.";
+    const revealed = useNavStore.getState().revealHiddenNodes(rule.reveals);
+    useInventoryStore.getState().addDust(rule.dustReward);
+    const names = revealed.map((node) => node.name).join(", ");
+    return revealed.length > 0
+      ? `${rule.label} 해독 완료: ${names} 좌표 확보 (+먼지 ${rule.dustReward}).`
+      : `${rule.label} 해독 완료: 새 좌표 없음, 항법 데이터로 환원 (+먼지 ${rule.dustReward}).`;
+  }
   const shipWork = jobToLegacyShipWork(job);
   if (shipWork) return applyShipWork(shipWork);
   return null;
