@@ -110,6 +110,31 @@ describe("legacy round trips (job -> legacy -> job)", () => {
     expect(roundTripped.id).toBe(job.id);
     expect(roundTripped.roomId).toBe(job.roomId);
     expect(roundTripped.duration).toBe(job.duration);
+    expect(roundTripped.priority).toBe(job.priority);
+  });
+
+  // Phase 18-B fix: legacy views must export the string priority vocabulary
+  // ("emergency"/"high"/"normal"/"low") that every legacy-view consumer
+  // (TaskQueuePanel, crewAI.assignedQueueTask, Overview) expects via
+  // systems/priorities.js. jobStore itself keeps numeric JOB_PRIORITY
+  // internally, so each jobToLegacy* converter must bucket that numeric
+  // value back into a string with priorityToActivityPriority before handing
+  // the view to a consumer.
+  it("exports string priority vocabulary (not the numeric jobStore priority) from every jobToLegacy* converter", () => {
+    const shipWork = jobToLegacyShipWork(normalizeJob({ type: "hull_repair", priority: JOB_PRIORITY.high }));
+    expect(shipWork.priority).toBe("high");
+
+    const moduleWork = jobToLegacyModuleWork(normalizeJob({ type: "module_upgrade", priority: JOB_PRIORITY.emergency, payload: { action: "upgrade", slot: "engine", moduleId: "mod-1" } }));
+    expect(moduleWork.priority).toBe("emergency");
+
+    const recovery = jobToLegacyRecovery(normalizeJob({ type: "recovery", priority: JOB_PRIORITY.normal, payload: { targetCrewId: "crew-1" } }));
+    expect(recovery.priority).toBe("normal");
+
+    const training = jobToLegacyTraining(normalizeJob({ type: "training", priority: JOB_PRIORITY.low, payload: { targetCrewId: "crew-2", statKey: "gunnery" } }));
+    expect(training.priority).toBe("low");
+
+    const treatment = jobToLegacyTreatment(normalizeJob({ type: "treatment", priority: JOB_PRIORITY.emergency, payload: { targetCrewId: "crew-3" } }));
+    expect(treatment.priority).toBe("emergency");
   });
 
   it("jobToLegacyShipWork returns null for a non ship-work job type", () => {

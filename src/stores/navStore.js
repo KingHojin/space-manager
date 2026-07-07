@@ -61,13 +61,10 @@ function driftSeverity(minutesDrifting) {
 function currentTravelReadiness() {
   const crew = useCrewStore.getState();
   const jobs = useJobStore.getState();
-  return evaluateTravelCrewReadiness({
-    crew: crew.crew,
-    jobs: jobs.jobs,
-    trainingQueue: crew.trainingQueue,
-    treatmentQueue: crew.treatmentQueue,
-    recoveryQueue: jobs.getLegacyRecoveryQueue(),
-  });
+  // jobs.jobs already carries busy/targeted crew for training, treatment and
+  // recovery (see getBusyCrewIdsFromJobs), so the legacy crewStore queues are
+  // no longer a separate source of truth here — jobStore is the single source.
+  return evaluateTravelCrewReadiness({ crew: crew.crew, jobs: jobs.jobs });
 }
 
 function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) {

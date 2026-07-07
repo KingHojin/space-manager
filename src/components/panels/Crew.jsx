@@ -13,7 +13,7 @@ import {
   isInjured,
   normalizeInjury,
 } from "../../systems/injurySystem";
-import { jobToLegacyRecovery, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
+import { activeLegacyJobs, jobToLegacyRecovery, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
 import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -23,7 +23,6 @@ import { statLabel } from "../../utils/format";
 import CrewFacilityStatus from "../crew/CrewFacilityStatus";
 import ShipInterior from "../ship/ShipInterior";
 
-const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
 const cancelableJobStatuses = new Set(["backlog", "assigned"]);
 
 const ROLE_ICONS = {
@@ -70,10 +69,6 @@ function recoveryPriority(member) {
 
 function indexByMemberId(entries = []) {
   return new Map(entries.map((entry) => [entry.memberId, entry]));
-}
-
-function activeLegacyJobs(rawJobs, converter) {
-  return rawJobs.filter((job) => activeJobStatuses.has(job.status)).map(converter).filter(Boolean);
 }
 
 function canCancelTask(task) {

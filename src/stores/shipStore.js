@@ -96,35 +96,6 @@ export const useShipStore = create(
         set((state) => ({
           unlockedModuleIds: Array.from(new Set([...(state.unlockedModuleIds ?? initialUnlockedIds), moduleId])),
         })),
-      startInstallation: ({ slot, moduleId, completeAt, cost, duration, priority = "high" }) =>
-        set((state) => ({
-          installationQueue: [
-            ...state.installationQueue.filter((task) => task.slot !== slot),
-            { id: crypto.randomUUID(), type: "equip", slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
-          ],
-        })),
-      startUpgrade: ({ moduleId, slot = null, completeAt, cost, duration, priority = "normal" }) =>
-        set((state) => ({
-          installationQueue: [
-            ...state.installationQueue,
-            { id: crypto.randomUUID(), type: "upgrade", slot: slot ?? state.modules.find((module) => module.id === moduleId)?.slot, moduleId, completeAt, cost, duration, priority: normalizePriority(priority), startedAt: completeAt - duration },
-          ],
-        })),
-      startShipWork: ({ type, roomId = "engineering", completeAt, cost = 0, duration, payload = {}, priority = "normal" }) =>
-        set((state) => ({
-          shipWorkQueue: [
-            ...state.shipWorkQueue,
-            normalizeShipWorkTask({ id: crypto.randomUUID(), type, roomId, completeAt, cost, duration, payload, priority, startedAt: completeAt - duration }),
-          ],
-        })),
-      setInstallationPriority: (taskId, priority) =>
-        set((state) => ({
-          installationQueue: state.installationQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
-        })),
-      setShipWorkPriority: (taskId, priority) =>
-        set((state) => ({
-          shipWorkQueue: state.shipWorkQueue.map((task) => (task.id === taskId ? { ...task, priority: normalizePriority(priority) } : task)),
-        })),
       applyModuleJob: (task = {}) => {
         const action = task.action ?? task.type;
         const moduleId = task.moduleId ?? task.payload?.moduleId;
@@ -148,40 +119,6 @@ export const useShipStore = create(
           return state;
         });
         return log;
-      },
-      completeReadyInstallations: (currentMinute) => {
-        const ready = get().installationQueue.filter((task) => task.completeAt <= currentMinute);
-        if (ready.length === 0) return [];
-        const logs = [];
-        set((state) => {
-          let nextInstalled = { ...state.installed };
-          let nextModules = state.modules;
-          ready.forEach((task) => {
-            const module = state.modules.find((entry) => entry.id === task.moduleId);
-            if (!module) return;
-            if (task.type === "equip") {
-              nextInstalled = { ...nextInstalled, [task.slot]: task.moduleId };
-              logs.push(`${task.slot} 슬롯에 ${module.name} 장착 완료.`);
-            }
-            if (task.type === "upgrade") {
-              nextModules = nextModules.map((entry) => (entry.id === task.moduleId ? improveModule(entry) : entry));
-              logs.push(`${module.name} 모듈 Lv.${module.level + 1} 개선 완료.`);
-            }
-          });
-          clearInstalledCache();
-          return {
-            installed: nextInstalled,
-            modules: nextModules,
-            installationQueue: state.installationQueue.filter((task) => task.completeAt > currentMinute),
-          };
-        });
-        return logs;
-      },
-      completeReadyShipWork: (currentMinute) => {
-        const ready = get().shipWorkQueue.filter((task) => task.completeAt <= currentMinute).map(normalizeShipWorkTask);
-        if (ready.length === 0) return [];
-        set((state) => ({ shipWorkQueue: state.shipWorkQueue.filter((task) => task.completeAt > currentMinute) }));
-        return ready;
       },
       getInstalledModules: () => {
         const state = useShipStore.getState();

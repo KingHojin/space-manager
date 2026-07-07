@@ -65,6 +65,15 @@ function legacyStatus(task) {
   return "in_progress";
 }
 
+const ACTIVE_JOB_STATUSES = new Set(["backlog", "assigned", "in_progress"]);
+
+// Shared "still-live" filter for deriving legacy-shaped queue views from the
+// unified jobStore.jobs list. Centralized here (rather than duplicated per
+// consumer) so every UI/consumer surface agrees on what counts as active.
+export function activeLegacyJobs(jobs = [], converter) {
+  return jobs.filter((job) => ACTIVE_JOB_STATUSES.has(job.status)).map(converter).filter(Boolean);
+}
+
 export function normalizeRoomId(roomId, type = null) {
   const fallback = DEFAULT_ROOM_BY_TYPE[type] ?? "living";
   const normalized = ROOM_ALIASES[roomId] ?? roomId ?? fallback;
@@ -196,7 +205,7 @@ export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], trai
 export function jobToLegacyShipWork(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "hull_repair" && normalized.type !== "salvage") return null;
-  return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, payload: normalized.payload, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration };
+  return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, payload: normalized.payload, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration };
 }
 
 export function jobToLegacyModuleWork(job) {
@@ -212,7 +221,7 @@ export function jobToLegacyModuleWork(job) {
     cost: normalized.cost,
     duration: normalized.duration,
     payload: normalized.payload,
-    priority: normalized.priority,
+    priority: priorityToActivityPriority(normalized.priority),
     startedAt: normalized.startedAt ?? normalized.createdAt,
     completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration,
     progress: normalized.progress,
@@ -222,17 +231,17 @@ export function jobToLegacyModuleWork(job) {
 export function jobToLegacyRecovery(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "recovery") return null;
-  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatigueRecovery: normalized.payload?.fatigueRecovery ?? JOB_ECONOMY.recovery.fatigueRecovery, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
 }
 
 export function jobToLegacyTraining(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "training") return null;
-  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, statKey: normalized.payload?.statKey, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, statKey: normalized.payload?.statKey, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
 }
 
 export function jobToLegacyTreatment(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "treatment") return null;
-  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, injury: normalized.payload?.injury, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatiguePenalty: normalized.payload?.fatiguePenalty, priority: normalized.priority, startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
+  return { id: normalized.id, memberId: normalized.payload?.targetCrewId, injury: normalized.payload?.injury, roomId: normalized.roomId, status: normalized.status, assignedCrewId: normalized.assignedCrewId, cost: normalized.cost, duration: normalized.duration, fatiguePenalty: normalized.payload?.fatiguePenalty, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration, progress: normalized.progress };
 }
