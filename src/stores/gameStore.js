@@ -5,6 +5,7 @@ import { getActiveModifiers } from "../systems/cardEffects";
 import { useInventoryStore } from "./inventoryStore";
 
 const PERCENT_RESOURCES = new Set(["fuel", "oxygen", "hull"]);
+const LOW_RESOURCE_WARNING_COOLDOWN_MINUTES = 60;
 const LOCK_FLAG_BY_RESOURCE = {
   fuel: "LOCK_FUEL",
   oxygen: "LOCK_OXYGEN",
@@ -38,6 +39,12 @@ function hasLowConsumableResource(resources) {
   );
 }
 
+function canEmitLowResourceWarning(state) {
+  if (!hasLowConsumableResource(state.resources)) return false;
+  if (state.lastLowResourceWarningAt === null || state.lastLowResourceWarningAt === undefined) return true;
+  return state.currentMinute - state.lastLowResourceWarningAt >= LOW_RESOURCE_WARNING_COOLDOWN_MINUTES;
+}
+
 export const useGameStore = create(
   persist(
     (set, get) => ({
@@ -47,6 +54,7 @@ export const useGameStore = create(
       isPaused: true,
       speed: 1,
       resources: normalizeResources(),
+      lastLowResourceWarningAt: null,
       logs: ["우주력 2377년 3월 12일 14:20, 헬리오스 외연에서 항해를 시작했습니다."],
       news: ["항해 준비 완료. 스페이스바로 시간을 시작할 수 있습니다."],
       togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
@@ -96,8 +104,9 @@ export const useGameStore = create(
             oxygen: state.resources.oxygen - RESOURCES.OXYGEN_PER_GAME_HOUR * hours * mods.oxygenConsumptionMult,
           }),
         }));
-        const { resources } = get();
-        if (hasLowConsumableResource(resources)) {
+        const state = get();
+        if (canEmitLowResourceWarning(state)) {
+          set({ lastLowResourceWarningAt: state.currentMinute });
           get().addLog("자원 경고: 연료 또는 산소가 낮습니다. 정거장 보급을 검토하세요.");
         }
       },
@@ -107,6 +116,7 @@ export const useGameStore = create(
           isPaused: true,
           speed: 1,
           resources: normalizeResources(),
+          lastLowResourceWarningAt: null,
           logs: ["새 항해 기록이 생성되었습니다."],
           news: ["새 게임이 시작되었습니다."],
         }),
@@ -117,6 +127,7 @@ export const useGameStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         resources: normalizeResources(persistedState?.resources ?? currentState.resources),
+        lastLowResourceWarningAt: persistedState?.lastLowResourceWarningAt ?? null,
       }),
     },
   ),

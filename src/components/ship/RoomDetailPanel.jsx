@@ -24,6 +24,10 @@ const TABS = [
   { id: "crew", label: "근무", icon: Users },
 ];
 
+function canAdjustJob(job) {
+  return ["backlog", "assigned"].includes(job?.status);
+}
+
 function getItemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
 }
@@ -65,8 +69,6 @@ function EquipTab({ roomId }) {
 
   if (slots.length === 0) return <p className="text-sm text-slate-400">이 구역에는 함선 장비 슬롯이 없습니다.</p>;
 
-  // 대기/진행 중인 장착 job의 모듈을 해당 슬롯에 이미 있는 것처럼 계산해,
-  // 여러 슬롯에 연달아 장착을 지시해도 합산 전력이 예산을 넘지 못하게 막는다.
   const effectiveInstalled = { ...installed };
   moduleWorkQueue.forEach((job) => {
     if (job.payload?.action === "equip" && job.payload?.slot && job.payload?.moduleId) effectiveInstalled[job.payload.slot] = job.payload.moduleId;
@@ -203,10 +205,10 @@ function CrewTab({ roomId }) {
           {roomJobs.map((job) => (
             <div key={job.id} className="rounded-lg border border-cyan-300/25 bg-cyan-300/10 px-2 py-1.5 text-xs text-cyan-100">
               <div className="flex items-center justify-between gap-2"><span>{jobTypeLabel(job.type)} · {job.status}</span><span>{Math.round((job.progress ?? 0) * 100)}%</span></div>
-              {job.status === "backlog" && (
+              {canAdjustJob(job) && (
                 <div className="mt-1 flex gap-1">
-                  <button className="secondary-button min-h-6 px-2 text-[10px]" onClick={() => nudgeJobPriority(job.id, -1)}>▲</button>
-                  <button className="secondary-button min-h-6 px-2 text-[10px]" onClick={() => nudgeJobPriority(job.id, 1)}>▼</button>
+                  {job.status === "backlog" && <button className="secondary-button min-h-6 px-2 text-[10px]" onClick={() => nudgeJobPriority(job.id, -1)}>▲</button>}
+                  {job.status === "backlog" && <button className="secondary-button min-h-6 px-2 text-[10px]" onClick={() => nudgeJobPriority(job.id, 1)}>▼</button>}
                   <button className="secondary-button min-h-6 px-2 text-[10px]" onClick={() => cancel(job)}>취소</button>
                 </div>
               )}
