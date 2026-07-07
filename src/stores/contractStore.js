@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { contracts } from "../data/contracts";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 export const useContractStore = create(
   persist(
@@ -24,6 +25,6 @@ export const useContractStore = create(
         return contracts.filter((contract) => !state.acceptedIds.includes(contract.id) && !state.completedIds.includes(contract.id));
       },
     }),
-    { name: "space-manager-contracts" },
+    { name: "space-manager-contracts", version: PERSIST_VERSION, migrate: passthroughMigrate },
   ),
 );

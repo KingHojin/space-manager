@@ -15,6 +15,7 @@ import {
 import { applyRoomTick, createInitialRoomState, deriveRoomStatus } from "../systems/roomJobs";
 import { DUST, WEAR } from "../data/constants";
 import { useInventoryStore } from "./inventoryStore";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -298,6 +299,8 @@ export const useShipInteriorStore = create(
     }),
     {
       name: "space-manager-ship-interior",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => {
         const rooms = mergeRooms(persistedState?.rooms);
         const activeCrises = mergeCrises(persistedState?.activeCrises);

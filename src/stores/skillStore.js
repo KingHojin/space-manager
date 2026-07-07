@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { getSkillById, starterSkillLevels } from "../data/skills";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 export const useSkillStore = create(
   persist(
@@ -29,6 +30,8 @@ export const useSkillStore = create(
     }),
     {
       name: "space-manager-skills",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

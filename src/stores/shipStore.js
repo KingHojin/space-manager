@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { modules } from "../data/modules";
 import { normalizePriority } from "../systems/priorities";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 const STARTER_VESSEL_ID = "vessel-starter";
 const initialVesselsById = {
@@ -136,6 +137,8 @@ export const useShipStore = create(
     }),
     {
       name: "space-manager-ship",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => {
         const fleet = mergeVessels(persistedState);
         return {

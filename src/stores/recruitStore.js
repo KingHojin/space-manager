@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { CREW_CAPACITY_FALLBACK, CREW_TEMPLATES, RECRUIT_COST, RECRUIT_PITY, RECRUIT_RATES, getCrewTemplate, getTemplatesByRarity, validateRecruitRates } from "../data/recruitment";
 import { useCrewStore } from "./crewStore";
 import { useGameStore } from "./gameStore";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function createRngSeed() {
   return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -115,6 +116,8 @@ export const useRecruitStore = create(
     }),
     {
       name: "space-manager-recruit",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), currency: persistedState?.currency ?? 0, pity: persistedState?.pity ?? 0, pullHistory: persistedState?.pullHistory ?? [], candidatePool: persistedState?.candidatePool ?? [], lastResults: persistedState?.lastResults ?? [] }),
     },
   ),

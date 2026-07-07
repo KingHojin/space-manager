@@ -16,7 +16,13 @@ function busyQueue(queue = []) {
   return queue.filter((task) => !task.status || BUSY_CREW_JOB_STATUSES.has(task.status));
 }
 
-export function getActiveVesselScope() {
+// Phase 18-E: not exported. grep across src/ (`grep -rn "from.*vesselScope"`)
+// shows only getActiveVesselCrewAiSnapshot is ever imported from this file
+// (gameClock.js and its test) — getActiveVesselScope had zero external
+// callers, so its `export` was dead weight even though the function itself
+// is very much alive (used by getActiveVesselCrewAiSnapshot below). Kept as
+// a module-private helper.
+function getActiveVesselScope() {
   const vesselId = activeVesselIdFromShipStore();
   const ship = useShipStore.getState();
   const game = useGameStore.getState();
@@ -109,14 +115,9 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
   };
 }
 
-export function getActiveVesselResourceView() {
-  const scope = getActiveVesselScope();
-  return {
-    vesselId: scope.vesselId,
-    resources: scope.resources,
-    navFuel: scope.nav.fuel,
-    hull: scope.resources.hull,
-    oxygen: scope.resources.oxygen,
-    fuel: scope.resources.fuel,
-  };
-}
+// Phase 18-E: getActiveVesselResourceView (previously here) was removed as
+// dead code — `grep -rn "getActiveVesselResourceView" src/` found zero call
+// sites anywhere outside its own definition (no imports, no references).
+// If a resource-only view of the active vessel is needed again, note that
+// `getActiveVesselCrewAiSnapshot().resources` already covers the same
+// fields (resources, plus nav.fuel is available via scope.nav.fuel above).

@@ -80,6 +80,21 @@ export function normalizeRoomId(roomId, type = null) {
   return ROOM_CONFIG[normalized] ? normalized : fallback;
 }
 
+// Phase 18-E: priority-vocabulary boundary note.
+//
+// jobStore.jobs[].priority is stored as a NUMBER (JOB_PRIORITY: emergency=1,
+// high=3, normal=5, low=7 — lower sorts first), not a string, and that
+// numeric domain is jobStore's own vocabulary. It is NOT a fourth vocabulary
+// in the sense of needing its own conversion table, though: JOB_PRIORITY's
+// keys deliberately reuse systems/priorities.js's activity-priority strings
+// verbatim, so the two functions below ARE the single, already-centralized
+// boundary between "numeric job priority" and "activity priority" (this was
+// unified in Phase 18-B). Every call site that needs to go from a job to a
+// legacy-shaped/activity-facing priority routes through
+// priorityToActivityPriority; every call site accepting a priority into a
+// job (jobStore.setJobPriority, makeJob, etc.) routes through
+// normalizeJobPriority. Do not add ad-hoc numeric<->string mappings
+// elsewhere — extend these two functions instead.
 export function normalizeJobPriority(priority) {
   if (typeof priority === "number" && Number.isFinite(priority)) return Math.max(0, Math.round(priority));
   if (JOB_PRIORITY[priority]) return JOB_PRIORITY[priority];

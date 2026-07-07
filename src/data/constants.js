@@ -80,6 +80,11 @@ export const DECODE_RULES = {
   "void-map": { reveals: 3, dustReward: 60, label: "공허 성도" },
 };
 
+// Numeric priority storage for jobStore.jobs[].priority (lower sorts first).
+// Keys deliberately match systems/priorities.js's activity-priority strings —
+// see the boundary comment above normalizeJobPriority/priorityToActivityPriority
+// in systems/jobMigration.js for how the numeric<->string conversion is
+// centralized (Phase 18-E).
 export const JOB_PRIORITY = {
   emergency: 1,
   high: 3,

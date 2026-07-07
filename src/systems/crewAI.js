@@ -1,6 +1,6 @@
 import { ROOMS } from "../data/shipRooms";
 import { getCrisisConfig, getCrisisLabel, getCrisisResponderSlots, scoreCrisisForMember } from "./crisisSystem";
-import { canWorkWithInjury, chooseTreatmentTarget, injuryLabel, injuryPriority, injuryWorkSpeedMultiplier, isHealthy, isSeriousOrWorse } from "./injurySystem";
+import { canWorkWithInjury, chooseTreatmentTarget, injuryActivityPriority, injuryLabel, injuryWorkSpeedMultiplier, isHealthy, isSeriousOrWorse } from "./injurySystem";
 import { comparePriorityTasks, getPriorityConfig, normalizePriority } from "./priorities";
 import { pickRoomJobsForIdleCrew } from "./roomJobs";
 
@@ -346,7 +346,9 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     }
 
     if (!canWorkWithInjury(member.injury)) {
-      const priority = injuryPriority(member.injury) === "critical" ? "emergency" : "high";
+      // Card-priority -> activity-priority boundary crossing; see
+      // systems/injurySystem.js#injuryActivityPriority (Phase 18-E).
+      const priority = injuryActivityPriority(member.injury);
       fixedActivities.set(member.id, { memberId: member.id, station: "의무실 앞", action: "치료 대기", intent: "medical", priority, detail: injuryLabel(member.injury), updatedAt: currentMinute });
       return;
     }
