@@ -29,3 +29,20 @@ export const drawCard = (guaranteeRare = false) => {
 
 export const drawCards = (count) =>
   Array.from({ length: count }, (_, index) => drawCard(count >= 10 && index === count - 1));
+
+const pickPityRarity = () => {
+  const premium = GACHA_RATES.filter((entry) => ["epic", "legendary"].includes(entry.rarity));
+  const total = premium.reduce((sum, entry) => sum + entry.rate, 0);
+  let roll = Math.random() * total;
+  for (const entry of premium) {
+    roll -= entry.rate;
+    if (roll <= 0) return entry.rarity;
+  }
+  return "epic";
+};
+
+export const drawPityCard = () => {
+  const rarity = pickPityRarity();
+  const pool = cards.filter((card) => card.rarity === rarity);
+  return pool[Math.floor(Math.random() * pool.length)];
+};

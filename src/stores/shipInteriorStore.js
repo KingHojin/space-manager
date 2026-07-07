@@ -13,7 +13,8 @@ import {
   shouldSpawnInternalCrisis,
 } from "../systems/crisisSystem";
 import { applyRoomTick, createInitialRoomState, deriveRoomStatus } from "../systems/roomJobs";
-import { WEAR } from "../data/constants";
+import { DUST, WEAR } from "../data/constants";
+import { useInventoryStore } from "./inventoryStore";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -259,7 +260,13 @@ export const useShipInteriorStore = create(
               if (next.type === "power_loss" && next.severity >= 2) ROOM_IDS.forEach((roomId) => { if (roomId !== next.roomId && rooms[roomId]) rooms[roomId] = withRoomStatus({ ...rooms[roomId], load: clamp((rooms[roomId].load ?? 0) + hours * 0.75 * next.severity * resistMul, 0, 100) }, currentMinute); });
               if (next.type === "hull_breach") effects.push({ type: "resourceDelta", resources: { oxygen: -(config.oxygenLossPerHour ?? 0) * hours * next.severity * resistMul } });
             }
-            if (next.progress >= 100) { releaseCrisisRoom(rooms, next, currentMinute); logs.push(`위기 해결: ${getCrisisLabel(next)} (${next.roomId}).`); return null; }
+            if (next.progress >= 100) {
+              releaseCrisisRoom(rooms, next, currentMinute);
+              const dustGain = Math.round(DUST.CRISIS_REWARD * next.severity);
+              useInventoryStore.getState().addDust(dustGain);
+              logs.push(`위기 해결: ${getCrisisLabel(next)} (${next.roomId}) (+먼지 ${dustGain}).`);
+              return null;
+            }
             if (currentMinute >= next.escalateAt) {
               if (next.type === "overheat" && next.severity >= 3) {
                 const fire = { ...createCrisisRecord({ roomId: next.roomId, type: "fire", severity: 1, currentMinute }), id: next.id };
