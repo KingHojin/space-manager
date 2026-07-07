@@ -1,5 +1,6 @@
 import { Briefcase, Cpu, Fuel, Store, Utensils, Wind, Wrench } from "lucide-react";
 import Badge from "../common/Badge";
+import Recruit from "./Recruit";
 import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
 import { formatMinutes, getModuleRule, hasRequiredItems } from "../../data/moduleRecipes";
@@ -287,6 +288,17 @@ export default function Market() {
             })
           )}
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-3 sm:p-4">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="hud-label">MARKET CREW DESK</div>
+            <h3 className="mt-1 text-lg font-black text-slate-50">승무원 영입</h3>
+          </div>
+          <span className="hud-chip hud-chip-accent">시장 탭 통합</span>
+        </div>
+        <Recruit />
       </section>
 
       <section>

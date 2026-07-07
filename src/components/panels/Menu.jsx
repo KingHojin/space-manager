@@ -7,7 +7,6 @@ import {
   ChevronRight,
   GitBranch,
   Map,
-  PawPrint,
   Rocket,
   Save,
   ScrollText,
@@ -24,7 +23,6 @@ import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
-import { useRecruitStore } from "../../stores/recruitStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { number } from "../../utils/format";
@@ -49,10 +47,9 @@ const primaryMenus = [
   { id: "missions", label: "임무", desc: "계약 임무 선택, 위험도·보상 확인, 출항 동기 설정", icon: Briefcase, tone: "border-sky-400/45 bg-sky-400/10 text-sky-100", modal: true },
   { id: "skilltree", label: "스킬트리", desc: "탐사·전투·공학·과학·외교 성장 빌드 관리", icon: GitBranch, tone: "border-violet-400/45 bg-violet-400/10 text-violet-100" },
   { id: "crew", label: "승무원", desc: "훈련, 휴식, 치료, 역할별 능력 관리", icon: Users, tone: "border-cyan-400/45 bg-cyan-400/10 text-cyan-100" },
-  { id: "recruit", label: "영입", desc: "승무원 가챠, 조우 후보 검토, 역할 공백 보강", icon: Sparkles, tone: "border-amber-400/45 bg-amber-400/10 text-amber-100" },
-  { id: "market", label: "시장", desc: "계약 수락, 보급, 정비, 신규 모듈 구매", icon: Store, tone: "border-emerald-400/45 bg-emerald-400/10 text-emerald-100" },
+  { id: "market", label: "시장", desc: "계약 수락, 보급, 정비, 신규 모듈 구매, 승무원 영입", icon: Store, tone: "border-emerald-400/45 bg-emerald-400/10 text-emerald-100" },
+  { id: "combat", label: "전투", desc: "함대 교전, 전술 지시, 외계 생물 사냥", icon: AlertTriangle, tone: "border-red-400/45 bg-red-400/10 text-red-100" },
   { id: "collector", label: "컬렉션", desc: "카드와 유물 수집 상태 확인", icon: Sparkles, tone: "border-amber-400/45 bg-amber-400/10 text-amber-100" },
-  { id: "hunting", label: "사냥", desc: "외계 생물 추적과 특수 보상 획득", icon: PawPrint, tone: "border-red-400/45 bg-red-400/10 text-red-100" },
 ];
 
 const utilityMenus = [
@@ -88,7 +85,6 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const logs = useGameStore((state) => state.logs);
   const cards = useInventoryStore((state) => state.cards);
   const items = useInventoryStore((state) => state.items);
-  const candidatePool = useRecruitStore((state) => state.candidatePool ?? []);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
@@ -106,10 +102,8 @@ export default function Menu({ onNavigate, onOpenModal }) {
     missions: activeMission ? "진행 중" : offeredMissionCount > 0 ? `임무 ${offeredMissionCount}` : "신규",
     skilltree: availablePoints > 0 ? `포인트 ${availablePoints}` : "빌드",
     crew: `${crew.length}명`,
-    recruit: candidatePool.length > 0 ? `후보 ${candidatePool.length}` : "뽑기",
     market: activeContracts.length > 0 ? `의뢰 ${activeContracts.length}` : `신규 ${nextContracts.length}`,
     collector: `카드 ${cards.length}`,
-    hunting: "보상",
   };
 
   const handlePrimary = (menu) => {

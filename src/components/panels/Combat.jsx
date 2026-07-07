@@ -1,6 +1,7 @@
 import { AlertTriangle, Crosshair, Shield, Skull, Swords, Target, Users, Zap } from "lucide-react";
 import { useMemo } from "react";
 import BattleScene from "../common/BattleScene";
+import Hunting from "./Hunting";
 import { ActionCard, FeedList, StatTile } from "../ui/VisualPrimitives";
 import {
   COMBAT_TARGETS,
@@ -302,7 +303,8 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const canIssueDirective = activeCrew.length > 0 && combatEngaged;
 
   return (
-    <div className="grid gap-4 lg:h-full lg:grid-cols-[0.9fr_1.1fr]">
+    <div className="space-y-6">
+      <div className="grid gap-4 lg:h-full lg:grid-cols-[0.9fr_1.1fr]">
       <section>
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">타겟 서브시스템과 전술 지시를 조합해 교전을 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-[0.95fr_1.05fr]"><ThreatPoster enemy={enemy} pendingCombatEncounter={pendingCombatEncounter} combat={combat} travelLocked={travelLocked} /><div className="grid grid-cols-3 gap-2"><StatTile icon={Shield} label="선체" value={`${Math.round(resources.hull)}%`} /><StatTile icon={Zap} label="연료" value={`${Math.round(resources.fuel)}%`} /><StatTile icon={Skull} label="생존/전사" value={`${activeCrew.length}/${fallenCrew.length}`} /></div></div>
@@ -325,6 +327,18 @@ export default function Combat({ onNavigate, onOpenModal }) {
           <BattleScene combat={combat} power={power} />
           <section className="rounded-2xl border border-red-400/25 bg-red-400/10 p-3"><div className="section-title"><AlertTriangle size={16} />전투 피드</div><div className="mt-3"><FeedList entries={feed} /></div></section>
         </div>
+      </section>
+      </div>
+
+      <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-3 sm:p-4">
+        <div className="mb-4 flex items-start justify-between gap-3">
+          <div>
+            <div className="hud-label">MERGED OPERATIONS</div>
+            <h3 className="mt-1 text-lg font-black text-slate-50">사냥 작전</h3>
+          </div>
+          <span className="hud-chip hud-chip-accent">전투 탭 통합</span>
+        </div>
+        <Hunting />
       </section>
     </div>
   );

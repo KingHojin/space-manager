@@ -6,10 +6,8 @@ import BottomDock from "./components/layout/BottomDock";
 import Overview from "./components/panels/Overview";
 import Exploration from "./components/panels/Exploration";
 import Combat from "./components/panels/Combat";
-import Hunting from "./components/panels/Hunting";
 import Ship from "./components/panels/Ship";
 import Crew from "./components/panels/Crew";
-import Recruit from "./components/panels/Recruit";
 import Collector from "./components/panels/Collector";
 import Market from "./components/panels/Market";
 import SkillTree from "./components/panels/SkillTree";
@@ -28,15 +26,22 @@ const panels = {
   overview: { title: "홈", component: Overview },
   exploration: { title: "지도", component: Exploration },
   combat: { title: "전투", component: Combat },
-  hunting: { title: "사냥", component: Hunting },
   ship: { title: "함선", component: Ship },
   menu: { title: "메뉴", component: MenuPanel },
   crew: { title: "승무원", component: Crew },
-  recruit: { title: "영입", component: Recruit },
   collector: { title: "컬렉션", component: Collector },
   market: { title: "시장", component: Market },
   skilltree: { title: "스킬트리", component: SkillTree },
 };
+
+const panelAliases = {
+  hunting: "combat",
+  recruit: "market",
+};
+
+function normalizePanelId(panelId) {
+  return panelAliases[panelId] ?? panelId;
+}
 
 const modals = {
   command: { title: "함장 메뉴", component: MenuPanel },
@@ -53,14 +58,20 @@ export default function App() {
   useGameClock();
   const [activePanel, setActivePanel] = useState("overview");
   const [activeModal, setActiveModal] = useState(null);
-  const Panel = panels[activePanel].component;
+  const Panel = panels[activePanel]?.component ?? panels.overview.component;
+  const changePanel = (panelId) => {
+    const nextPanelId = normalizePanelId(panelId);
+    if (!panels[nextPanelId]) return;
+    setActivePanel(nextPanelId);
+  };
   const modal = useMemo(() => (activeModal ? modals[activeModal] : null), [activeModal]);
   const ModalContent = modal?.component;
   const showPanelTitle = activePanel !== "overview";
 
   const navigateFromModal = (panelId) => {
-    if (!panels[panelId]) return;
-    setActivePanel(panelId);
+    const nextPanelId = normalizePanelId(panelId);
+    if (!panels[nextPanelId]) return;
+    setActivePanel(nextPanelId);
     setActiveModal(null);
   };
 
@@ -69,7 +80,7 @@ export default function App() {
       <Header />
       <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
         <div className="hidden lg:block">
-          <Sidebar activePanel={activePanel} onChange={setActivePanel} onOpenModal={setActiveModal} />
+          <Sidebar activePanel={activePanel} onChange={changePanel} onOpenModal={setActiveModal} />
         </div>
         <main className={`grid min-h-0 grid-cols-1 bg-slate-900 ${showPanelTitle ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]"}`}>
           {showPanelTitle && (
@@ -79,12 +90,12 @@ export default function App() {
             </div>
           )}
           <div className="min-h-0 overflow-auto p-3 sm:p-4">
-            <Panel onNavigate={setActivePanel} onOpenModal={setActiveModal} />
+            <Panel onNavigate={changePanel} onOpenModal={setActiveModal} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
         </main>
       </div>
-      <BottomDock activePanel={activePanel} onChangePanel={setActivePanel} onOpenModal={setActiveModal} />
+      <BottomDock activePanel={activePanel} onChangePanel={changePanel} onOpenModal={setActiveModal} />
       {modal && (
         <OverlayModal title={modal.title} onClose={() => setActiveModal(null)}>
           <ModalContent onNavigate={navigateFromModal} onOpenModal={setActiveModal} />

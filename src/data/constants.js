@@ -239,12 +239,10 @@ export const POWER = {
 export const MENU_ITEMS = [
   { id: "overview", label: "홈", sub: "대시보드" },
   { id: "exploration", label: "지도", sub: "성계 탐사" },
-  { id: "combat", label: "전투", sub: "전술 상황" },
-  { id: "hunting", label: "사냥", sub: "생물 사냥" },
+  { id: "combat", label: "전투", sub: "전투 & 사냥" },
   { id: "ship", label: "함선", sub: "모듈 & 업그레이드" },
   { id: "skilltree", label: "스킬트리", sub: "성장 빌드" },
   { id: "crew", label: "승무원", sub: "대원 관리" },
-  { id: "recruit", label: "영입", sub: "승무원 가챠" },
   { id: "collector", label: "컬렉션", sub: "유물 & 카드" },
-  { id: "market", label: "시장", sub: "거래 & 계약" },
+  { id: "market", label: "시장", sub: "거래·계약·영입" },
 ];

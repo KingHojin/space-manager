@@ -106,7 +106,7 @@ function applyNavEffect(effect, currentMinute) {
   if (effect.kind === "recruitOffer" && effect.templateId) {
     const result = useRecruitStore.getState().addCandidate(effect.templateId, "navigation");
     useNavStore.getState().addRecruitCandidate(effect.templateId);
-    useGameStore.getState().addLog(result.ok ? `영입 후보 확보: ${effect.templateId}. 영입 화면에서 검토할 수 있습니다.` : `영입 후보 처리 실패: ${effect.templateId} (${result.reason}).`);
+    useGameStore.getState().addLog(result.ok ? `영입 후보 확보: ${effect.templateId}. 시장 탭의 영입 구역에서 검토할 수 있습니다.` : `영입 후보 처리 실패: ${effect.templateId} (${result.reason}).`);
   }
   if (effect.kind === "combat") {
     useExplorationStore.getState().setPendingCombatEncounter({ id: effect.enemyId, title: "미확인 적성 함선 접촉", enemyId: effect.enemyId, fallback: true });
