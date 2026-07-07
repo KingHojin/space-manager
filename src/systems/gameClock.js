@@ -4,6 +4,7 @@ import { getZoneById } from "../data/sectors";
 import { getActiveModifiers } from "./cardEffects";
 import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
+import { evaluatePolicies } from "./policyEngine";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
@@ -11,6 +12,7 @@ import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
 import { useJobStore } from "../stores/jobStore";
 import { useNavStore } from "../stores/navStore";
+import { usePolicyStore } from "../stores/policyStore";
 import { useRecruitStore } from "../stores/recruitStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
@@ -191,6 +193,26 @@ function processCrewHealth(currentMinute, deltaMinutes) {
   logs.forEach((message) => useGameStore.getState().addLog(`의무실: ${message}`));
 }
 
+// Phase 19-A: policy foundation only. Reads policyStore + snapshots of the
+// stores a policy might care about, hands them to the pure
+// systems/policyEngine.js (same orchestration shape as every other
+// process* function here: read stores -> call a pure system -> apply the
+// returned effects to stores), and applies only the returned `logs` to
+// gameStore. `actions` are intentionally NOT applied to anything yet (no
+// job enqueue, no resource/crew mutation) — that lands in 19-B onward, once
+// per-policy action handlers exist. Every catalog policy defaults to
+// disabled (see data/policies.js), so with no player interaction this
+// function evaluates to `{ actions: [], logs: [] }` and is a no-op — see
+// gameClock.integration.test.js's "policies default OFF" case.
+function processPolicies(currentMinute, deltaMinutes) {
+  const { policies } = usePolicyStore.getState();
+  const resources = useGameStore.getState().resources;
+  const crew = useCrewStore.getState().crew;
+  const rooms = useShipInteriorStore.getState().rooms;
+  const { logs } = evaluatePolicies({ policies, resources, crew, rooms, currentMinute, deltaMinutes });
+  logs.forEach((message) => useGameStore.getState().addLog(message));
+}
+
 function applyItemOutputs(outputItems = []) {
   const awarded = [];
   outputItems.forEach(({ itemId, qty }) => {
@@ -272,6 +294,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   processCrewNeeds(deltaMinutes);
   processRoomJobs(currentMinute, deltaMinutes);
   processCrewHealth(currentMinute, deltaMinutes);
+  processPolicies(currentMinute, deltaMinutes);
 }
 
 export const useGameClock = () => {
