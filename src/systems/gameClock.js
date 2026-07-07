@@ -215,23 +215,41 @@ function shouldLogPolicyMessage(action, currentMinute) {
   return true;
 }
 
-// applyPolicyActions: the only action kind that mutates gameplay state today
-// is "enqueue-ship-work" (auto-hull-repair's real repair-job enqueue).
-// Mirrors Ship.jsx's ScrapRepairCard.onRepair (handleRepair) exactly: remove
-// the consumed inputItems from inventoryStore, then hand the same job
-// payload shape to jobStore.enqueueShipWork — so a policy-triggered repair
-// is indistinguishable from a manually-queued one once it's in the job
-// queue. "diagnostic" actions are intentionally ignored here; they only
-// ever produce a log (see processPolicies below).
+// applyPolicyActions: two action kinds mutate gameplay state today.
+// "enqueue-ship-work" (auto-hull-repair's real repair-job enqueue) mirrors
+// Ship.jsx's ScrapRepairCard.onRepair (handleRepair) exactly: remove the
+// consumed inputItems from inventoryStore, then hand the same job payload
+// shape to jobStore.enqueueShipWork. "enqueue-treatment-job"
+// (auto-treatment's real treatment-job enqueue, Phase 19-C) mirrors
+// Crew.jsx's treat() exactly: spend the job's cost via gameStore.spendCredits
+// first — same as Crew.jsx checks `if (!spendCredits(rule.cost))` before
+// calling startTreatment — and only enqueue via jobStore.enqueueTreatment if
+// that succeeds. spendCredits can fail here even though policyEngine.js
+// already checked resources.credits against the cost, because that check
+// ran against a snapshot taken at the start of this tick's processPolicies;
+// if credits dropped in between (e.g. another policy action spent them
+// first), this silently skips and lets the next tick retry — no store
+// mutation happens on failure. Either way, a policy-triggered job is
+// indistinguishable from a manually-queued one once it's in the job queue.
+// "diagnostic" actions are intentionally ignored here; they only ever
+// produce a log (see processPolicies below).
 function applyPolicyActions(actions, currentMinute) {
   actions.forEach((action) => {
-    if (action.kind !== "enqueue-ship-work") return;
-    const job = action.detail?.job;
-    if (!job) return;
-    (job.payload?.inputItems ?? []).forEach(({ itemId, qty }) => {
-      if (itemId && qty) useInventoryStore.getState().removeItem(itemId, qty);
-    });
-    useJobStore.getState().enqueueShipWork({ ...job, createdAt: currentMinute });
+    if (action.kind === "enqueue-ship-work") {
+      const job = action.detail?.job;
+      if (!job) return;
+      (job.payload?.inputItems ?? []).forEach(({ itemId, qty }) => {
+        if (itemId && qty) useInventoryStore.getState().removeItem(itemId, qty);
+      });
+      useJobStore.getState().enqueueShipWork({ ...job, createdAt: currentMinute });
+      return;
+    }
+    if (action.kind === "enqueue-treatment-job") {
+      const job = action.detail?.job;
+      if (!job) return;
+      if (!useGameStore.getState().spendCredits(job.cost ?? 0)) return;
+      useJobStore.getState().enqueueTreatment({ ...job, createdAt: currentMinute });
+    }
   });
 }
 

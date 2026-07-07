@@ -20,18 +20,26 @@
 //     gameClock's own throttling for repeat warnings).
 //   - "enqueue-ship-work": gameClock.js's applyPolicyActions() calls
 //     jobStore.enqueueShipWork(action.detail.job) and consumes
-//     action.detail.job.payload.inputItems from inventoryStore. This is the
-//     *only* action kind that mutates gameplay state right now.
+//     action.detail.job.payload.inputItems from inventoryStore.
+//   - "enqueue-treatment-job": gameClock.js's applyPolicyActions() spends
+//     action.detail.job.cost via gameStore.spendCredits (skipping silently
+//     if that fails — a race against the credits snapshot this module was
+//     handed) and, only on success, calls
+//     jobStore.enqueueTreatment(action.detail.job).
 //
 // 19-B implements auto-hull-repair (real enqueue, not just diagnostic) and
 // fuel-reserve (diagnostic warning only — auto-refuel needs a market/price
-// model that's out of scope here). auto-treatment and
-// encounter-default-choice remain no-ops, recognized by id, until 19-C/19-D.
+// model that's out of scope here). 19-C implements auto-treatment (real
+// enqueue, mirroring 19-B's shape). encounter-default-choice remains a
+// no-op, recognized by id, until 19-D.
 
 import { JOB_DURATION, JOB_ECONOMY } from "../data/constants";
+import { INJURY_STATE_ORDER, injuryLabel, injuryRank, isInjured, treatmentRule } from "./injurySystem";
+import { inferTreatmentPriority } from "./priorities";
 
 const DEFAULT_HULL_THRESHOLD = 40;
 const DEFAULT_FUEL_RESERVE_THRESHOLD = 30;
+const DEFAULT_TREATMENT_MIN_SEVERITY = "minor";
 const HULL_REPAIR_SCRAP_ITEM_ID = "salvage-scrap";
 const HULL_REPAIR_ROOM_ID = "engineering";
 
@@ -117,6 +125,76 @@ function evaluateFuelReserve(policyState, resources) {
   };
 }
 
+// Any crew member with an active training/treatment/recovery job has that
+// job's payload.targetCrewId set to their id (see jobStore.enqueueTraining/
+// enqueueTreatment/enqueueRecovery) — a single check against `jobs`
+// (jobStore.getActiveJobs()'s backlog/assigned/in_progress snapshot) is
+// therefore equivalent to Crew.jsx's `busy(memberId)` helper without having
+// to special-case job type.
+function isCrewMemberBusy(jobs, memberId) {
+  return (jobs ?? []).some((job) => job.payload?.targetCrewId === memberId);
+}
+
+// auto-treatment: queues at most ONE treatment job per tick, mirroring
+// auto-hull-repair's "one repair job at a time" posture (both share the
+// same one-slot-room constraint in practice — medbay's slotCapacity is 1,
+// see data/constants.js's ROOM_CONFIG). When several crew members qualify
+// at once, the most severely injured (highest injuryRank) is treated first;
+// ties keep crew array order (Array.prototype.sort is stable). Any
+// candidate left over this tick simply gets picked up on a later tick, once
+// the current target's job has taken them out of the busy set — over
+// several ticks this drains the whole backlog one member at a time, exactly
+// like a player manually clicking "치료" on each injured crew member in
+// turn would.
+function evaluateAutoTreatment(policyState, resources, crew, jobs) {
+  if (!policyState?.enabled) return null;
+  const minSeverity = policyState.params?.minSeverity ?? DEFAULT_TREATMENT_MIN_SEVERITY;
+  const minRankIndex = INJURY_STATE_ORDER.indexOf(minSeverity);
+  const minRank = minRankIndex >= 0 ? minRankIndex : INJURY_STATE_ORDER.indexOf(DEFAULT_TREATMENT_MIN_SEVERITY);
+
+  const candidates = (crew ?? []).filter(
+    (member) => member?.alive && isInjured(member.injury) && injuryRank(member.injury) >= minRank && !isCrewMemberBusy(jobs, member.id),
+  );
+  if (candidates.length === 0) return null;
+
+  const target = [...candidates].sort((a, b) => injuryRank(b.injury) - injuryRank(a.injury))[0];
+  const label = injuryLabel(target.injury);
+  const rule = treatmentRule(target.injury);
+  const name = target.name ?? "승무원";
+  const credits = resources?.credits ?? 0;
+
+  if (credits < rule.cost) {
+    return {
+      action: {
+        policyId: "auto-treatment",
+        kind: "diagnostic",
+        detail: { reason: "insufficient-credits", memberId: target.id, injury: label, cost: rule.cost, credits },
+      },
+      log: `정책: 자동 치료 대기 — ${name} ${label}, 크레딧 부족 (₢${credits}/${rule.cost}).`,
+    };
+  }
+
+  // Same payload shape Crew.jsx's treat() (via jobStore.enqueueTreatment)
+  // uses — reusing the exact same gameplay numbers (systems/injurySystem.js's
+  // treatmentRule, shared with Crew.jsx) so an auto-queued treatment is
+  // indistinguishable from a manually-queued one. `createdAt`/`completeAt`
+  // are deliberately omitted here: gameClock.js's applyPolicyActions stamps
+  // createdAt with the real tick's currentMinute when it actually enqueues,
+  // the same way it does for enqueue-ship-work.
+  const priority = inferTreatmentPriority(label);
+  return {
+    action: {
+      policyId: "auto-treatment",
+      kind: "enqueue-treatment-job",
+      detail: {
+        memberId: target.id,
+        job: { memberId: target.id, injury: label, cost: rule.cost, duration: rule.minutes, fatiguePenalty: rule.fatiguePenalty, priority },
+      },
+    },
+    log: `정책: 자동 치료 예약 — ${name} ${label}, 우선순위 ${priority}, ₢${rule.cost}, ${rule.minutes}분.`,
+  };
+}
+
 // evaluatePolicies({ policies, resources, crew, rooms, currentMinute, jobs, items })
 //   -> { actions: [{ policyId, kind, detail }], logs: [string] }
 //
@@ -128,7 +206,6 @@ function evaluateFuelReserve(policyState, resources) {
 // are silently ignored (same posture as data/policies.js's catalog-only
 // merge).
 export function evaluatePolicies({ policies = {}, resources = {}, crew = [], rooms = {}, currentMinute = 0, jobs = [], items = [] } = {}) {
-  void crew;
   void rooms;
   void currentMinute;
 
@@ -140,8 +217,11 @@ export function evaluatePolicies({ policies = {}, resources = {}, crew = [], roo
   const fuelResult = evaluateFuelReserve(policies["fuel-reserve"], resources);
   if (fuelResult) results.push(fuelResult);
 
-  // auto-treatment / encounter-default-choice: recognized by the catalog,
-  // evaluated as no-ops until 19-C/19-D land.
+  const treatmentResult = evaluateAutoTreatment(policies["auto-treatment"], resources, crew, jobs);
+  if (treatmentResult) results.push(treatmentResult);
+
+  // encounter-default-choice: recognized by the catalog, evaluated as a
+  // no-op until 19-D lands.
 
   return {
     actions: results.map((result) => result.action),

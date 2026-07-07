@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { processTimedJobs } from "../gameClock";
+import { isHealthy, TREATMENT_RULES } from "../injurySystem";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -229,5 +230,115 @@ describe("gameClock.processTimedJobs — fuel-reserve warns but never mutates st
     expect(useJobStore.getState().jobs.some((job) => job.createdAt && job.payload?.reservePolicy)).toBe(false);
 
     usePolicyStore.getState().setPolicyEnabled("fuel-reserve", false);
+  });
+});
+
+// Phase 19-C: auto-treatment goes from a recognized-but-inert catalog entry
+// to a real automation — enabling it, with an injured crew member above
+// minSeverity and enough credits, must actually enqueue the same treatment
+// job Crew.jsx's "치료" button would (same TREATMENT_RULES numbers via
+// systems/injurySystem.js's treatmentRule), let it run through the existing
+// unified job pipeline untouched (scheduler -> completeReadyJobs ->
+// completeTreatmentJob), and never enqueue a second one while the first is
+// still outstanding.
+describe("gameClock.processTimedJobs — auto-treatment enqueues and completes a real treatment job (Phase 19-C)", () => {
+  const MINOR = TREATMENT_RULES.minor;
+  const INJURED_MEMBER_ID = "gunner-kang";
+
+  function resetCrewJobsAndCredits(injury = "healthy") {
+    useJobStore.setState({ jobs: [] });
+    useJobStore.getState().recomputeRoomLoad();
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === INJURED_MEMBER_ID ? { ...member, alive: true, injury } : member)),
+    }));
+    useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 5000 } }));
+  }
+
+  it("enqueues exactly one treatment job, spends exactly the treatment cost, and heals the crew member once the job completes — across many ticks, with no duplicate enqueues", () => {
+    resetCrewJobsAndCredits("minor");
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", true);
+
+    const creditsBefore = useGameStore.getState().resources.credits;
+    const TICKS = 40;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    const treatmentJobs = useJobStore.getState().jobs.filter((job) => job.type === "treatment" && job.payload?.targetCrewId === INJURED_MEMBER_ID);
+    // Exactly one job was ever created for this member — the busy-check in
+    // policyEngine.js's evaluateAutoTreatment is what prevents duplicates on
+    // every subsequent tick after the first enqueue.
+    expect(treatmentJobs).toHaveLength(1);
+    expect(treatmentJobs[0].status).toBe("done");
+    expect(treatmentJobs[0].cost).toBe(MINOR.cost);
+
+    // Credits were debited by exactly the treatment cost (gameStore.spendCredits
+    // in gameClock.js's applyPolicyActions, mirroring Crew.jsx's treat()).
+    expect(useGameStore.getState().resources.credits).toBe(creditsBefore - MINOR.cost);
+
+    // The crew member recovered — completeTreatmentJob (unchanged by this PR)
+    // improves the injury by one stage on completion, and "minor" also
+    // recovers naturally over the same window, so either path lands here at
+    // healthy by the time the job (180 minutes) has long since completed.
+    const member = useCrewStore.getState().crew.find((entry) => entry.id === INJURED_MEMBER_ID);
+    expect(isHealthy(member.injury)).toBe(true);
+
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", false);
+    resetCrewJobsAndCredits("healthy");
+  });
+
+  it("does not enqueue a second treatment job while the first is still queued/in progress, even across many ticks", () => {
+    resetCrewJobsAndCredits("serious");
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", true);
+
+    const TICKS = 10;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    // 10 ticks * 15 minutes = 150 minutes — enough for the scheduler to pick
+    // the job up but nowhere near TREATMENT_RULES.serious.minutes (720), so
+    // the job should still be backlog/assigned/in_progress here, exactly the
+    // scenario the busy-check guard exists for.
+    const treatmentJobs = useJobStore.getState().jobs.filter((job) => job.type === "treatment" && job.payload?.targetCrewId === INJURED_MEMBER_ID);
+    expect(treatmentJobs.length).toBeLessThanOrEqual(1);
+
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", false);
+    resetCrewJobsAndCredits("healthy");
+  });
+
+  it("insufficient credits only ever logs a warning — it never enqueues a treatment job it can't pay for", () => {
+    resetCrewJobsAndCredits("critical");
+    useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 5 } }));
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", true);
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    expect(useGameStore.getState().logs.some((message) => message.includes("정책") && message.includes("크레딧 부족"))).toBe(true);
+    expect(useJobStore.getState().jobs.some((job) => job.type === "treatment" && job.payload?.targetCrewId === INJURED_MEMBER_ID)).toBe(false);
+    expect(useGameStore.getState().resources.credits).toBe(5);
+
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", false);
+    resetCrewJobsAndCredits("healthy");
+  });
+
+  it("disabled (default) never enqueues a treatment job even with an injured crew member and plenty of credits", () => {
+    resetCrewJobsAndCredits("minor");
+    expect(usePolicyStore.getState().policies["auto-treatment"].enabled).toBe(false);
+
+    const TICKS = 5;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    expect(useJobStore.getState().jobs.some((job) => job.type === "treatment" && job.payload?.targetCrewId === INJURED_MEMBER_ID)).toBe(false);
+    resetCrewJobsAndCredits("healthy");
   });
 });

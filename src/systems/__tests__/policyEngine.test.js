@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { evaluatePolicies } from "../policyEngine";
+import { TREATMENT_RULES } from "../injurySystem";
 import { createDefaultPolicyState } from "../../data/policies";
 import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
 
@@ -162,9 +163,143 @@ describe("evaluatePolicies", () => {
     });
   });
 
-  it("auto-treatment and encounter-default-choice are recognized but produce no actions/logs even when enabled (19-C/19-D territory)", () => {
+  describe("auto-treatment", () => {
+    const MINOR = TREATMENT_RULES.minor;
+    const SERIOUS = TREATMENT_RULES.serious;
+
+    function crewMember(overrides = {}) {
+      return { id: "m1", name: "테스트대원", alive: true, injury: "healthy", ...overrides };
+    }
+
+    it("disabled never fires even with an injured crew member and plenty of credits", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: false, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "minor" })], jobs: [] });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("no injured crew produces no actions/logs", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "healthy" })], jobs: [] });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("an injury below minSeverity does not qualify", () => {
+      const policies = createDefaultPolicyState();
+      // minSeverity "serious" excludes "minor" injuries (INJURY_STATE_ORDER
+      // ranks minor below serious).
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "serious" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "minor" })], jobs: [] });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("enabled + qualifying injury + sufficient credits produces an enqueue-treatment-job action matching Crew.jsx's treat() payload", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "minor" })], jobs: [] });
+      expect(result.logs).toHaveLength(1);
+      expect(result.logs[0]).toContain("정책");
+      expect(result.actions).toEqual([
+        {
+          policyId: "auto-treatment",
+          kind: "enqueue-treatment-job",
+          detail: {
+            memberId: "m1",
+            job: { memberId: "m1", injury: "경상", cost: MINOR.cost, duration: MINOR.minutes, fatiguePenalty: MINOR.fatiguePenalty, priority: "high" },
+          },
+        },
+      ]);
+    });
+
+    it("insufficient credits produces a diagnostic warning, no enqueue action", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: MINOR.cost - 1 }, crew: [crewMember({ injury: "minor" })], jobs: [] });
+      expect(result.logs).toHaveLength(1);
+      expect(result.logs[0]).toContain("크레딧 부족");
+      expect(result.actions).toEqual([
+        {
+          policyId: "auto-treatment",
+          kind: "diagnostic",
+          detail: { reason: "insufficient-credits", memberId: "m1", injury: "경상", cost: MINOR.cost, credits: MINOR.cost - 1 },
+        },
+      ]);
+    });
+
+    it("a crew member already in an active job (training/treatment/recovery) is excluded from candidates", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const jobs = [{ id: "job-1", type: "treatment", status: "in_progress", payload: { targetCrewId: "m1" } }];
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "minor" })], jobs });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("a backlog-status job for the same member also counts as busy (jobStore.getActiveJobs() semantics)", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const jobs = [{ id: "job-1", type: "recovery", status: "backlog", payload: { targetCrewId: "m1" } }];
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "minor" })], jobs });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("a dead crew member never qualifies even if marked injured", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ injury: "critical", alive: false })], jobs: [] });
+      expect(result).toEqual({ actions: [], logs: [] });
+    });
+
+    it("multiple qualifying crew members: only the most severely injured one is queued this tick", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const crew = [
+        crewMember({ id: "m1", name: "경상대원", injury: "minor" }),
+        crewMember({ id: "m2", name: "중상대원", injury: "serious" }),
+        crewMember({ id: "m3", name: "위독대원", injury: "critical" }),
+      ];
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew, jobs: [] });
+      expect(result.actions).toHaveLength(1);
+      expect(result.actions[0].detail.memberId).toBe("m3");
+    });
+
+    it("ties in severity keep crew array order", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const crew = [
+        crewMember({ id: "m1", injury: "serious" }),
+        crewMember({ id: "m2", injury: "serious" }),
+      ];
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew, jobs: [] });
+      expect(result.actions[0].detail.memberId).toBe("m1");
+    });
+
+    it("respects a custom minSeverity param instead of the catalog default", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "critical" } };
+      const crew = [crewMember({ id: "m1", injury: "serious" }), crewMember({ id: "m2", injury: "critical" })];
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew, jobs: [] });
+      expect(result.actions).toHaveLength(1);
+      expect(result.actions[0].detail.memberId).toBe("m2");
+    });
+
+    it("uses treatmentRule's per-severity cost/duration/fatiguePenalty, matching Crew.jsx exactly", () => {
+      const policies = createDefaultPolicyState();
+      policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
+      const result = evaluatePolicies({ policies, resources: { credits: 9999 }, crew: [crewMember({ id: "m1", injury: "serious" })], jobs: [] });
+      expect(result.actions[0].detail.job).toEqual({
+        memberId: "m1",
+        injury: "중상",
+        cost: SERIOUS.cost,
+        duration: SERIOUS.minutes,
+        fatiguePenalty: SERIOUS.fatiguePenalty,
+        priority: "emergency",
+      });
+    });
+  });
+
+  it("encounter-default-choice is recognized but produces no actions/logs even when enabled (19-D territory)", () => {
     const policies = createDefaultPolicyState();
-    policies["auto-treatment"] = { enabled: true, params: { minSeverity: "minor" } };
     policies["encounter-default-choice"] = { enabled: true, params: { stance: "aggressive" } };
     const result = evaluatePolicies({
       policies,
