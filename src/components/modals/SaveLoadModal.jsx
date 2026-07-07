@@ -42,6 +42,14 @@ export default function SaveLoadModal() {
   const exportSave = () => {
     const keys = getPersistedKeys();
     const data = Object.fromEntries(keys.map((key) => [key, localStorage.getItem(key)]));
+    // This `version: 4` is the export "key bundle" format version — it
+    // describes the shape of this wrapper object (which localStorage keys
+    // get bundled, and how) and is independent of each store's own zustand
+    // `persist` `version` (see src/stores/persistVersion.js, Phase 18-E).
+    // `data[key]` below is the raw JSON string each store already writes to
+    // localStorage (`{ state, version }`, per-store persist version inside),
+    // so bumping a store's persist version does not require bumping this
+    // bundle version — only a change to the bundle's own top-level shape does.
     setPayload(JSON.stringify({ version: 4, exportedAt: new Date().toISOString(), data }, null, 2));
     addLog("저장 데이터 내보내기 완료.");
   };
@@ -50,11 +58,20 @@ export default function SaveLoadModal() {
     try {
       const parsed = JSON.parse(payload);
       const data = parsed.data ?? parsed;
+      // Phase 18-E fix: addLog() must run BEFORE the raw localStorage writes
+      // below, not after. addLog is a useGameStore set() call, and zustand's
+      // persist middleware flushes every set() straight to storage — calling
+      // it after we've already written the imported "space-manager-game"
+      // blob re-serializes the (still pre-import, in-memory) gameStore state
+      // over top of it, silently clobbering the just-imported game data a
+      // moment before the reload picks it back up. Logging first means any
+      // such flush happens before clearPersistedGameState()/the import loop
+      // overwrite it with the real imported values, which are what survive.
+      addLog("저장 데이터 가져오기 완료. 화면을 다시 불러옵니다.");
       clearPersistedGameState();
       Object.entries(data).forEach(([key, value]) => {
         if (key.startsWith(STORAGE_KEY_PREFIX) && typeof value === "string") localStorage.setItem(key, value);
       });
-      addLog("저장 데이터 가져오기 완료. 화면을 다시 불러옵니다.");
       window.location.reload();
     } catch {
       addLog("저장 데이터 가져오기 실패: JSON 형식을 확인하세요.");

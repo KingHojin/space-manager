@@ -59,8 +59,28 @@ export function injuryLabel(injury) {
   return INJURY_CATALOG[normalizeInjury(injury).state]?.label ?? "정상";
 }
 
+// INJURY_CATALOG's `priority` field (and injuryPriority below) intentionally
+// reuses commandCenter.js's card-priority vocabulary (info/high/critical) —
+// not systems/priorities.js's activity vocabulary. See the boundary comment
+// at the top of systems/priorities.js for the full map of who owns which
+// vocabulary.
 export function injuryPriority(injury) {
   return INJURY_CATALOG[normalizeInjury(injury).state]?.priority ?? "info";
+}
+
+// Phase 18-E: the single sanctioned crossing from this module's card-priority
+// vocabulary into systems/priorities.js's activity-priority vocabulary.
+// Previously crewAI.js inlined this as
+// `injuryPriority(member.injury) === "critical" ? "emergency" : "high"`
+// (only ever reachable for states where canWorkWithInjury is false — i.e.
+// serious/critical/incapacitated, which are all card-priority "critical" —
+// so the "high" branch was already effectively dead given today's
+// INJURY_CATALOG data, but is kept for defensiveness in case a future
+// non-workable state uses a different card priority). Centralized here,
+// unchanged in behavior, so any future injury/priority tuning has one place
+// to update instead of a scattered inline ternary.
+export function injuryActivityPriority(injury) {
+  return injuryPriority(injury) === "critical" ? "emergency" : "high";
 }
 
 export function isHealthy(injury) {

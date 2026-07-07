@@ -22,6 +22,31 @@ const SIGNAL_TEMPLATES = [
   { icon: "📦", title: "버려진 화물 기록", desc: "항로 주변에 등록되지 않은 화물 포드 기록이 있습니다. 회수 경쟁이 붙을 수 있습니다.", tone: "border-orange-400/35 bg-orange-400/10", targetPanel: "exploration" },
 ];
 
+// Phase 18-E: priority-vocabulary boundary note.
+//
+// This module owns the "card priority" vocabulary — critical/high/medium/
+// low/info — used ONLY for situation-card severity/sort order in
+// getSituationCards/summarizeSituations below. It is deliberately separate
+// from systems/priorities.js's "activity priority" vocabulary (emergency/
+// high/normal/low): they classify different things (a UI card's urgency vs.
+// a crew member's current task/order) and happen to share the word "high"
+// only by coincidence, not by shared meaning — do not assume a card's
+// priority and an activity's priority with the same label mean the same
+// severity.
+//
+// This module's card-priority values are also reused directly by
+// systems/injurySystem.js (INJURY_CATALOG.priority: info/high/critical) for
+// injury severity; systems/injurySystem.js#injuryActivityPriority is the one
+// sanctioned place that crosses from there into the activity vocabulary.
+// See systems/priorities.js's header comment for the full map.
+//
+// Rooms below are handled via shipInteriorStore's own status vocabulary
+// (안정/점검 필요/위험/위기/작업 중, from systems/roomJobs.js#deriveRoomStatus)
+// — a fourth, independent vocabulary describing physical room condition, not
+// priority. `criticalRooms`/`maintenanceRooms` just gate which card gets
+// created; each card's own `priority` literal ("critical/medium") is chosen
+// directly at the call site below, not derived through a shared conversion
+// table, since this is the only place room-status feeds a situation card.
 const PRIORITY_SCORE = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
 const PRIORITY_LABEL = { critical: "긴급", high: "높음", medium: "보통", low: "낮음", info: "정보" };
 const PRIORITY_TONE = {

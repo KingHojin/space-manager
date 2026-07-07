@@ -4,6 +4,7 @@ import { DUST, SHARD_CRAFT_COST } from "../data/constants";
 import { cards as cardCatalog } from "../data/cards";
 import { items as baseItems } from "../data/items";
 import { drawCard, drawPityCard } from "../systems/gachaEngine";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function mergeItems(savedItems = []) {
   const savedById = new Map(savedItems.map((item) => [item.id, item]));
@@ -105,6 +106,8 @@ export const useInventoryStore = create(
     }),
     {
       name: "space-manager-inventory",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

@@ -6,6 +6,7 @@ import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyRecovery, jobToLega
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 import { useInventoryStore } from "./inventoryStore";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 const ACTIVE = new Set(["backlog", "assigned", "in_progress"]);
 const LEGACY_MIGRATION_VERSION = 3;
@@ -220,6 +221,8 @@ export const useJobStore = create(
     }),
     {
       name: "space-manager-jobs",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       // rooms is a derived job-slot index (see roomsFromJobs above), not
       // independent state, so it is excluded from what gets written to
       // storage going forward. Older saves may still carry a `rooms` field

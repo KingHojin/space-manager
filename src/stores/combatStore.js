@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 const DEFAULT_TARGET_ID = "hull";
 const DEFAULT_FEED = ["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."];
@@ -71,6 +72,8 @@ export const useCombatStore = create(
     }),
     {
       name: "space-manager-combat",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

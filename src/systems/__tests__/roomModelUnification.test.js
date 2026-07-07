@@ -162,3 +162,12 @@ describe("vesselScope no longer exposes the dead jobRooms field on the crewAI sn
     expect(snapshot.rooms).toBe(useShipInteriorStore.getState().rooms);
   });
 });
+
+describe("vesselScope dead export removal (Phase 18-E)", () => {
+  it("no longer exports getActiveVesselResourceView (grep found zero call sites) or getActiveVesselScope (zero external callers)", async () => {
+    const vesselScopeModule = await import("../vesselScope");
+    expect(vesselScopeModule.getActiveVesselResourceView).toBeUndefined();
+    expect(vesselScopeModule.getActiveVesselScope).toBeUndefined();
+    expect(vesselScopeModule.getActiveVesselCrewAiSnapshot).toBeTypeOf("function");
+  });
+});

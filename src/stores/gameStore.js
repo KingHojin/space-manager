@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { DEV_FLAGS, GAME_TIME, RESOURCES } from "../data/constants";
 import { getActiveModifiers } from "../systems/cardEffects";
 import { useInventoryStore } from "./inventoryStore";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 const PERCENT_RESOURCES = new Set(["fuel", "oxygen", "hull"]);
 const LOW_RESOURCE_WARNING_COOLDOWN_MINUTES = 60;
@@ -123,6 +124,8 @@ export const useGameStore = create(
     }),
     {
       name: "space-manager-game",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

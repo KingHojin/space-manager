@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { getAllZones } from "../data/sectors";
 import { canExploreZone, consumeZoneYield, refreshZoneRuntimeIfNeeded } from "../systems/explorationRules";
 import { rollExplorationReward } from "../systems/explorationLoot";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function normalizeRuntimeNumber(value) {
   const parsed = Number(value);
@@ -95,6 +96,8 @@ export const useExplorationStore = create(
     }),
     {
       name: "space-manager-exploration",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

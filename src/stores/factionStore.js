@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { initialReputation } from "../data/factions";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
@@ -20,6 +21,8 @@ export const useFactionStore = create(
     }),
     {
       name: "space-manager-factions",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

@@ -6,6 +6,7 @@ import {
   chooseTreatmentTarget,
   getRoleCoverage,
   improveInjuryOneStage,
+  injuryActivityPriority,
   injuryLabel,
   injuryPriority,
   injuryRank,
@@ -235,5 +236,27 @@ describe("shouldWorsenInjury", () => {
 describe("INJURY_STATE_ORDER sanity", () => {
   it("is the canonical worsening order", () => {
     expect(INJURY_STATE_ORDER).toEqual(["healthy", "minor", "serious", "critical", "incapacitated"]);
+  });
+});
+
+// Phase 18-E: injuryActivityPriority is the single sanctioned crossing from
+// this module's card-priority vocabulary (injuryPriority: info/high/critical)
+// into systems/priorities.js's activity-priority vocabulary (emergency/high/
+// normal/low), centralizing what used to be an inline ternary in crewAI.js.
+describe("injuryActivityPriority", () => {
+  it("maps every card-priority 'critical' injury state to activity-priority 'emergency'", () => {
+    expect(injuryPriority("serious")).toBe("critical");
+    expect(injuryPriority("critical")).toBe("critical");
+    expect(injuryPriority("incapacitated")).toBe("critical");
+    expect(injuryActivityPriority("serious")).toBe("emergency");
+    expect(injuryActivityPriority("critical")).toBe("emergency");
+    expect(injuryActivityPriority("incapacitated")).toBe("emergency");
+  });
+
+  it("maps any non-critical card priority to activity-priority 'high'", () => {
+    expect(injuryPriority("minor")).toBe("high");
+    expect(injuryActivityPriority("minor")).toBe("high");
+    expect(injuryPriority("healthy")).toBe("info");
+    expect(injuryActivityPriority("healthy")).toBe("high");
   });
 });

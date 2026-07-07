@@ -12,6 +12,7 @@ import {
   normalizeMissionRecord,
 } from "../systems/missionSystem";
 import { generateMissionEncounter, normalizeMissionEncounterRecord, resolveMissionEncounterOption } from "../systems/missionEncounterSystem";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function normalizeList(list = []) {
   return list.map(normalizeMissionRecord).filter(Boolean);
@@ -223,6 +224,8 @@ export const useMissionStore = create(
     }),
     {
       name: "space-manager-missions",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({
         ...currentState,
         ...(persistedState ?? {}),

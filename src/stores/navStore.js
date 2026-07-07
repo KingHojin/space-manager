@@ -4,6 +4,7 @@ import { DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
 import { evaluateTravelCrewReadiness, travelReadinessMessage } from "../systems/crewAvailability";
 import { generateSector, findRoute, rollEncounter, routeDistance } from "../systems/navigationSystem";
 import { useCrewStore } from "./crewStore";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 import { useJobStore } from "./jobStore";
 
 function clamp(value, min, max) {
@@ -237,6 +238,8 @@ export const useNavStore = create(
     },
     {
       name: "space-manager-nav",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => {
         const sector = normalizeSector(persistedState?.sector ?? currentState.sector);
         const start = firstNodeId(sector);

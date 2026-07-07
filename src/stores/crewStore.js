@@ -18,6 +18,7 @@ import {
   worsenInjuryOneStage,
 } from "../systems/injurySystem";
 import { normalizePriority } from "../systems/priorities";
+import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 const moraleOrder = ["나쁨", "보통", "좋음", "최상"];
 const DEFAULT_NEEDS = { hunger: 12, mood: 68, stress: 18, sleepDebt: 8, hygiene: 78 };
@@ -264,6 +265,8 @@ export const useCrewStore = create(
     }),
     {
       name: "space-manager-crew",
+      version: PERSIST_VERSION,
+      migrate: passthroughMigrate,
       merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
     },
   ),
