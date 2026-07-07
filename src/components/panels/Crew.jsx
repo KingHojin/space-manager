@@ -12,6 +12,7 @@ import {
   isHealthy,
   isInjured,
   normalizeInjury,
+  treatmentRule,
 } from "../../systems/injurySystem";
 import { activeLegacyJobs, jobToLegacyRecovery, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
 import { getPriorityConfig, inferTrainingPriority, inferTreatmentPriority } from "../../systems/priorities";
@@ -39,13 +40,6 @@ const RECOVERY_COST = JOB_ECONOMY.recovery.credits;
 const RECOVERY_MINUTES = JOB_DURATION.recovery;
 const RECOVERY_FATIGUE = JOB_ECONOMY.recovery.fatigueRecovery;
 
-const TREATMENT = {
-  minor: { cost: 140, minutes: 180, fatiguePenalty: 8 },
-  serious: { cost: 420, minutes: 720, fatiguePenalty: 18 },
-  critical: { cost: 720, minutes: 1080, fatiguePenalty: 28 },
-  incapacitated: { cost: 980, minutes: 1440, fatiguePenalty: 35 },
-};
-
 const trainingByRole = {
   함교: "piloting",
   포탑: "gunnery",
@@ -55,11 +49,6 @@ const trainingByRole = {
 };
 
 const defaultNeeds = { hunger: 0, mood: 60, stress: 20, sleepDebt: 0, hygiene: 80 };
-
-function treatmentRule(injury) {
-  const state = normalizeInjury(injury).state;
-  return TREATMENT[state] ?? { cost: 220, minutes: 300, fatiguePenalty: 10 };
-}
 
 function recoveryPriority(member) {
   if ((member.fatigue ?? 0) >= 75) return "high";

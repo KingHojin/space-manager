@@ -103,6 +103,28 @@ export function isSeriousOrWorse(injury) {
   return injuryRank(injury) >= INJURY_STATE_ORDER.indexOf("serious");
 }
 
+// Treatment economics by injury severity — the exact cost/duration/fatigue
+// numbers components/panels/Crew.jsx's "치료" button has used since before
+// the policy system existed. Centralized here (rather than kept as a local
+// const in the Crew panel) so systems/policyEngine.js's auto-treatment
+// policy (Phase 19-C) can enqueue a treatment job with *identical* numbers
+// to a manual click, without a systems/*.js file importing a component.
+// Crew.jsx now imports treatmentRule from here instead of defining its own
+// copy, so the two can never drift apart.
+export const TREATMENT_RULES = {
+  minor: { cost: 140, minutes: 180, fatiguePenalty: 8 },
+  serious: { cost: 420, minutes: 720, fatiguePenalty: 18 },
+  critical: { cost: 720, minutes: 1080, fatiguePenalty: 28 },
+  incapacitated: { cost: 980, minutes: 1440, fatiguePenalty: 35 },
+};
+
+const DEFAULT_TREATMENT_RULE = { cost: 220, minutes: 300, fatiguePenalty: 10 };
+
+export function treatmentRule(injury) {
+  const state = normalizeInjury(injury).state;
+  return TREATMENT_RULES[state] ?? DEFAULT_TREATMENT_RULE;
+}
+
 export function injuryWorkSpeedMultiplier(injury) {
   return INJURY_CATALOG[normalizeInjury(injury).state]?.workSpeed ?? 1;
 }
