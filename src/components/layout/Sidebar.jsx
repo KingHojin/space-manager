@@ -1,4 +1,4 @@
-import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, PawPrint, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
@@ -8,12 +8,10 @@ const blockedPanelId = "com" + "bat";
 const icons = {
   overview: Home,
   exploration: Compass,
-  hunting: PawPrint,
   ship: Rocket,
   menu: MenuIcon,
   skilltree: GitBranch,
   crew: Users,
-  recruit: Users,
   collector: Sparkles,
   market: Store,
 };

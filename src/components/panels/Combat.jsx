@@ -24,6 +24,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
+import Hunting from "./Hunting";
 
 const DEFAULT_FEED = ["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."];
 
@@ -302,6 +303,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const canIssueDirective = activeCrew.length > 0 && combatEngaged;
 
   return (
+    <div className="grid gap-6">
     <div className="grid gap-4 lg:h-full lg:grid-cols-[0.9fr_1.1fr]">
       <section>
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">타겟 서브시스템과 전술 지시를 조합해 교전을 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
@@ -325,6 +327,10 @@ export default function Combat({ onNavigate, onOpenModal }) {
           <BattleScene combat={combat} power={power} />
           <section className="rounded-2xl border border-red-400/25 bg-red-400/10 p-3"><div className="section-title"><AlertTriangle size={16} />전투 피드</div><div className="mt-3"><FeedList entries={feed} /></div></section>
         </div>
+      </section>
+    </div>
+      <section className="rounded-2xl border border-red-400/25 bg-red-400/10 p-4">
+        <Hunting />
       </section>
     </div>
   );

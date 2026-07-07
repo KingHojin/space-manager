@@ -10,6 +10,7 @@ import { useFactionStore } from "../../stores/factionStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useShipStore } from "../../stores/shipStore";
+import Recruit from "./Recruit";
 
 const SERVICE_ZONES = new Set(["anchor-station", "eos-harbor", "umbra-relay", "sable-point", "last-market"]);
 
@@ -294,6 +295,9 @@ export default function Market() {
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {factions.map((faction) => <Status key={faction.id} label={faction.name} value={reputation[faction.id] ?? 0} />)}
         </div>
+      </section>
+      <section className="rounded-2xl border border-amber-300/25 bg-amber-300/10 p-4">
+        <Recruit />
       </section>
     </section>
   );

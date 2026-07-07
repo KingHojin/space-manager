@@ -23,6 +23,8 @@ import ShipInterior from "../ship/ShipInterior";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
 import { number } from "../../utils/format";
 
+const EMPTY_ARRAY = [];
+
 function gaugeTone(value) {
   if (value < RESOURCES.LOW_RESOURCE_WARNING) return "hud-gauge-danger";
   if (value < 50) return "hud-gauge-warn";
@@ -136,8 +138,8 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const sector = useNavStore((state) => state.sector);
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
-  const discovered = useNavStore((state) => state.discovered ?? []);
-  const navRoute = useNavStore((state) => state.route ?? []);
+  const discovered = useNavStore((state) => state.discovered ?? EMPTY_ARRAY);
+  const navRoute = useNavStore((state) => state.route ?? EMPTY_ARRAY);
   const navTravel = useNavStore((state) => state.travel);
   const navFuel = useNavStore((state) => state.fuel);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
@@ -147,18 +149,18 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const logs = useGameStore((state) => state.logs);
-  const installationQueue = useShipStore((state) => state.installationQueue ?? []);
+  const installationQueue = useShipStore((state) => state.installationQueue ?? EMPTY_ARRAY);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
   const dust = useInventoryStore((state) => state.dust);
   const items = useInventoryStore((state) => state.items);
   const cards = useInventoryStore((state) => state.cards);
   const crew = useCrewStore((state) => state.crew);
-  const trainingQueue = useCrewStore((state) => state.trainingQueue ?? []);
-  const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? []);
-  const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
+  const trainingQueue = useCrewStore((state) => state.trainingQueue ?? EMPTY_ARRAY);
+  const treatmentQueue = useCrewStore((state) => state.treatmentQueue ?? EMPTY_ARRAY);
+  const crewActivities = useCrewStore((state) => state.crewActivities ?? EMPTY_ARRAY);
   const rooms = useShipInteriorStore((state) => state.rooms);
-  const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
+  const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? EMPTY_ARRAY);
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);

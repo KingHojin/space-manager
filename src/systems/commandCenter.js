@@ -18,7 +18,7 @@ const SIGNAL_TEMPLATES = [
   { icon: "☄️", title: "혜성 꼬리 샘플", desc: "짧은 시간만 접근 가능한 채집 기회입니다. 연료와 선체 여유가 필요합니다.", tone: "border-amber-400/35 bg-amber-400/10", targetPanel: "exploration" },
   { icon: "🛸", title: "해적 잔해 루머", desc: "전투 흔적이 남은 좌표가 공유됐습니다. 위험하지만 부품 회수 가능성이 있습니다.", tone: "border-red-400/35 bg-red-400/10", targetPanel: "combat" },
   { icon: "🌌", title: "성운 이상치", desc: "스캐너가 불가능한 밀도 변화를 감지했습니다. 장거리 탐사의 새 목적지가 될 수 있습니다.", tone: "border-violet-400/35 bg-violet-400/10", targetPanel: "exploration" },
-  { icon: "🧬", title: "생체 반응 구역", desc: "행성 표면에서 낮은 확률의 생명 반응이 포착됐습니다. 상륙 탐사 후보입니다.", tone: "border-lime-400/35 bg-lime-400/10", targetPanel: "hunting" },
+  { icon: "🧬", title: "생체 반응 구역", desc: "행성 표면에서 낮은 확률의 생명 반응이 포착됐습니다. 상륙 탐사 후보입니다.", tone: "border-lime-400/35 bg-lime-400/10", targetPanel: "combat" },
   { icon: "📦", title: "버려진 화물 기록", desc: "항로 주변에 등록되지 않은 화물 포드 기록이 있습니다. 회수 경쟁이 붙을 수 있습니다.", tone: "border-orange-400/35 bg-orange-400/10", targetPanel: "exploration" },
 ];
 
