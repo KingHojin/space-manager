@@ -2,9 +2,9 @@ import { useState } from "react";
 import { AlertTriangle, PawPrint, Radar, Shield, Skull } from "lucide-react";
 import BattleScene from "../common/BattleScene";
 import { useCrewStore } from "../../stores/crewStore";
-import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useNavStore } from "../../stores/navStore";
 import { creatures } from "../../data/creatures";
 
 function dangerTone(danger) {
@@ -28,7 +28,11 @@ export default function Hunting() {
   const addItem = useInventoryStore((state) => state.addItem);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
-  const activeTravel = useExplorationStore((state) => state.activeTravel);
+  // Phase 18-C: this used to read explorationStore.activeTravel, which the
+  // legacy travel tick (removed from gameClock) was the only writer for — it
+  // was provably always null, so this gate never actually fired. navStore.travel
+  // is the live single source of travel state; see systems/gameClock.js.
+  const activeTravel = useNavStore((state) => state.travel);
   const activeCrew = crew.filter((member) => member.alive !== false);
 
   const getScout = () => activeCrew.reduce((best, member) => ((member.stats.scouting ?? 0) > (best?.stats.scouting ?? 0) ? member : best), activeCrew[0]);

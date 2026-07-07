@@ -21,7 +21,6 @@ export function getActiveVesselScope() {
   const ship = useShipStore.getState();
   const game = useGameStore.getState();
   const nav = useNavStore.getState();
-  const exploration = useExplorationStore.getState();
   const interior = useShipInteriorStore.getState();
   const crew = useCrewStore.getState();
   const jobs = useJobStore.getState();
@@ -34,9 +33,13 @@ export function getActiveVesselScope() {
     nav: {
       currentNodeId: nav.currentNodeId,
       selectedNodeId: nav.selectedNodeId,
-      travel: nav.travel ?? exploration.activeTravel,
+      // Phase 18-C: navStore is the single live travel source; explorationStore's
+      // activeTravel/pendingTravelEvent are save-compat-only remnants of the
+      // removed legacy travel tick (see stores/explorationStore.js) and are
+      // never written anymore, so no fallback is needed here.
+      travel: nav.travel,
       fuel: nav.fuel,
-      pendingEncounter: nav.pendingEncounter ?? exploration.pendingTravelEvent,
+      pendingEncounter: nav.pendingEncounter,
       driftState: nav.driftState,
     },
     interior: {
