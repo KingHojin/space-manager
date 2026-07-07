@@ -1,5 +1,5 @@
 import { AlertTriangle, Crosshair, Shield, Skull, Swords, Target, Users, Zap } from "lucide-react";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import BattleScene from "../common/BattleScene";
 import Hunting from "./Hunting";
 import { ActionCard, FeedList, StatTile } from "../ui/VisualPrimitives";
@@ -180,7 +180,8 @@ function CheckCircleIcon({ won }) {
   return <span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${won ? "bg-emerald-300 text-emerald-950" : "bg-red-300 text-red-950"}`}>{won ? "✓" : "!"}</span>;
 }
 
-export default function Combat({ onNavigate, onOpenModal }) {
+export default function Combat({ activeSection = "combat", onNavigate, onOpenModal }) {
+  const [activeMode, setActiveMode] = useState(activeSection);
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
@@ -295,15 +296,26 @@ export default function Combat({ onNavigate, onOpenModal }) {
 
   const selectTarget = (nextTargetId) => setTargetRecord({ vesselId: activeVesselId, targetId: nextTargetId });
 
+  useEffect(() => {
+    setActiveMode(activeSection);
+  }, [activeSection]);
+
   const enemy = combat?.enemy;
   const enemyHull = enemy ? Math.round((enemy.hullNow / enemy.hull) * 100) : 0;
   const enemyShield = enemy ? Math.round((enemy.shieldNow / enemy.shield) * 100) : 0;
   const eventLine = feed[0] ?? "함교가 다음 지시를 기다립니다.";
   const canStart = activeCrew.length > 0 && !travelLocked && !combatEngaged;
   const canIssueDirective = activeCrew.length > 0 && combatEngaged;
+  const modeButtonClass = (mode) => `rounded-xl border px-4 py-2 text-sm font-black transition ${activeMode === mode ? "border-cyan-300 bg-cyan-300/15 text-cyan-100" : "border-slate-700/70 bg-slate-950/65 text-slate-300 hover:border-cyan-300/70"}`;
 
   return (
     <div className="space-y-6">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-2">
+        <button className={modeButtonClass("combat")} onClick={() => setActiveMode("combat")}>교전</button>
+        <button className={modeButtonClass("hunting")} onClick={() => setActiveMode("hunting")}>사냥</button>
+      </div>
+
+      {activeMode === "combat" ? (
       <div className="grid gap-4 lg:h-full lg:grid-cols-[0.9fr_1.1fr]">
       <section>
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">타겟 서브시스템과 전술 지시를 조합해 교전을 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
@@ -329,17 +341,9 @@ export default function Combat({ onNavigate, onOpenModal }) {
         </div>
       </section>
       </div>
-
-      <section className="rounded-2xl border border-emerald-300/20 bg-emerald-300/5 p-3 sm:p-4">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="hud-label">MERGED OPERATIONS</div>
-            <h3 className="mt-1 text-lg font-black text-slate-50">사냥 작전</h3>
-          </div>
-          <span className="hud-chip hud-chip-accent">전투 탭 통합</span>
-        </div>
+      ) : (
         <Hunting />
-      </section>
+      )}
     </div>
   );
 }

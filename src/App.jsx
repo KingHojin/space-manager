@@ -35,12 +35,19 @@ const panels = {
 };
 
 const panelAliases = {
-  hunting: "combat",
-  recruit: "market",
+  hunting: { panelId: "combat", section: "hunting" },
+  recruit: { panelId: "market", section: "recruit" },
 };
 
-function normalizePanelId(panelId) {
-  return panelAliases[panelId] ?? panelId;
+const defaultPanelSections = {
+  combat: "combat",
+  market: "trade",
+};
+
+function resolvePanel(panelId) {
+  const alias = panelAliases[panelId];
+  if (alias) return alias;
+  return { panelId, section: defaultPanelSections[panelId] };
 }
 
 const modals = {
@@ -57,11 +64,13 @@ const modals = {
 export default function App() {
   useGameClock();
   const [activePanel, setActivePanel] = useState("overview");
+  const [panelSections, setPanelSections] = useState(defaultPanelSections);
   const [activeModal, setActiveModal] = useState(null);
   const Panel = panels[activePanel]?.component ?? panels.overview.component;
   const changePanel = (panelId) => {
-    const nextPanelId = normalizePanelId(panelId);
+    const { panelId: nextPanelId, section } = resolvePanel(panelId);
     if (!panels[nextPanelId]) return;
+    if (section) setPanelSections((sections) => ({ ...sections, [nextPanelId]: section }));
     setActivePanel(nextPanelId);
   };
   const modal = useMemo(() => (activeModal ? modals[activeModal] : null), [activeModal]);
@@ -69,8 +78,9 @@ export default function App() {
   const showPanelTitle = activePanel !== "overview";
 
   const navigateFromModal = (panelId) => {
-    const nextPanelId = normalizePanelId(panelId);
+    const { panelId: nextPanelId, section } = resolvePanel(panelId);
     if (!panels[nextPanelId]) return;
+    if (section) setPanelSections((sections) => ({ ...sections, [nextPanelId]: section }));
     setActivePanel(nextPanelId);
     setActiveModal(null);
   };
@@ -90,7 +100,7 @@ export default function App() {
             </div>
           )}
           <div className="min-h-0 overflow-auto p-3 sm:p-4">
-            <Panel onNavigate={changePanel} onOpenModal={setActiveModal} />
+            <Panel activeSection={panelSections[activePanel]} onNavigate={changePanel} onOpenModal={setActiveModal} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
         </main>

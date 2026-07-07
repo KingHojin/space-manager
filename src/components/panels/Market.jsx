@@ -1,4 +1,5 @@
 import { Briefcase, Cpu, Fuel, Store, Utensils, Wind, Wrench } from "lucide-react";
+import { useEffect, useState } from "react";
 import Badge from "../common/Badge";
 import Recruit from "./Recruit";
 import { contracts } from "../../data/contracts";
@@ -32,7 +33,8 @@ function itemQty(items, itemId) {
   return items.find((item) => item.id === itemId)?.qty ?? 0;
 }
 
-export default function Market() {
+export default function Market({ activeSection: requestedSection = "trade" }) {
+  const [activeSection, setActiveSection] = useState(requestedSection);
   const currentZoneId = useExplorationStore((state) => state.currentZoneId);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const docked = SERVICE_ZONES.has(currentZoneId);
@@ -140,9 +142,21 @@ export default function Market() {
     .filter((module) => !unlockedModuleIds.includes(module.id))
     .sort((a, b) => Number(canCraft(b)) - Number(canCraft(a)) || (rarityRank[a.rarity] ?? 9) - (rarityRank[b.rarity] ?? 9))
     .slice(0, 16);
+  const sectionButtonClass = (section) => `rounded-xl border px-4 py-2 text-sm font-black transition ${activeSection === section ? "border-cyan-300 bg-cyan-300/15 text-cyan-100" : "border-slate-700/70 bg-slate-950/65 text-slate-300 hover:border-cyan-300/70"}`;
+
+  useEffect(() => {
+    setActiveSection(requestedSection);
+  }, [requestedSection]);
 
   return (
     <section className="space-y-5">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-2">
+        <button className={sectionButtonClass("trade")} onClick={() => setActiveSection("trade")}>시장</button>
+        <button className={sectionButtonClass("recruit")} onClick={() => setActiveSection("recruit")}>영입</button>
+      </div>
+
+      {activeSection === "trade" ? (
+      <>
       <div>
         <div className="section-title">
           <Store size={18} />
@@ -290,23 +304,16 @@ export default function Market() {
         </div>
       </section>
 
-      <section className="rounded-2xl border border-amber-300/20 bg-amber-300/5 p-3 sm:p-4">
-        <div className="mb-4 flex items-start justify-between gap-3">
-          <div>
-            <div className="hud-label">MARKET CREW DESK</div>
-            <h3 className="mt-1 text-lg font-black text-slate-50">승무원 영입</h3>
-          </div>
-          <span className="hud-chip hud-chip-accent">시장 탭 통합</span>
-        </div>
-        <Recruit />
-      </section>
-
       <section>
         <div className="section-title">세력 평판</div>
         <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {factions.map((faction) => <Status key={faction.id} label={faction.name} value={reputation[faction.id] ?? 0} />)}
         </div>
       </section>
+      </>
+      ) : (
+        <Recruit />
+      )}
     </section>
   );
 }
