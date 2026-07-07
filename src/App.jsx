@@ -20,6 +20,7 @@ import MissionBoardModal from "./components/modals/MissionBoardModal";
 import CardsModal from "./components/modals/CardsModal";
 import LogModal from "./components/modals/LogModal";
 import SaveLoadModal from "./components/modals/SaveLoadModal";
+import PolicyModal from "./components/modals/PolicyModal";
 import { useGameClock } from "./systems/gameClock";
 
 const panels = {
@@ -52,6 +53,7 @@ const modals = {
   cards: { title: "카드", component: CardsModal },
   log: { title: "로그", component: LogModal },
   save: { title: "저장", component: SaveLoadModal },
+  policies: { title: "정책 설정", component: PolicyModal },
 };
 
 export default function App() {

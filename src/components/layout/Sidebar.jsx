@@ -1,4 +1,4 @@
-import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, Rocket, Save, ScrollText, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, Rocket, Save, ScrollText, Settings2, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
@@ -24,6 +24,7 @@ const quickActions = [
   { id: "cards", label: "카드", icon: BookOpen },
   { id: "log", label: "로그", icon: ScrollText },
   { id: "save", label: "저장", icon: Save },
+  { id: "policies", label: "정책", icon: Settings2 },
 ];
 
 export default function Sidebar({ activePanel, onChange, onOpenModal }) {

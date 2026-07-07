@@ -10,6 +10,7 @@ import {
   Rocket,
   Save,
   ScrollText,
+  Settings2,
   Sparkles,
   Store,
   Trash2,
@@ -60,6 +61,7 @@ const utilityMenus = [
   { id: "map", label: "성계 지도", icon: Map },
   { id: "log", label: "로그", icon: ScrollText },
   { id: "save", label: "저장", icon: Save },
+  { id: "policies", label: "정책 설정", icon: Settings2 },
 ];
 
 function storageKeysForGame() {
