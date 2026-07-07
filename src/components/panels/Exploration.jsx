@@ -18,7 +18,7 @@ import { applyNavigationEncounter, formatGameDate } from "../../systems/gameCloc
 import { applyMissionRewards } from "../../systems/missionRewards";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
 import ExplorationRewardPanel from "../exploration/ExplorationRewardPanel";
-import StarMap from "../exploration/StarMap";
+import StarMap from "../exploration/LazyStarMap";
 import MissionEncounterCard from "../ui/MissionEncounterCard";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
 

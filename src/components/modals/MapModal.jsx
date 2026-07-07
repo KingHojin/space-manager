@@ -1,6 +1,6 @@
 import { getAllZones } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
-import PlanetCanvas from "../three/PlanetCanvas";
+import PlanetCanvas from "../three/LazyPlanetCanvas";
 
 export default function MapModal() {
   const zones = getAllZones();

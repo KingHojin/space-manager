@@ -20,7 +20,7 @@ import { applyNavigationEncounter, formatGameDate } from "../../systems/gameCloc
 import { isInjured } from "../../systems/injurySystem";
 import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
-import StarMap from "../exploration/StarMap";
+import StarMap from "../exploration/LazyStarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
 import ShipInterior from "../ship/ShipInterior";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
