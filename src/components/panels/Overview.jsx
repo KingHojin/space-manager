@@ -1,9 +1,10 @@
 import { useMemo } from "react";
-import { AlertTriangle, Archive, Briefcase, ChevronRight, Compass, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
+import { AlertTriangle, Archive, Bell, Briefcase, ChevronRight, Compass, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
 import { RESOURCES } from "../../data/constants";
 import { contracts } from "../../data/contracts";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
+import { getReportCategory } from "../../data/reports";
 import { useContractStore } from "../../stores/contractStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -11,10 +12,11 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
+import { getUnreadCount, useReportStore } from "../../stores/reportStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
-import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, summarizeSituations } from "../../systems/commandCenter";
+import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, PRIORITY_LABEL, PRIORITY_TONE, summarizeSituations } from "../../systems/commandCenter";
 import { summarizeCrewAI } from "../../systems/crewAI";
 import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
 import { isInjured } from "../../systems/injurySystem";
@@ -76,6 +78,51 @@ function CommandCard({ card, onNavigate, onOpenModal }) {
       <div className="mt-3 font-black text-slate-50">{card.title}</div>
       <div className="mt-1 truncate text-xs leading-5 text-slate-400">{card.desc}</div>
     </button>
+  );
+}
+
+// Phase 20-C: home-screen digest of unread captain reports. Hidden entirely
+// when there are none, to keep the home panel's density unchanged for a
+// player who reads reports as they arrive (see docs/PHASE_20_REPORT_SYSTEM.md
+// "20-C" — this section is additive, not a replacement for the "최근 상황"
+// log feed already on this panel).
+function UnreadReportsSection({ unreadReports, unreadCount, onOpenModal }) {
+  if (unreadCount === 0) return null;
+  return (
+    <section className="rounded-2xl border border-cyan-300/30 bg-cyan-300/5 p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="section-title">
+          <Bell size={18} />
+          미확인 보고서
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="hud-chip hud-chip-warn">{unreadCount}건</span>
+          <button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("reports")}>
+            전체 보기
+          </button>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        {unreadReports.map((report) => {
+          const category = getReportCategory(report.category);
+          return (
+            <button
+              key={report.id}
+              className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3 text-left transition hover:-translate-y-0.5 hover:border-cyan-300"
+              onClick={() => onOpenModal?.("reports")}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-lg">{category?.icon ?? "📋"}</span>
+                <span className={`hud-chip shrink-0 ${PRIORITY_TONE[report.priority] ?? PRIORITY_TONE.info}`}>
+                  {PRIORITY_LABEL[report.priority] ?? report.priority}
+                </span>
+              </div>
+              <div className="mt-2 truncate font-bold text-slate-50">{report.title}</div>
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 
@@ -168,6 +215,9 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);
+  const reports = useReportStore((state) => state.reports);
+  const unreadReportCount = getUnreadCount(reports);
+  const unreadReports = useMemo(() => reports.filter((report) => !report.read).slice(0, 3), [reports]);
   const activeContracts = contracts.filter((contract) => acceptedIds.includes(contract.id));
   const nextContracts = contracts.filter((contract) => !completedIds.includes(contract.id) && !acceptedIds.includes(contract.id));
   const primaryContract = activeContracts[0] ?? nextContracts[0];
@@ -202,6 +252,8 @@ export default function Overview({ onNavigate, onOpenModal }) {
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Briefcase size={18} />빠른 명령</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("command")}>전체 메뉴</button></div><div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">{commandCards.map((card) => <CommandCard key={card.id} card={card} onNavigate={onNavigate} onOpenModal={onOpenModal} />)}</div></section>
 
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><AlertTriangle size={18} />결재 큐</div><span className="hud-chip hud-chip-accent">{situationSummary.total}건</span></div><div className="mt-3 grid gap-2 md:grid-cols-4">{situations.slice(0, 4).map((card) => <SituationCard key={card.id} card={card} onNavigate={onNavigate} />)}</div></section>
+
+      <UnreadReportsSection unreadReports={unreadReports} unreadCount={unreadReportCount} onOpenModal={onOpenModal} />
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><div className="grid gap-3"><ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} compact onCrewClick={() => onNavigate?.("crew")} /><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Users size={18} />승무원</div><span className="hud-chip hud-chip-accent">AI {crewAiSummary.total}</span></div><div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">{crew.slice(0, 5).map((member, index) => { const activity = crewActivities.find((entry) => entry.memberId === member.id); const actionText = activity ? activity.station : getCrewActivity(member, currentMinute, index); return <button key={member.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3 text-center" onClick={() => onNavigate?.("crew")}><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-xl">{ROLE_ICON_LABEL[member.role] ?? "👤"}</div><div className="mt-2 truncate font-bold text-slate-100">{member.name}</div><div className="truncate text-xs text-slate-400">{actionText}</div><span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "mt-1 block text-xs font-bold text-amber-300" : "mt-1 block text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span></button>; })}</div></section></div><TaskQueuePanel onNavigate={onNavigate} /></div>
 

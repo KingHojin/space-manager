@@ -2,6 +2,7 @@ import { Compass, Crosshair, Home, Menu as MenuIcon, Rocket } from "lucide-react
 import { getAllZones } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
+import { getUnreadCount, useReportStore } from "../../stores/reportStore";
 
 const tabItems = [
   { id: "overview", label: "홈", icon: Home, type: "panel" },
@@ -20,6 +21,8 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
   // old save happens to carry a stale value; nothing writes it going forward.
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const reports = useReportStore((state) => state.reports);
+  const unreadReportCount = getUnreadCount(reports);
   const hasHighDangerZone = getAllZones().some((zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4);
 
   const handleTab = (item) => {
@@ -38,7 +41,12 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
         const active = activePanel === item.id;
         const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
         const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
-        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent || navPendingEncounter);
+        // Phase 20-C: an unread report also lights up the same "메뉴" tab dot
+        // as a pending travel event/encounter — both mean "something needs
+        // your attention in the menu" rather than being a distinct signal
+        // worth its own indicator, so this reuses the existing dot instead of
+        // adding a second one that would fight for the same corner.
+        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent || navPendingEncounter || unreadReportCount > 0);
         return (
           <button key={item.id} className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handleTab(item)} disabled={locked}>
             <span className="relative inline-flex">
