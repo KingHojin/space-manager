@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateSector, nodeToZone, routeDistance } from "../navigationSystem";
+import { generateSector, isDocked, nodeToZone, routeDistance } from "../navigationSystem";
 
 describe("routeDistance", () => {
   const sector = {
@@ -62,5 +62,24 @@ describe("generateSector (sanity check backing routeDistance/nodeToZone usage)",
     const sectorB = generateSector("determinism-seed", 8);
     expect(sectorB.nodes.map((node) => node.id)).toEqual(sectorA.nodes.map((node) => node.id));
     expect(sectorB.edges).toEqual(sectorA.edges);
+  });
+});
+
+describe("isDocked", () => {
+  it("is docked at a station node with no active travel", () => {
+    expect(isDocked({ id: "n0", type: "station" }, null)).toBe(true);
+  });
+
+  it("is not docked at a non-station node (e.g. nebula), even with no active travel", () => {
+    expect(isDocked({ id: "n1", type: "nebula" }, null)).toBe(false);
+  });
+
+  it("is not docked at a station node while travel is in progress", () => {
+    expect(isDocked({ id: "n0", type: "station" }, { fromId: "n0", toId: "n1", progress: 40 })).toBe(false);
+  });
+
+  it("is not docked when there is no current node", () => {
+    expect(isDocked(null, null)).toBe(false);
+    expect(isDocked(undefined, null)).toBe(false);
   });
 });

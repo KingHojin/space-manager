@@ -14,7 +14,7 @@ import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 import { createCombatState, pickEnemyFleet } from "../../systems/combatEngine";
 import { explorationBlockLabel, explorationFuelCost } from "../../systems/explorationRules";
-import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
+import { applyCombatCasualtyWithJobs, applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
 import { applyMissionRewards } from "../../systems/missionRewards";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
 import ExplorationRewardPanel from "../exploration/ExplorationRewardPanel";
@@ -114,7 +114,6 @@ export default function Exploration({ onNavigate }) {
   const jobs = useJobStore((state) => state.jobs ?? []);
   const enqueueJob = useJobStore((state) => state.enqueueJob);
   const crew = useCrewStore((state) => state.crew);
-  const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const zoneRuntime = useExplorationStore((state) => state.zoneRuntime ?? {});
   const exploreZone = useExplorationStore((state) => state.exploreZone);
   const sector = useNavStore((state) => state.sector);
@@ -226,7 +225,7 @@ export default function Exploration({ onNavigate }) {
     if (Math.random() >= chance) return addLog(`임무 조우 승무원 위험 회피: 위험률 ${Math.round(chance * 100)}%.`);
     const target = livingCrew[Math.floor(Math.random() * livingCrew.length)];
     const injury = injuryFromCrewRisk(crewRisk);
-    applyCombatCasualty({ memberId: target.id, injury, morale: -1 });
+    applyCombatCasualtyWithJobs({ memberId: target.id, injury, morale: -1 });
     return addLog(`임무 조우 승무원 피해: ${target.name} ${injury}. 위험률 ${Math.round(chance * 100)}%.`);
   };
 

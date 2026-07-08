@@ -146,6 +146,24 @@ export const useJobStore = create(
         });
         return result;
       },
+      // Unlike cancelJob (which refuses to touch an in_progress job, since a
+      // player-initiated cancel shouldn't discard work already underway), a
+      // dead crew member's jobs must be force-cancelled including in_progress
+      // — there is no one left to keep performing the work, and leaving it
+      // running would occupy the room slot until an eventual no-op completion
+      // (crewStore's complete*Job handlers already guard on `member.alive`).
+      cancelJobsForCrew: (memberId) => {
+        const cancelled = [];
+        set((state) => {
+          const jobs = normalizeJobs(state.jobs).map((job) => {
+            if (!ACTIVE.has(job.status) || job.payload?.targetCrewId !== memberId) return job;
+            cancelled.push(job);
+            return { ...job, status: "failed", assignedCrewId: null, arrivalAt: null, startedAt: null };
+          });
+          return { jobs, rooms: roomsFromJobs(jobs) };
+        });
+        return cancelled;
+      },
       migrateLegacyQueues: ({ shipWorkQueue = [], recoveryQueue = [], trainingQueue = [], treatmentQueue = [], currentMinute = null }) => {
         if (get().legacyMigrationVersion >= LEGACY_MIGRATION_VERSION) return { migrated: 0, errors: [] };
         const result = migrateLegacyQueues(shipWorkQueue, recoveryQueue, trainingQueue, treatmentQueue, currentMinute);

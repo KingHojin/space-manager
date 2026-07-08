@@ -226,14 +226,6 @@ export const useNavStore = create(
           return revealed;
         },
         addRecruitCandidate: (templateId) => set((state) => ({ recruitCandidates: Array.from(new Set([...(state.recruitCandidates ?? []), templateId])) })),
-        getNavCard: () => {
-          const state = get();
-          if (state.pendingEncounter) return { mode: "encounter", priority: "critical", title: state.pendingEncounter.title, desc: state.pendingEncounter.description, meta: state.pendingEncounter.typeLabel };
-          if (state.travel) return { mode: "travel", priority: "medium", title: state.travel.missionTitle ? "임무 항해 중" : "항해 진행 중", desc: state.travel.missionTitle ? `${state.travel.missionTitle} · ${state.travel.fromId} → ${state.travel.toId}` : `${state.travel.fromId} → ${state.travel.toId}`, meta: `${Math.round(state.travel.progress ?? 0)}%` };
-          if (state.driftState) return { mode: "drift", priority: "critical", title: "표류 중", desc: "연료 고갈로 구조 대기 상태입니다.", meta: `severity ${state.driftState.severity}` };
-          const current = state.sector.nodes.find((node) => node.id === state.currentNodeId);
-          return { mode: "ready", priority: "low", title: current?.name ?? "대기", desc: "다음 노드를 선택해 항해를 시작하세요.", meta: `Fuel ${Math.round(state.fuel)}%` };
-        },
       };
     },
     {

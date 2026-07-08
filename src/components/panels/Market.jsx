@@ -4,15 +4,15 @@ import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
 import { formatMinutes, getModuleRule, hasRequiredItems } from "../../data/moduleRecipes";
 import { formatGameDate, processTimedJobs } from "../../systems/gameClock";
+import { isDocked } from "../../systems/navigationSystem";
 import { useContractStore } from "../../stores/contractStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useFactionStore } from "../../stores/factionStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 import Recruit from "./Recruit";
-
-const SERVICE_ZONES = new Set(["anchor-station", "eos-harbor", "umbra-relay", "sable-point", "last-market"]);
 
 const services = [
   { id: "fuel", label: "연료 보급", desc: "항해 가능 거리를 회복합니다.", icon: Fuel, cost: 280, changes: { fuel: 35 } },
@@ -33,9 +33,17 @@ function itemQty(items, itemId) {
 }
 
 export default function Market() {
-  const currentZoneId = useExplorationStore((state) => state.currentZoneId);
+  // Docked state is derived from the live navStore travel state, not
+  // explorationStore.currentZoneId — see systems/navigationSystem.js#isDocked.
+  // explorationStore.currentZoneId has had zero update callers since Phase
+  // 18-C (only its initial value "anchor-station" is ever read), so basing
+  // docked on it always resolved to true regardless of where the ship is.
+  const currentNodeId = useNavStore((state) => state.currentNodeId);
+  const sector = useNavStore((state) => state.sector);
+  const travel = useNavStore((state) => state.travel);
+  const currentNode = sector.nodes.find((node) => node.id === currentNodeId);
+  const docked = isDocked(currentNode, travel);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
-  const docked = SERVICE_ZONES.has(currentZoneId);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
@@ -152,7 +160,7 @@ export default function Market() {
           <span className={`hud-chip ${docked ? "hud-chip-success" : "hud-chip-warn"}`}>{docked ? "도킹 중" : "도킹 필요"}</span>
           <div className="mt-3 text-xl font-bold text-slate-50">{docked ? "보급·정비·의뢰·모듈 제작 가능" : "정거장 도킹 필요"}</div>
           <p className="mt-2 text-sm text-slate-400">
-            {docked ? "크레딧과 전리품을 사용해 출항 전 핵심 자원을 회복하고, 의뢰와 모듈 제작을 진행할 수 있습니다." : "앵커 정거장, 에오스 항구, 세이블 포인트, 마지막 시장 같은 구역으로 이동하면 시장 기능이 활성화됩니다."}
+            {docked ? "크레딧과 전리품을 사용해 출항 전 핵심 자원을 회복하고, 의뢰와 모듈 제작을 진행할 수 있습니다." : "정거장(station) 노드에 도킹하면 시장 기능이 활성화됩니다. 항해 중이거나 정거장이 아닌 노드에서는 구매·의뢰·제작이 잠깁니다."}
           </p>
           <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <Status label="크레딧" value={`₢ ${resources.credits}`} />

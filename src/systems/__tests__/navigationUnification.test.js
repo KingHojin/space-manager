@@ -77,4 +77,10 @@ describe("navigation unification (Phase 18-C)", () => {
     expect(useExplorationStore.getState().activeTravel).toEqual(staleTravel);
     expect(useExplorationStore.getState().travelLog).toEqual(staleLog);
   });
+
+  // Round 20 cleanup: navStore.getNavCard had zero callers anywhere in src/
+  // (grep across components/ and systems/ found only its own definition).
+  it("removes the unused navStore.getNavCard helper", () => {
+    expect(useNavStore.getState().getNavCard).toBeUndefined();
+  });
 });
