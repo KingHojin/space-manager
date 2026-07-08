@@ -16,6 +16,7 @@ import {
 } from "../../systems/combatEngine";
 import { DUST } from "../../data/constants";
 import { getAllZones } from "../../data/sectors";
+import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
@@ -185,7 +186,6 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
-  const applyCombatCasualty = useCrewStore((state) => state.applyCombatCasualty);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const activeTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
@@ -268,7 +268,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
     const casualty = rollCrewCasualty({ crew, enemy: combat.enemy, directive, hullDamage: Math.abs(result.resourceChanges.hull ?? 0), shipHull: resources.hull + (result.resourceChanges.hull ?? 0), casualtyRiskMul: tacticalBonus.casualtyRiskMul ?? 1 });
     const casualtyLogs = [];
     if (casualty) {
-      applyCombatCasualty({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
+      applyCombatCasualtyWithJobs({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
       casualtyLogs.push(casualty.injury === "전사" ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.` : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`);
     }
     if (result.combat.status === "won") {

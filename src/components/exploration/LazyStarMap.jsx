@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import ChunkErrorBoundary, { ChunkErrorFallback } from "../common/ChunkErrorBoundary";
 
 const StarMap = lazy(() => import("./StarMap"));
 
@@ -13,10 +14,20 @@ function StarMapFallback() {
   );
 }
 
+function StarMapChunkErrorFallback() {
+  return (
+    <div className="starmap-bg relative flex h-[22rem] w-full items-center justify-center overflow-hidden rounded border border-slate-700/70 sm:h-[26rem] xl:h-[30rem]">
+      <ChunkErrorFallback />
+    </div>
+  );
+}
+
 export default function LazyStarMap(props) {
   return (
-    <Suspense fallback={<StarMapFallback />}>
-      <StarMap {...props} />
-    </Suspense>
+    <ChunkErrorBoundary fallback={<StarMapChunkErrorFallback />}>
+      <Suspense fallback={<StarMapFallback />}>
+        <StarMap {...props} />
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }

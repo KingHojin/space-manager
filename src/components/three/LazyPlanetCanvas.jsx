@@ -1,4 +1,5 @@
 import { Suspense, lazy } from "react";
+import ChunkErrorBoundary, { ChunkErrorFallback } from "../common/ChunkErrorBoundary";
 
 const PlanetCanvas = lazy(() => import("./PlanetCanvas"));
 
@@ -12,8 +13,10 @@ function PlanetCanvasFallback({ className = "" }) {
 
 export default function LazyPlanetCanvas({ className = "", ...props }) {
   return (
-    <Suspense fallback={<PlanetCanvasFallback className={className} />}>
-      <PlanetCanvas className={className} {...props} />
-    </Suspense>
+    <ChunkErrorBoundary fallback={<ChunkErrorFallback className={className} />}>
+      <Suspense fallback={<PlanetCanvasFallback className={className} />}>
+        <PlanetCanvas className={className} {...props} />
+      </Suspense>
+    </ChunkErrorBoundary>
   );
 }

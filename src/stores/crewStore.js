@@ -259,7 +259,17 @@ export const useCrewStore = create(
       restMember: (memberId) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? applyRecovery(member, { fatigueRecovery: 28 }) : member) })),
       applyCrewNeeds: ({ memberId = null, changes = {}, mode = "manual" }) => set((state) => ({ crew: state.crew.map((member) => { if (!member.alive || (memberId && member.id !== memberId)) return member; const needs = applyNeedDelta(member.needs, changes); return { ...member, needs, morale: moraleFromNeeds(member.morale, needs), fatigue: clamp((member.fatigue ?? 0) + (changes.fatigue ?? 0), 0, 100), lastNeedMode: mode }; }) })),
       applyCrewOutcome: ({ memberId, fatigue = 0, morale = 0, injury = null, experience = 0, needs = null }) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, needs: needs ? applyNeedDelta(member.needs, needs) : normalizeNeeds(member.needs), fatigue: clamp((member.fatigue ?? 0) + fatigue * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, morale), injury: injury ? applyInjury(member, injury) : normalizeInjury(member.injury), experience: (member.experience ?? 0) + experience } : member) })),
-      applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) => set((state) => ({ trainingQueue: injury === "전사" ? state.trainingQueue.filter((task) => task.memberId !== memberId) : state.trainingQueue, treatmentQueue: injury === "전사" ? state.treatmentQueue.filter((task) => task.memberId !== memberId) : state.treatmentQueue, recoveryQueue: injury === "전사" ? state.recoveryQueue.filter((task) => task.memberId !== memberId) : state.recoveryQueue, crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, alive: injury !== "전사", injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury), fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale), needs: applyNeedDelta(member.needs, { mood: injury === "전사" ? -40 : -12, stress: injury === "전사" ? 40 : 18 }) } : member) })),
+      // NOTE: this no longer touches trainingQueue/treatmentQueue/recoveryQueue
+      // (previously filtered out the casualty's entries on death) — those
+      // legacy queue *fields* are always empty by the time any gameplay call
+      // reaches here (migrateLegacyJobsOnce clears them into jobStore on the
+      // very first tick after load, see systems/gameClock.js), so the filters
+      // were dead weight. jobStore is the live source of truth for a dead
+      // crew member's active jobs; see cancelJobsForCrew in stores/jobStore.js
+      // and its orchestration-level callers (systems/gameClock.js's
+      // applyCombatCasualtyWithJobs) for how those get cancelled now. The
+      // queue *fields* themselves stay in state/merge for save-compatibility.
+      applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, alive: injury !== "전사", injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury), fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale), needs: applyNeedDelta(member.needs, { mood: injury === "전사" ? -40 : -12, stress: injury === "전사" ? 40 : 18 }) } : member) })),
       getRoleCoverage: () => getRoleCoverage(get().crew),
       getTreatmentTarget: () => chooseTreatmentTarget(get().crew),
     }),

@@ -95,7 +95,7 @@ export function getActiveVesselCrewAiSnapshot({ currentMinute = useGameStore.get
     resources: scope.resources,
     activeTravel: scope.nav.travel,
     pendingTravelEvent: scope.nav.pendingEncounter,
-    ["pending" + "CombatEncounter"]: exploration["pending" + "CombatEncounter"] ?? null,
+    pendingCombatEncounter: exploration.pendingCombatEncounter ?? null,
     installationQueue: busyQueue(jobStore.getLegacyModuleQueue()),
     shipWorkQueue: jobStore.getLegacyShipWorkQueue(),
     trainingQueue: busyQueue(jobStore.getLegacyTrainingQueue()),

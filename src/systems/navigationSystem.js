@@ -188,3 +188,12 @@ export function nodeToZone(node) {
     distance: node.distance ?? 0,
   };
 }
+
+// Docking gate for station-only services (market, contracts, module crafting):
+// the ship is docked only when it is sitting at a "station"-type node and is
+// not mid-transit. Any other node type, or a station node reached while
+// `travel` is still set (should not normally happen, but defensive), counts
+// as not docked.
+export function isDocked(node, travel) {
+  return Boolean(node && node.type === "station" && !travel);
+}

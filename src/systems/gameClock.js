@@ -89,6 +89,29 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   return { effects, logs };
 }
 
+// Orchestration wrapper around crewStore.applyCombatCasualty: crewStore
+// cannot import jobStore directly (no cross-store imports outside the
+// grandfathered jobStore/gameStore -> inventoryStore exceptions), but a
+// crew member's death needs to cancel their now-orphaned active jobStore
+// jobs (training/treatment/recovery) too, or those jobs sit occupying a
+// room slot until an eventual no-op completion. gameClock is the
+// designated multi-store orchestration point, so this lives here — the
+// same pattern applyNavigationEncounter already established for UI
+// components that need a casualty+jobs bundle instead of calling
+// crewStore.applyCombatCasualty directly. All three call sites (this
+// module's applyCrisisEffect, Combat.jsx, Exploration.jsx) use this
+// instead of the bare crewStore action so the job-cancellation behavior
+// can't be forgotten at any one of them.
+export function applyCombatCasualtyWithJobs({ memberId, injury = "경상", morale = -1 }) {
+  useCrewStore.getState().applyCombatCasualty({ memberId, injury, morale });
+  if (injury !== "전사") return [];
+  const cancelledJobs = useJobStore.getState().cancelJobsForCrew(memberId);
+  if (cancelledJobs.length > 0) {
+    useGameStore.getState().addLog(`작업 취소: 전사한 승무원의 진행 중이던 작업 ${cancelledJobs.length}건이 취소되었습니다.`);
+  }
+  return cancelledJobs;
+}
+
 function processJobScheduler(currentMinute) {
   const crew = useCrewStore.getState().crew;
   const logs = useJobStore.getState().runScheduler({ currentMinute, crew });
@@ -169,7 +192,7 @@ function processRoomJobs(currentMinute, deltaMinutes) {
 
 function applyCrisisEffect(effect) {
   if (!effect) return;
-  if (effect.type === "crewCasualty" && effect.memberId) useCrewStore.getState().applyCombatCasualty({ memberId: effect.memberId, injury: effect.injury ?? "경상", morale: -1 });
+  if (effect.type === "crewCasualty" && effect.memberId) applyCombatCasualtyWithJobs({ memberId: effect.memberId, injury: effect.injury ?? "경상", morale: -1 });
   if (effect.type === "resourceDelta" && effect.resources) useGameStore.getState().addResources(effect.resources);
 }
 
