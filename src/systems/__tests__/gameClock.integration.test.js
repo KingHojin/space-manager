@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { processTimedJobs } from "../gameClock";
+import { applyNavigationEncounter, processTimedJobs } from "../gameClock";
 import { isHealthy, TREATMENT_RULES } from "../injurySystem";
 import { createInitialRoomState } from "../roomJobs";
+import { buildCrisisReport, buildWorkReport } from "../reportSystem";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -990,5 +991,311 @@ describe("gameClock.processTimedJobs — report generation wired to real events 
 
     expect(useReportStore.getState().reports).toEqual([]);
     resetReportsJobsAndInventory();
+  });
+});
+
+// Phase 20-D: 20-B's own PR notes called this out as a known gap — crises
+// spawned via applyNavEffect's "spawnCrisis" effect kind (the encounter/
+// drift-triggered path: navEncounters.js option outcomes and navStore.js's
+// tickDrift power_loss roll) never filed a report; only tickCrises' internal
+// ambient/escalation spawn path (exercised by the "room-decay-triggered
+// crisis spawn" test above) was wired. This block closes that gap and pins
+// down that the two spawn paths can never double-report the SAME crisis.
+describe("gameClock.processTimedJobs — encounter/drift-triggered crisis spawns now file a report too (Phase 20-D)", () => {
+  function resetCrisisReportScenario() {
+    useReportStore.setState({ reports: [] });
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+    useNavStore.setState({ pendingEncounter: null });
+  }
+
+  it("a navigation-encounter outcome with kind 'spawnCrisis' files exactly one 'crisis' report (priority critical, crisisKind spawned) and actually spawns the crisis in shipInteriorStore", () => {
+    resetCrisisReportScenario();
+    const encounter = {
+      id: "gc-20d-spawn-crisis-encounter",
+      title: "20-D 위기 유발 조우",
+      options: [{ id: "push-through", label: "추진 유지", outcome: [{ kind: "spawnCrisis", roomId: "engineering", type: "power_loss", severity: 1 }] }],
+    };
+    useNavStore.setState({ pendingEncounter: encounter });
+    const currentMinute = useGameStore.getState().currentMinute;
+
+    applyNavigationEncounter("push-through", currentMinute);
+
+    // The crisis was really spawned (not just reported) — engineering's
+    // room now has an active crisis occupying it.
+    expect(useShipInteriorStore.getState().rooms.engineering.activeCrisisId).toBeTruthy();
+    expect(useShipInteriorStore.getState().activeCrises).toHaveLength(1);
+    expect(useShipInteriorStore.getState().activeCrises[0].roomId).toBe("engineering");
+
+    const crisisReports = useReportStore.getState().reports.filter((report) => report.category === "crisis");
+    expect(crisisReports).toHaveLength(1);
+    expect(crisisReports[0].meta).toEqual({ crisisKind: "spawned" });
+    expect(crisisReports[0].priority).toBe("critical");
+    expect(crisisReports[0].title).toBe("함내 위기 발생");
+    expect(crisisReports[0].body).toContain("기관실");
+
+    resetCrisisReportScenario();
+  });
+
+  it("if the target room already has an active crisis, the same 'spawnCrisis' effect spawns nothing and files no report (mutual exclusion via activeCrisisId)", () => {
+    resetCrisisReportScenario();
+    const existingCrisisId = "gc-20d-existing-crisis";
+    useShipInteriorStore.setState((state) => ({
+      rooms: { ...state.rooms, engineering: { ...state.rooms.engineering, activeCrisisId: existingCrisisId } },
+      activeCrises: [{ id: existingCrisisId, roomId: "engineering", type: "overheat", severity: 1, progress: 0, escalateAt: 1_000_000, assignedCrewId: null, assignedCrewIds: [], createdAtMinutes: 0 }],
+    }));
+    const encounter = {
+      id: "gc-20d-blocked-spawn-encounter",
+      title: "20-D 이미 위기 중인 조우",
+      options: [{ id: "push-through", label: "추진 유지", outcome: [{ kind: "spawnCrisis", roomId: "engineering", type: "power_loss", severity: 1 }] }],
+    };
+    useNavStore.setState({ pendingEncounter: encounter });
+    const currentMinute = useGameStore.getState().currentMinute;
+
+    applyNavigationEncounter("push-through", currentMinute);
+
+    // Still exactly the one pre-existing crisis — the new spawnCrisis
+    // effect was rejected by addCrisisToDraft's `room.activeCrisisId` guard.
+    expect(useShipInteriorStore.getState().activeCrises).toHaveLength(1);
+    expect(useShipInteriorStore.getState().activeCrises[0].id).toBe(existingCrisisId);
+    // No report was filed for the rejected spawn attempt.
+    expect(useReportStore.getState().reports.filter((report) => report.category === "crisis")).toHaveLength(0);
+
+    resetCrisisReportScenario();
+  });
+
+  it("an encounter-triggered spawn and the SAME tick's tickCrises ambient-spawn pass for the same room never both fire — exactly one 'spawned' crisis report, not two", () => {
+    resetCrisisReportScenario();
+    // engineering at load >= 94 makes shouldSpawnInternalCrisis's "overheat"
+    // branch deterministic (no Math.random roll needed — see
+    // crisisSystem.js's shouldSpawnInternalCrisis), so if the room were
+    // still crisis-free by the time tickCrises evaluates it this tick, it
+    // would certainly try to spawn a second crisis there.
+    useShipInteriorStore.setState((state) => ({
+      rooms: { ...state.rooms, engineering: { ...state.rooms.engineering, load: 96, condition: 80 } },
+    }));
+    const encounter = {
+      id: "gc-20d-same-tick-encounter",
+      title: "20-D 동일 틱 조우",
+      options: [{ id: "push-through", label: "추진 유지", outcome: [{ kind: "spawnCrisis", roomId: "engineering", type: "power_loss", severity: 1 }] }],
+    };
+    useNavStore.setState({ pendingEncounter: encounter });
+    const currentMinute = useGameStore.getState().currentMinute;
+
+    // Resolve the encounter first (this is what a manual "조우 결재" click, or
+    // encounter-default-choice, does) — this is the applyNavEffect spawn
+    // path, and it runs before any processTimedJobs tick even starts here.
+    applyNavigationEncounter("push-through", currentMinute);
+    expect(useShipInteriorStore.getState().rooms.engineering.activeCrisisId).toBeTruthy();
+
+    // Now drive a real tick with a heavy deltaMinutes (>=60, satisfying
+    // shouldSpawnInternalCrisis's heavyTick/canRoll gate too) — this runs
+    // processCrises -> tickCrises, whose ambient-spawn pass for engineering
+    // must see the room already occupied and skip it.
+    useGameStore.getState().advanceMinutes(60);
+    expect(() => processTimedJobs(60)).not.toThrow();
+
+    expect(useShipInteriorStore.getState().activeCrises.filter((crisis) => crisis.roomId === "engineering")).toHaveLength(1);
+    const engineeringCrisisReports = useReportStore
+      .getState()
+      .reports.filter((report) => report.category === "crisis" && report.meta?.crisisKind === "spawned");
+    expect(engineeringCrisisReports).toHaveLength(1);
+
+    resetCrisisReportScenario();
+  });
+});
+
+// Phase 20-D: the long-run stabilization pass for the whole report system
+// (20-A through 20-D combined), mirroring 19-F's role for the policy system.
+// All four policies enabled at once, the same kind of combined resource
+// pressure 19-F used, PLUS a forced crisis spawn (via the encounter/drift
+// path this PR just wired in the block above) — 100 real ticks, driven the
+// same way the game loop does.
+//
+// --- report-volume upper bound, by generation point -----------------------
+// Every report in this codebase is filed from exactly one of these gated
+// call sites (see docs/PHASE_20_REPORT_SYSTEM.md's finalized "Implemented"
+// section) — `combat`/`economy`/mission-complete `navigation` reports are UI
+// call sites (Combat.jsx/Exploration.jsx) that never fire from a bare
+// processTimedJobs loop with no UI mounted, so they contribute 0 here:
+//   1. policy reports (reportPolicyAction) — only on a REAL mutating policy
+//      action (auto-hull-repair enqueue, auto-treatment enqueue,
+//      encounter-resolve), never on a diagnostic-only branch. Each of these
+//      three action kinds is itself gated by an "already active/pending"
+//      guard in policyEngine.js, so it can fire at most once per
+//      enqueue-then-complete (or resolve) cycle. This scenario drives
+//      exactly one blocked-then-replenished cycle (mirroring 19-F), so the
+//      structural max here is 3 (one per action kind) — generously doubled
+//      to 6 to absorb any incidental extra cycle from ambient crew-AI
+//      healing shifting the injury severity mid-run (see 19-F's own comment
+//      on that non-determinism).
+//   2. work reports (reportJobCompletion) — only on a jobStore job actually
+//      completing, and in this gameClock-only scenario (no UI calls),
+//      jobStore jobs are only ever enqueued by the two guarded policy
+//      actions above — so work reports are bounded by the SAME small cycle
+//      count as policy reports: at most 6 (generous, matching #1).
+//   3. crisis reports (reportCrisisEvent) — one per spawn, one per resolve,
+//      "escalated" never reported. This scenario force-spawns exactly one
+//      crisis up front (via applyNavEffect's spawnCrisis path, cargo/
+//      hull_breach) and never assigns it a responder, so it cannot progress
+//      to "resolved" on its own (only a responder adds progress — see
+//      shipInteriorStore.js's tickCrises). Ambient ROOM-DECAY crises (the
+//      OTHER spawn path, ticking every room every tick — see
+//      crisisSystem.js's shouldSpawnInternalCrisis) are structurally capped
+//      at one concurrent crisis per room (activeCrisisId), and this
+//      scenario does not deliberately stress any room's condition/load, so
+//      ambient spawns are unlikely but not impossible with live Math.random
+//      (this suite deliberately never mocks it — see this file's header
+//      comment). A generous cap of 2 ambient spawn+resolve cycles per room
+//      across ROOM_IDS.length rooms covers that without being vacuous.
+// Total generous upper bound: 6 (policy) + 6 (work) + 1 forced crisis report
+// (spawn only, never resolved) + 2 * 2 * ROOM_IDS.length (ambient crisis
+// spawn+resolve pairs) = 13 + 4 * ROOM_IDS.length.
+describe("gameClock.processTimedJobs — 100-tick long-run stabilization across the whole report system (Phase 20-D)", () => {
+  const DELTA_MINUTES = 15;
+  const SCRAP_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
+  const TREATED_MEMBER_ID = "gunner-kang";
+  const ROOM_IDS = Object.keys(createInitialRoomState());
+
+  const PRESSURE_ENCOUNTER = {
+    id: "gc-20d-longrun-pressure",
+    title: "20-D 장기 압박 조우",
+    options: [
+      { id: "aid-run", label: "구호 활동", outcome: [{ kind: "resource", delta: { credits: 20 } }] },
+      { id: "trade-run", label: "물자 거래", outcome: [{ kind: "resource", delta: { credits: 35, hull: -3 } }] },
+    ],
+  };
+
+  function resetLongRunScenario() {
+    useReportStore.setState({ reports: [] });
+    useJobStore.setState({ jobs: [] });
+    useJobStore.getState().recomputeRoomLoad();
+    useInventoryStore.setState((state) => ({
+      items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: 0 } : item)),
+    }));
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === TREATED_MEMBER_ID ? { ...member, alive: true, injury: "healthy" } : member)),
+    }));
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 100, fuel: 100, credits: 1800 } }));
+    useNavStore.setState({ pendingEncounter: null });
+    useExplorationStore.getState().clearPendingCombatEncounter();
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+    ["auto-hull-repair", "auto-treatment", "fuel-reserve", "encounter-default-choice"].forEach((policyId) =>
+      usePolicyStore.getState().resetPolicy(policyId),
+    );
+  }
+
+  it("runs 100 ticks with all four policies enabled, combined resource pressure, and a forced crisis spawn — no crash, bounded report volume, no duplicate ids, and store-owned read/acknowledged flags are never touched by ticking", () => {
+    resetLongRunScenario();
+
+    // --- combined pressure setup (mirrors 19-F) ----------------------------
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 20, fuel: 10, credits: 50 } }));
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === TREATED_MEMBER_ID ? { ...member, alive: true, injury: "serious" } : member)),
+    }));
+    useNavStore.setState({ pendingEncounter: PRESSURE_ENCOUNTER });
+    ["auto-hull-repair", "auto-treatment", "fuel-reserve", "encounter-default-choice"].forEach((policyId) =>
+      usePolicyStore.getState().setPolicyEnabled(policyId, true),
+    );
+
+    // --- forced crisis spawn (Phase 20-D's new spawnCrisis report path) ---
+    // Deliberately in "cargo", not "engineering" — auto-hull-repair's job
+    // targets engineering, and an active crisis there would block the room
+    // from taking a job, which would confuse this test's volume bound (not
+    // its actual purpose: proving crisis spawns unrelated to a room a policy
+    // needs don't interfere with that policy).
+    useNavStore.setState({ pendingEncounter: { id: "gc-20d-forced-crisis", title: "20-D 강제 위기 조우", options: [{ id: "only", label: "유일한 선택", outcome: [{ kind: "spawnCrisis", roomId: "cargo", type: "hull_breach", severity: 1 }] }] } });
+    applyNavigationEncounter("only", useGameStore.getState().currentMinute);
+    // Restore the resource-pressure encounter for encounter-default-choice
+    // to auto-resolve during the tick loop below (the forced-crisis
+    // encounter above already consumed itself).
+    useNavStore.setState({ pendingEncounter: PRESSURE_ENCOUNTER });
+
+    expect(useShipInteriorStore.getState().rooms.cargo.activeCrisisId).toBeTruthy();
+    const forcedCrisisReports = useReportStore.getState().reports.filter((report) => report.category === "crisis");
+    expect(forcedCrisisReports).toHaveLength(1);
+
+    // --- pre-seed store-owned read/acknowledged state on existing reports -
+    // These must be byte-identical after 100 ticks: nothing in gameClock.js
+    // is allowed to touch an existing report's read/acknowledged fields —
+    // only reportStore's own markRead/markAllRead/acknowledge actions (both
+    // exclusively UI-driven, per the architecture rule) may ever do that.
+    const seedAcknowledged = buildCrisisReport({ title: "사전 확인된 보고서", summary: "테스트 시드", crisisKind: "resolved", currentMinute: 0, priority: "info" });
+    useReportStore.getState().addReport(seedAcknowledged);
+    const acknowledgedId = useReportStore.getState().reports[0].id;
+    useReportStore.getState().acknowledge(acknowledgedId);
+
+    const seedReadOnly = buildWorkReport({ title: "사전 읽음 보고서", summary: "테스트 시드", jobType: "training", currentMinute: 0 });
+    useReportStore.getState().addReport(seedReadOnly);
+    const readOnlyId = useReportStore.getState().reports[0].id;
+    useReportStore.getState().markRead(readOnlyId);
+
+    const acknowledgedSnapshotBefore = useReportStore.getState().reports.find((report) => report.id === acknowledgedId);
+    const readOnlySnapshotBefore = useReportStore.getState().reports.find((report) => report.id === readOnlyId);
+    expect(acknowledgedSnapshotBefore.read).toBe(true);
+    expect(acknowledgedSnapshotBefore.acknowledged).toBe(true);
+    expect(readOnlySnapshotBefore.read).toBe(true);
+    expect(readOnlySnapshotBefore.acknowledged).toBe(false);
+
+    // --- 100-tick run, in two phases like 19-F (blocked, then replenished) -
+    const TICKS_PHASE1 = 40;
+    const TICKS_PHASE2 = 60;
+
+    for (let tick = 0; tick < TICKS_PHASE1; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      expect(() => processTimedJobs(DELTA_MINUTES)).not.toThrow();
+      expect(useGameStore.getState().resources.credits).toBeGreaterThanOrEqual(0);
+      expect(useGameStore.getState().resources.fuel).toBeGreaterThanOrEqual(0);
+      expect(useGameStore.getState().resources.hull).toBeGreaterThanOrEqual(0);
+    }
+
+    // Mid-run replenishment, same shape as 19-F.
+    useInventoryStore.setState((state) => ({
+      items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: SCRAP_COST } : item)),
+    }));
+    useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 5000 } }));
+
+    for (let tick = 0; tick < TICKS_PHASE2; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      expect(() => processTimedJobs(DELTA_MINUTES)).not.toThrow();
+      expect(useGameStore.getState().resources.credits).toBeGreaterThanOrEqual(0);
+      expect(useGameStore.getState().resources.fuel).toBeGreaterThanOrEqual(0);
+      expect(useGameStore.getState().resources.hull).toBeGreaterThanOrEqual(0);
+    }
+
+    // --- assertion 1: no crash already proven above by the two loops' own
+    // expect(() => ...).not.toThrow() per tick.
+
+    // --- assertion 2: bounded report volume, by the generation-point
+    // calculation in this block's file-header comment.
+    const finalReports = useReportStore.getState().reports;
+    const MAX_POLICY_OR_WORK = 6;
+    const MAX_AMBIENT_CRISIS_PAIRS_PER_ROOM = 2;
+    const maxReports =
+      MAX_POLICY_OR_WORK * 2 + // policy + work
+      1 + // the one forced crisis spawn (never resolved)
+      2 * MAX_AMBIENT_CRISIS_PAIRS_PER_ROOM * ROOM_IDS.length + // ambient spawn+resolve pairs
+      2; // the two manually-seeded reports added above
+    expect(finalReports.length).toBeGreaterThan(2); // non-vacuous: more than just the two seeds
+    expect(finalReports.length).toBeLessThanOrEqual(maxReports);
+    // Sanity check against the naive worst case, independent of the formula
+    // above (same style as 19-F's log-spam sanity bound): with no gating at
+    // all, 100 ticks across 3 reachable categories could in principle add up
+    // to 300 reports. The real count should be nowhere close.
+    expect(finalReports.length).toBeLessThan(100 * 3 * 0.5);
+
+    // --- assertion 3: report ids are all unique.
+    const ids = finalReports.map((report) => report.id);
+    expect(new Set(ids).size).toBe(ids.length);
+
+    // --- assertion 4: the two pre-seeded reports' read/acknowledged flags
+    // were never touched by 100 ticks of gameClock activity (store
+    // ownership guard) — still present (volume stayed well under the
+    // 120-entry cap) and byte-identical to their pre-loop snapshot.
+    const acknowledgedAfter = finalReports.find((report) => report.id === acknowledgedId);
+    const readOnlyAfter = finalReports.find((report) => report.id === readOnlyId);
+    expect(acknowledgedAfter).toEqual(acknowledgedSnapshotBefore);
+    expect(readOnlyAfter).toEqual(readOnlySnapshotBefore);
+
+    resetLongRunScenario();
   });
 });

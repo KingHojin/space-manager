@@ -53,7 +53,22 @@ function applyNavEffect(effect, currentMinute) {
       drift.logs.forEach((message) => useGameStore.getState().addLog(`항해: ${message}`));
     }
   }
-  if (effect.kind === "spawnCrisis") useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
+  if (effect.kind === "spawnCrisis") {
+    const spawned = useShipInteriorStore.getState().spawnCrisis(effect.roomId, effect.type, effect.severity ?? 1, currentMinute);
+    // Phase 20-D: this is the encounter/drift-triggered spawn path (see
+    // navEncounters.js outcomes and navStore.js's drift crisis roll) — the
+    // OTHER spawn path, tickCrises' own ambient/escalation spawns, reports
+    // itself via reportCrisisEvent() inside processCrises() below. The two
+    // paths can never double-report the SAME crisis: addCrisisToDraft (which
+    // both ultimately call) refuses to spawn into a room that already has
+    // `activeCrisisId` set, and processNavigation always runs before
+    // processCrises within a single processTimedJobs tick (see call order
+    // below), so a crisis spawned here occupies its room before tickCrises'
+    // ambient-spawn pass for that same room even runs this same tick. See
+    // gameClock.integration.test.js's Phase 20-D block for a test pinning
+    // this down.
+    if (spawned) reportCrisisEvent({ kind: "spawned", crisis: spawned, roomId: spawned.roomId }, currentMinute);
+  }
   if (effect.kind === "crewNeeds") {
     const logs = useCrewStore.getState().tickCrewNeeds({ deltaMinutes: effect.deltaMinutes, mode: effect.mode ?? "normal", severity: effect.severity ?? 1 });
     logs.forEach((message) => useGameStore.getState().addLog(`승무원 상태: ${message}`));

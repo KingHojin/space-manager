@@ -65,6 +65,77 @@ describe("addReport", () => {
     expect(reports[0].title).toBe("report-129");
     expect(reports[reports.length - 1].title).toBe("report-10");
   });
+
+  // Phase 20-D: the 120-entry cap was revisited once real generators existed
+  // (20-B/20-C) — a plain oldest-drop would silently evict an unacknowledged
+  // `critical` report (e.g. a still-live, unresolved crisis) once 120 newer
+  // reports of ANY category pile up behind it. See reportStore.js's
+  // "retention policy (revisited in Phase 20-D)" comment for the full
+  // rationale/measured-volume justification for why this got a fix instead
+  // of just being documented as an accepted limitation.
+  describe("retention preserves an unacknowledged critical report past the plain cap (Phase 20-D)", () => {
+    it("without the fix this reproduces: an unacknowledged critical report added first is pushed out by 120 subsequent unrelated reports", () => {
+      resetReportStore();
+      useReportStore.getState().addReport(buildReport({ category: "crisis", title: "critical-first", body: "", currentMinute: 0, priority: "critical" }));
+      for (let i = 0; i < 120; i += 1) {
+        useReportStore.getState().addReport(buildReport({ category: "work", title: `filler-${i}`, body: "", currentMinute: i + 1 }));
+      }
+      const { reports } = useReportStore.getState();
+      // The fix under test: the unacknowledged critical report survives even
+      // though 120 newer reports were added after it (it would have been at
+      // index 120, exactly one past a plain 120-cap).
+      expect(reports.some((entry) => entry.title === "critical-first")).toBe(true);
+      const preserved = reports.find((entry) => entry.title === "critical-first");
+      expect(preserved.priority).toBe("critical");
+      expect(preserved.acknowledged).toBe(false);
+      // It is preserved past the normal cap, not counted within it — the 120
+      // newest (all filler) are all still present too.
+      expect(reports).toHaveLength(121);
+      expect(reports.filter((entry) => entry.title.startsWith("filler-"))).toHaveLength(120);
+    });
+
+    it("an acknowledged critical report gets no special treatment — it is dropped once 120 newer reports bury it, same as any other report", () => {
+      resetReportStore();
+      useReportStore.getState().addReport(buildReport({ category: "crisis", title: "critical-acked", body: "", currentMinute: 0, priority: "critical" }));
+      useReportStore.getState().acknowledge(useReportStore.getState().reports[0].id);
+      for (let i = 0; i < 120; i += 1) {
+        useReportStore.getState().addReport(buildReport({ category: "work", title: `filler-${i}`, body: "", currentMinute: i + 1 }));
+      }
+      const { reports } = useReportStore.getState();
+      expect(reports).toHaveLength(120);
+      expect(reports.some((entry) => entry.title === "critical-acked")).toBe(false);
+    });
+
+    it("a non-critical (e.g. high) unacknowledged report also gets no special treatment — only critical is carved out", () => {
+      resetReportStore();
+      useReportStore.getState().addReport(buildReport({ category: "combat", title: "high-first", body: "", currentMinute: 0, priority: "high" }));
+      for (let i = 0; i < 120; i += 1) {
+        useReportStore.getState().addReport(buildReport({ category: "work", title: `filler-${i}`, body: "", currentMinute: i + 1 }));
+      }
+      const { reports } = useReportStore.getState();
+      expect(reports).toHaveLength(120);
+      expect(reports.some((entry) => entry.title === "high-first")).toBe(false);
+    });
+
+    it("the preserved-critical carve-out is itself bounded — it cannot grow reports past MAX_REPORTS_WITH_PRESERVED_CRITICAL (140)", () => {
+      resetReportStore();
+      // 30 unacknowledged critical reports, all old, followed by 120 filler
+      // reports — without a hard ceiling this would grow to 150 entries.
+      for (let i = 0; i < 30; i += 1) {
+        useReportStore.getState().addReport(buildReport({ category: "crisis", title: `critical-${i}`, body: "", currentMinute: i, priority: "critical" }));
+      }
+      for (let i = 0; i < 120; i += 1) {
+        useReportStore.getState().addReport(buildReport({ category: "work", title: `filler-${i}`, body: "", currentMinute: i + 100 }));
+      }
+      const { reports } = useReportStore.getState();
+      expect(reports.length).toBeLessThanOrEqual(140);
+      expect(reports).toHaveLength(140);
+      // All 120 filler (the plain cap) plus exactly 20 of the 30 preserved
+      // criticals (140 - 120 budget) survive; the rest are truly gone.
+      expect(reports.filter((entry) => entry.title.startsWith("filler-"))).toHaveLength(120);
+      expect(reports.filter((entry) => entry.title.startsWith("critical-"))).toHaveLength(20);
+    });
+  });
 });
 
 describe("markRead / markAllRead", () => {
