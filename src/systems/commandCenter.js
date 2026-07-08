@@ -48,8 +48,14 @@ const SIGNAL_TEMPLATES = [
 // directly at the call site below, not derived through a shared conversion
 // table, since this is the only place room-status feeds a situation card.
 const PRIORITY_SCORE = { critical: 0, high: 1, medium: 2, low: 3, info: 4 };
-const PRIORITY_LABEL = { critical: "긴급", high: "높음", medium: "보통", low: "낮음", info: "정보" };
-const PRIORITY_TONE = {
+// Exported (Phase 20-C): the report inbox (components/modals/ReportsModal.jsx,
+// panels/Overview.jsx) reuses these verbatim per this module's card-priority
+// boundary comment above, instead of re-declaring an equivalent label/tone
+// table in data/reports.js or the report UI — a report's priority already IS
+// this module's card-priority vocabulary (see data/reports.js's file header),
+// so a second table would just be a duplicate that can drift out of sync.
+export const PRIORITY_LABEL = { critical: "긴급", high: "높음", medium: "보통", low: "낮음", info: "정보" };
+export const PRIORITY_TONE = {
   critical: "border-red-400/45 bg-red-400/10 text-red-100",
   high: "border-amber-300/45 bg-amber-300/10 text-amber-100",
   medium: "border-cyan-300/35 bg-cyan-300/10 text-cyan-100",

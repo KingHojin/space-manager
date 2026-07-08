@@ -1,7 +1,8 @@
-import { Archive, BarChart2, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, Rocket, Save, ScrollText, Settings2, Sparkles, Store, Users } from "lucide-react";
+import { Archive, BarChart2, Bell, BookOpen, Briefcase, Compass, GitBranch, Home, Map, Menu as MenuIcon, Rocket, Save, ScrollText, Settings2, Sparkles, Store, Users } from "lucide-react";
 import { MENU_ITEMS } from "../../data/constants";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
+import { getUnreadCount, useReportStore } from "../../stores/reportStore";
 
 const blockedPanelId = "com" + "bat";
 
@@ -23,6 +24,7 @@ const quickActions = [
   { id: "map", label: "지도", icon: Map },
   { id: "cards", label: "카드", icon: BookOpen },
   { id: "log", label: "로그", icon: ScrollText },
+  { id: "reports", label: "보고서", icon: Bell },
   { id: "save", label: "저장", icon: Save },
   { id: "policies", label: "정책", icon: Settings2 },
 ];
@@ -35,6 +37,8 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
   // old save happens to carry a stale value; nothing writes it going forward.
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const reports = useReportStore((state) => state.reports);
+  const unreadReportCount = getUnreadCount(reports);
 
   const handlePanel = (item) => {
     if (item.id === "menu") {
@@ -73,7 +77,16 @@ export default function Sidebar({ activePanel, onChange, onOpenModal }) {
         <div className="grid grid-cols-2 gap-1.5">
           {quickActions.map((item) => {
             const Icon = item.icon;
-            return <button key={item.id} className="dock-button" onClick={() => onOpenModal(item.id)} title={item.label}><Icon size={16} /><span>{item.label}</span></button>;
+            const showUnreadDot = item.id === "reports" && unreadReportCount > 0;
+            return (
+              <button key={item.id} className="dock-button" onClick={() => onOpenModal(item.id)} title={item.label}>
+                <span className="relative inline-flex">
+                  <Icon size={16} />
+                  {showUnreadDot && <span className="absolute -right-1 -top-1 h-1.5 w-1.5 rounded-full bg-cyan-300" />}
+                </span>
+                <span>{item.label}</span>
+              </button>
+            );
           })}
         </div>
       </div>

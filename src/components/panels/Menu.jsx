@@ -2,6 +2,7 @@ import {
   AlertTriangle,
   Archive,
   BarChart2,
+  Bell,
   BookOpen,
   Briefcase,
   ChevronRight,
@@ -25,6 +26,7 @@ import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useRecruitStore } from "../../stores/recruitStore";
+import { getUnreadCount, useReportStore } from "../../stores/reportStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { number } from "../../utils/format";
@@ -61,6 +63,7 @@ const utilityMenus = [
   { id: "cards", label: "카드", icon: BookOpen },
   { id: "map", label: "성계 지도", icon: Map },
   { id: "log", label: "로그", icon: ScrollText },
+  { id: "reports", label: "함장 보고서", icon: Bell },
   { id: "save", label: "저장", icon: Save },
   { id: "policies", label: "정책 설정", icon: Settings2 },
 ];
@@ -97,6 +100,8 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const boardsByScopeId = useMissionStore((state) => state.boardsByScopeId);
   const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
+  const reports = useReportStore((state) => state.reports);
+  const unreadReportCount = getUnreadCount(reports);
   const itemCount = items.filter((item) => item.qty > 0).length;
   const activeContracts = contracts.filter((contract) => acceptedIds.includes(contract.id));
   const nextContracts = contracts.filter((contract) => !completedIds.includes(contract.id) && !acceptedIds.includes(contract.id));
@@ -168,7 +173,16 @@ export default function Menu({ onNavigate, onOpenModal }) {
         <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
           {utilityMenus.map((menu) => {
             const Icon = menu.icon;
-            const badge = menu.id === "inventory" ? itemCount : menu.id === "cards" ? cards.length : menu.id === "log" ? logs.length : null;
+            const badge =
+              menu.id === "inventory"
+                ? itemCount
+                : menu.id === "cards"
+                  ? cards.length
+                  : menu.id === "log"
+                    ? logs.length
+                    : menu.id === "reports" && unreadReportCount > 0
+                      ? unreadReportCount
+                      : null;
             return <button key={menu.id} className="dock-button justify-between px-3" style={{ height: "3.5rem" }} onClick={() => onOpenModal?.(menu.id)}><span className="flex min-w-0 items-center gap-2"><Icon size={16} /><span className="truncate">{menu.label}</span></span>{badge !== null && <span className="hud-chip px-1.5 py-0.5 text-[0.6rem]">{badge}</span>}</button>;
           })}
         </div>
