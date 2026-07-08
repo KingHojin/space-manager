@@ -214,10 +214,23 @@ export const useShipInteriorStore = create(
         });
         return resolved;
       },
+      // tickCrises: returns { effects, logs, crisisEvents }. `crisisEvents`
+      // (Phase 20-B) is a non-destructive addition on top of the pre-existing
+      // effects/logs contract — it exposes the same spawn/resolve/escalate
+      // moments the `logs` strings already narrate, but as structured
+      // { kind, crisis, roomId } records so gameClock.js's processCrises can
+      // build reportSystem.js's buildCrisisReport() from real data instead of
+      // parsing a log string (see reportSystem.js's file-header "no log
+      // parsing" rule). `kind` is one of "spawned" | "resolved" | "escalated"
+      // (the last covers severity bump, overheat->fire promotion, and
+      // fire/intruder spread alike — gameClock.js's 20-B wiring only reports
+      // "spawned"/"resolved", intentionally skipping "escalated" to avoid
+      // over-reporting; see docs/PHASE_20_REPORT_SYSTEM.md).
       tickCrises: ({ currentMinute = 0, deltaMinutes = 0, crisisActivities = {}, crew = [], roleCoverage = null }) => {
-        if (deltaMinutes <= 0) return { effects: [], logs: [] };
+        if (deltaMinutes <= 0) return { effects: [], logs: [], crisisEvents: [] };
         const effects = [];
         const logs = [];
+        const crisisEvents = [];
         const crewById = new Map(crew.map((member) => [member.id, member]));
         const respondersByCrisisId = new Map(Object.entries(crisisActivities).map(([crisisId, activity]) => [crisisId, normalizeCrisisActivityList(activity).map((entry) => entry.memberId).filter(Boolean)]));
         const missingRoles = new Set(roleCoverage?.missingRoles ?? []);
@@ -231,6 +244,7 @@ export const useShipInteriorStore = create(
             if (!spawnType) return;
             const spawned = addCrisisToDraft({ rooms, activeCrises, roomId, type: spawnType, severity: 1, currentMinute });
             if (spawned) {
+              crisisEvents.push({ kind: "spawned", crisis: spawned, roomId });
               if ((room.condition ?? 0) <= WEAR.dangerCondition) {
                 logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}) — 정비를 미룬 구역에서 발생 (C${Math.round(room.condition ?? 0)}).`);
               } else {
@@ -265,6 +279,7 @@ export const useShipInteriorStore = create(
               releaseCrisisRoom(rooms, next, currentMinute);
               const dustGain = Math.round(DUST.CRISIS_REWARD * next.severity);
               useInventoryStore.getState().addDust(dustGain);
+              crisisEvents.push({ kind: "resolved", crisis: next, roomId: next.roomId, dustGain });
               logs.push(`위기 해결: ${getCrisisLabel(next)} (${next.roomId}) (+먼지 ${dustGain}).`);
               return null;
             }
@@ -274,16 +289,18 @@ export const useShipInteriorStore = create(
                 const fireConfig = getCrisisConfig("fire");
                 const resistMul = 1 - (modifiers.crisisResist ?? 0);
                 rooms[next.roomId] = withRoomStatus({ ...rooms[next.roomId], condition: clamp((rooms[next.roomId].condition ?? 0) - fireConfig.conditionHit * resistMul, 0, 100), load: clamp((rooms[next.roomId].load ?? 0) + fireConfig.loadHit * resistMul, 0, 100), activeCrisisId: fire.id }, currentMinute);
+                crisisEvents.push({ kind: "escalated", crisis: fire, roomId: next.roomId });
                 logs.push(`위기 승격: ${next.roomId} 과열이 화재로 번졌습니다.`);
                 return fire;
               }
               next = { ...next, severity: clamp(next.severity + 1, 1, 3), escalateAt: currentMinute + config.escalateMinutes, progress: Math.max(0, next.progress - 8) };
+              crisisEvents.push({ kind: "escalated", crisis: next, roomId: next.roomId });
               logs.push(`위기 악화: ${getCrisisLabel(next)} (${next.roomId}) severity ${next.severity}.`);
               if ((next.type === "fire" || next.type === "intruder") && next.severity >= 3 && Math.random() < (config.spreadChance ?? 0) * (1 - (modifiers.crisisResist ?? 0))) {
                 const targetRoomId = pickAdjacentRoom(next.roomId, blockedRoomIds);
                 if (targetRoomId) {
                   const spread = addCrisisToDraft({ rooms, activeCrises: newCrises, roomId: targetRoomId, type: next.type === "intruder" ? "intruder" : "fire", severity: 1, currentMinute });
-                  if (spread) { blockedRoomIds.add(targetRoomId); logs.push(`위기 전파: ${getCrisisLabel(spread)} (${targetRoomId}).`); }
+                  if (spread) { blockedRoomIds.add(targetRoomId); crisisEvents.push({ kind: "escalated", crisis: spread, roomId: targetRoomId }); logs.push(`위기 전파: ${getCrisisLabel(spread)} (${targetRoomId}).`); }
                 }
               }
             }
@@ -293,7 +310,7 @@ export const useShipInteriorStore = create(
           activeCrises = [...activeCrises, ...newCrises];
           return { rooms, activeCrises };
         });
-        return { effects, logs };
+        return { effects, logs, crisisEvents };
       },
       getActiveCrises: () => get().activeCrises ?? [],
     }),
