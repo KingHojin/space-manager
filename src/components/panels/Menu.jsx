@@ -44,6 +44,7 @@ const KNOWN_STORAGE_KEYS = [
   "space-manager-missions",
   "space-manager-skills",
   "space-manager-policies",
+  "space-manager-reports",
 ];
 
 const primaryMenus = [
