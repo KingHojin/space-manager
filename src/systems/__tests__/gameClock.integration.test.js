@@ -8,6 +8,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useNavStore } from "../../stores/navStore";
 import { usePolicyStore } from "../../stores/policyStore";
+import { useReportStore } from "../../stores/reportStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { createDefaultPolicyState } from "../../data/policies";
 import { GAME_TIME, JOB_ECONOMY } from "../../data/constants";
@@ -698,5 +699,58 @@ describe("gameClock.processTimedJobs — all four policies enabled simultaneousl
       unsubscribe();
       resetAllPolicyState();
     }
+  });
+});
+
+// Phase 20-A: reportStore + systems/reportSystem.js are foundation-only in
+// this PR — no gameClock.js process* function has been wired to call a
+// report builder yet (see docs/PHASE_20_REPORT_SYSTEM.md's "gameClock
+// wiring" decision). This block proves that holds across a real multi-tick
+// run under the same combined pressure the 19-F policy test above used
+// (hull, injury, fuel, and a pending encounter all active at once, with
+// every policy enabled so plenty of log-worthy events fire) —
+// reportStore.reports must stay completely empty regardless, since nothing
+// in this PR ever calls useReportStore.getState().addReport(). 20-B is
+// expected to flip this characterization once the generators land.
+//
+// Deliberately placed last in this file (after every other describe block,
+// mirroring how 19-F's combined-pressure block was appended after 19-A
+// through 19-D): gameStore.logs/policyStore are real module-level
+// singletons with no automatic reset between tests in this project's Vitest
+// setup (see the 19-F stabilization note in docs/PHASE_19_POLICY_SYSTEM.md),
+// and this test's own log/policy-toggle churn must not leak into any
+// earlier test's log-content assertions.
+describe("gameClock.processTimedJobs with the report system introduced but not wired (Phase 20-A)", () => {
+  it("30 ticks with every policy enabled and the ship under combined pressure never add a single report", () => {
+    useReportStore.setState({ reports: [] });
+
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 15, fuel: 15 } }));
+    usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", true);
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", true);
+    usePolicyStore.getState().setPolicyEnabled("fuel-reserve", true);
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", true);
+
+    const TICKS = 30;
+    const DELTA_MINUTES = 15;
+    expect(() => {
+      for (let tick = 0; tick < TICKS; tick += 1) {
+        useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+        processTimedJobs(DELTA_MINUTES);
+      }
+    }).not.toThrow();
+
+    // Sanity check this scenario actually produced log activity (otherwise
+    // "zero reports" would be a vacuous pass) — at least the policy system
+    // must have logged something under this much pressure.
+    expect(useGameStore.getState().logs.length).toBeGreaterThan(0);
+
+    // The real assertion: report system is inert in this PR.
+    expect(useReportStore.getState().reports).toEqual([]);
+
+    // Reset policy toggles for any tests that may run after this one.
+    usePolicyStore.getState().resetPolicy("auto-hull-repair");
+    usePolicyStore.getState().resetPolicy("auto-treatment");
+    usePolicyStore.getState().resetPolicy("fuel-reserve");
+    usePolicyStore.getState().resetPolicy("encounter-default-choice");
   });
 });
