@@ -17,6 +17,7 @@ import {
 import { DUST } from "../../data/constants";
 import { getAllZones } from "../../data/sectors";
 import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
+import { buildCombatReport } from "../../systems/reportSystem";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
@@ -24,8 +25,15 @@ import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
+import { useReportStore } from "../../stores/reportStore";
 import { useShipStore } from "../../stores/shipStore";
 import Hunting from "./Hunting";
+
+const COMBAT_OUTCOME_META = {
+  won: { outcome: "victory", priority: "high" },
+  lost: { outcome: "defeat", priority: "critical" },
+  retreated: { outcome: "fled", priority: "medium" },
+};
 
 const DEFAULT_FEED = ["교전 대기 중. 전투는 조우나 명시적 출격 상황에서만 시작됩니다."];
 
@@ -271,8 +279,9 @@ export default function Combat({ onNavigate, onOpenModal }) {
       applyCombatCasualtyWithJobs({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
       casualtyLogs.push(casualty.injury === "전사" ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.` : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`);
     }
+    let dustGain = 0;
     if (result.combat.status === "won") {
-      const dustGain = Math.round(DUST.COMBAT_REWARD_PER_RISK * (combat.enemy?.risk ?? 1));
+      dustGain = Math.round(DUST.COMBAT_REWARD_PER_RISK * (combat.enemy?.risk ?? 1));
       addDust(dustGain);
       casualtyLogs.push(`전투 승리 보상: 먼지 +${dustGain}.`);
     }
@@ -283,6 +292,32 @@ export default function Combat({ onNavigate, onOpenModal }) {
     if (result.combat.status === "lost" && activeTravel) casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
     appendMissionCombatOutcome(result.combat, casualtyLogs);
     pushFeed([...result.logs, ...casualtyLogs]);
+    // Phase 20-B: combat's report is filed once, right at the engaged ->
+    // won/lost/retreated transition — issueDirective only ever runs while
+    // combat.status === "engaged" (see the guard at the top of this
+    // function), so `["won","lost","retreated"].includes(result.combat.status)`
+    // here is exactly that transition, not a re-fire on a later directive
+    // against an already-terminal combat. Body is built from the same
+    // structured fields already used above (combat.enemy, dustGain,
+    // result.loot, casualty) — not by parsing pushFeed's log lines.
+    const outcomeMeta = COMBAT_OUTCOME_META[result.combat.status];
+    if (outcomeMeta) {
+      const summaryParts = [`적 ${combat.enemy?.name ?? "미상 함선"}과의 교전이 ${missionCombatOutcomeLabel(result.combat.status)}(으)로 종료되었습니다.`];
+      if (result.combat.status === "won") {
+        const lootText = result.loot ? `, ${result.loot.itemId} x${result.loot.qty}` : "";
+        summaryParts.push(`보상: 먼지 +${dustGain}${lootText}.`);
+      }
+      summaryParts.push(casualty ? (casualty.injury === "전사" ? `승무원 손실: ${casualty.member.name} 전사.` : `승무원 부상: ${casualty.member.name} ${casualty.injury}.`) : "승무원 피해 없음.");
+      useReportStore.getState().addReport(
+        buildCombatReport({
+          title: `전투 결과: ${missionCombatOutcomeLabel(result.combat.status)}`,
+          summary: summaryParts.join(" "),
+          outcome: outcomeMeta.outcome,
+          priority: outcomeMeta.priority,
+          currentMinute,
+        }),
+      );
+    }
     return null;
   };
 

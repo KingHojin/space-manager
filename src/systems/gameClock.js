@@ -1,10 +1,14 @@
 import { useEffect } from "react";
 import { DECODE_RULES, DUST, GAME_TIME } from "../data/constants";
+import { getRoomDef } from "../data/shipRooms";
 import { getZoneById } from "../data/sectors";
+import { statLabel } from "../utils/format";
 import { getActiveModifiers } from "./cardEffects";
+import { getCrisisLabel } from "./crisisSystem";
 import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
 import { evaluatePolicies } from "./policyEngine";
+import { buildCrisisReport, buildPolicyReport, buildWorkReport } from "./reportSystem";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
@@ -14,6 +18,7 @@ import { useJobStore } from "../stores/jobStore";
 import { useNavStore } from "../stores/navStore";
 import { usePolicyStore } from "../stores/policyStore";
 import { useRecruitStore } from "../stores/recruitStore";
+import { useReportStore } from "../stores/reportStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 
@@ -196,6 +201,40 @@ function applyCrisisEffect(effect) {
   if (effect.type === "resourceDelta" && effect.resources) useGameStore.getState().addResources(effect.resources);
 }
 
+// Phase 20-B: only "spawned" and "resolved" crisisEvents become reports
+// (critical / info respectively, both category defaults) — "escalated" is
+// deliberately skipped here to avoid over-reporting: the spawn report
+// already exists for that crisis, and ShipInterior's live crisis cards show
+// escalation state in real time (see the volume-selection table in this
+// PR's docs). Report bodies are built from the structured `crisis`/`roomId`
+// fields tickCrises hands back, not by parsing the parallel `logs` strings.
+function reportCrisisEvent(event, currentMinute) {
+  if (event.kind !== "spawned" && event.kind !== "resolved") return;
+  const roomLabel = getRoomDef(event.roomId)?.label ?? event.roomId;
+  const label = getCrisisLabel(event.crisis);
+  if (event.kind === "spawned") {
+    useReportStore.getState().addReport(
+      buildCrisisReport({
+        title: "함내 위기 발생",
+        summary: `${label} 발생 — ${roomLabel}, 심각도 ${event.crisis.severity}. 대응 인력을 배정하세요.`,
+        crisisKind: "spawned",
+        currentMinute,
+        priority: "critical",
+      }),
+    );
+    return;
+  }
+  useReportStore.getState().addReport(
+    buildCrisisReport({
+      title: "함내 위기 해결",
+      summary: `${label} 진압 완료 — ${roomLabel}. 먼지 +${event.dustGain ?? 0} 회수.`,
+      crisisKind: "resolved",
+      currentMinute,
+      priority: "info",
+    }),
+  );
+}
+
 function processCrises(currentMinute, deltaMinutes) {
   const crewStore = useCrewStore.getState();
   const activities = crewStore.crewActivities ?? [];
@@ -206,9 +245,10 @@ function processCrises(currentMinute, deltaMinutes) {
     list.push({ memberId: activity.memberId, roomId: activity.roomId });
     crisisActivities[activity.crisisId] = list;
   });
-  const { effects, logs } = useShipInteriorStore.getState().tickCrises({ currentMinute, deltaMinutes, crisisActivities, crew: crewStore.crew, roleCoverage: crewStore.getRoleCoverage() });
+  const { effects, logs, crisisEvents } = useShipInteriorStore.getState().tickCrises({ currentMinute, deltaMinutes, crisisActivities, crew: crewStore.crew, roleCoverage: crewStore.getRoleCoverage() });
   effects.forEach(applyCrisisEffect);
   logs.forEach((message) => useGameStore.getState().addLog(`함선 위기: ${message}`));
+  (crisisEvents ?? []).forEach((event) => reportCrisisEvent(event, currentMinute));
 }
 
 function processCrewHealth(currentMinute, deltaMinutes) {
@@ -256,6 +296,19 @@ function shouldLogPolicyMessage(action, currentMinute) {
 // indistinguishable from a manually-queued one once it's in the job queue.
 // "diagnostic" actions are intentionally ignored here; they only ever
 // produce a log (see processPolicies below).
+// Phase 20-B: every branch below that actually mutates a store (as opposed
+// to "diagnostic", which applyPolicyActions never sees — see the kind check
+// in each branch) also files a "policy" report via reportStore.addReport(),
+// built from the same structured `action.detail`/`job` fields the branch
+// already used to perform the mutation — never by parsing the parallel log
+// string processPolicies() emits (see reportSystem.js's file-header "no log
+// parsing" rule). This is gameClock.js, the designated orchestrator, so a
+// direct addReport() call here is allowed by the architecture rule that
+// confines addReport() to gameClock.js + UI components.
+function reportPolicyAction(policyId, summary, currentMinute) {
+  useReportStore.getState().addReport(buildPolicyReport({ policyId, summary, currentMinute }));
+}
+
 function applyPolicyActions(actions, currentMinute) {
   actions.forEach((action) => {
     if (action.kind === "enqueue-ship-work") {
@@ -265,6 +318,16 @@ function applyPolicyActions(actions, currentMinute) {
         if (itemId && qty) useInventoryStore.getState().removeItem(itemId, qty);
       });
       useJobStore.getState().enqueueShipWork({ ...job, createdAt: currentMinute });
+      const roomLabel = getRoomDef(job.roomId)?.label ?? job.roomId;
+      const consumed = (job.payload?.inputItems ?? [])
+        .filter((entry) => entry.itemId && entry.qty)
+        .map((entry) => `${entry.itemId} ${entry.qty}개`)
+        .join(", ");
+      reportPolicyAction(
+        action.policyId,
+        `선체 ${Math.round(action.detail?.hull ?? 0)}% (임계값 ${action.detail?.threshold ?? 0}% 미만) — ${roomLabel} 정비 예약${consumed ? `, ${consumed} 소모` : ""}.`,
+        currentMinute,
+      );
       return;
     }
     if (action.kind === "enqueue-treatment-job") {
@@ -272,6 +335,12 @@ function applyPolicyActions(actions, currentMinute) {
       if (!job) return;
       if (!useGameStore.getState().spendCredits(job.cost ?? 0)) return;
       useJobStore.getState().enqueueTreatment({ ...job, createdAt: currentMinute });
+      const member = useCrewStore.getState().crew.find((entry) => entry.id === action.detail?.memberId);
+      reportPolicyAction(
+        action.policyId,
+        `${member?.name ?? "승무원"} ${job.injury ?? ""} 자동 치료 예약 — ₢${job.cost ?? 0}, ${job.duration ?? 0}분.`,
+        currentMinute,
+      );
       return;
     }
     if (action.kind === "resolve-encounter") {
@@ -289,6 +358,11 @@ function applyPolicyActions(actions, currentMinute) {
       // applyNavEffect() for every effect in the chosen option's outcome —
       // reuse it verbatim instead of re-implementing that combination here.
       applyNavigationEncounter(detail.optionId, currentMinute);
+      reportPolicyAction(
+        action.policyId,
+        `${pending.title ?? "조우"} 자동 해결 — "${detail.label ?? detail.optionId}" 선택 (${detail.stance ?? "balanced"} 전략).`,
+        currentMinute,
+      );
     }
   });
 }
@@ -361,23 +435,67 @@ function applyShipWork(task) {
   return `함선 작업 완료: ${task.type}.`;
 }
 
-function applyUnifiedJob(job) {
-  if (job.type === "training") return useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey });
-  if (job.type === "treatment") return useCrewStore.getState().completeTreatmentJob({ memberId: job.payload?.targetCrewId, fatiguePenalty: job.payload?.fatiguePenalty, injury: job.payload?.injury });
-  if (job.type === "recovery") return useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
-  if (job.type === "module_upgrade") return useShipStore.getState().applyModuleJob({ ...job.payload, cost: job.cost, duration: job.duration });
+// Phase 20-B: every completed job (regardless of whether it was queued
+// manually or by a policy — see this PR's brief, "정책이 예약한 작업의 완료는
+// 제외하지 말고 포함") files a "work" report. The report's title/body is
+// built from the same structured job fields (job.type/job.payload/job.cost/
+// job.duration, plus a crew-name/module lookup taken before the mutating
+// store call below) each branch already has on hand to perform the
+// completion — never by parsing the log string the branch also returns
+// (see reportSystem.js's file-header "no log parsing" rule). `currentMinute`
+// is threaded in by processTimedJobs's `.map((job) => applyUnifiedJob(job,
+// currentMinute))` call below.
+function reportJobCompletion({ title, summary, jobType, currentMinute }) {
+  useReportStore.getState().addReport(buildWorkReport({ title, summary, jobType, currentMinute }));
+}
+
+function applyUnifiedJob(job, currentMinute = 0) {
+  if (job.type === "training") {
+    const member = useCrewStore.getState().crew.find((entry) => entry.id === job.payload?.targetCrewId);
+    const log = useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey });
+    if (log) reportJobCompletion({ title: "훈련 완료", summary: `${member?.name ?? "승무원"} ${statLabel[job.payload?.statKey] ?? job.payload?.statKey ?? ""} +1 훈련 완료.`, jobType: job.type, currentMinute });
+    return log;
+  }
+  if (job.type === "treatment") {
+    const member = useCrewStore.getState().crew.find((entry) => entry.id === job.payload?.targetCrewId);
+    const log = useCrewStore.getState().completeTreatmentJob({ memberId: job.payload?.targetCrewId, fatiguePenalty: job.payload?.fatiguePenalty, injury: job.payload?.injury });
+    if (log) reportJobCompletion({ title: "치료 완료", summary: `${member?.name ?? "승무원"} 의무실 치료 단계 완료 (기존 ${job.payload?.injury ?? "부상"}).`, jobType: job.type, currentMinute });
+    return log;
+  }
+  if (job.type === "recovery") {
+    const member = useCrewStore.getState().crew.find((entry) => entry.id === job.payload?.targetCrewId);
+    const log = useCrewStore.getState().completeRecoveryJob({ memberId: job.payload?.targetCrewId, fatigueRecovery: job.payload?.fatigueRecovery });
+    if (log) reportJobCompletion({ title: "회복 완료", summary: `${member?.name ?? "승무원"} 회복 절차 완료 (피로 -${job.payload?.fatigueRecovery ?? 0}).`, jobType: job.type, currentMinute });
+    return log;
+  }
+  if (job.type === "module_upgrade") {
+    const module = useShipStore.getState().modules.find((entry) => entry.id === job.payload?.moduleId);
+    const log = useShipStore.getState().applyModuleJob({ ...job.payload, cost: job.cost, duration: job.duration });
+    if (log) {
+      const actionLabel = job.payload?.action === "equip" ? "장착" : "개선";
+      reportJobCompletion({ title: "모듈 작업 완료", summary: `${module?.name ?? job.payload?.moduleId ?? "모듈"} ${actionLabel} 완료 (${job.payload?.slot ?? "-"} 슬롯).`, jobType: job.type, currentMinute });
+    }
+    return log;
+  }
   if (job.type === "decode") {
     const rule = DECODE_RULES[job.payload?.itemId];
     if (!rule) return "해독 완료: 판독 불가 데이터.";
     const revealed = useNavStore.getState().revealHiddenNodes(rule.reveals);
     useInventoryStore.getState().addDust(rule.dustReward);
     const names = revealed.map((node) => node.name).join(", ");
-    return revealed.length > 0
-      ? `${rule.label} 해독 완료: ${names} 좌표 확보 (+먼지 ${rule.dustReward}).`
-      : `${rule.label} 해독 완료: 새 좌표 없음, 항법 데이터로 환원 (+먼지 ${rule.dustReward}).`;
+    const log =
+      revealed.length > 0
+        ? `${rule.label} 해독 완료: ${names} 좌표 확보 (+먼지 ${rule.dustReward}).`
+        : `${rule.label} 해독 완료: 새 좌표 없음, 항법 데이터로 환원 (+먼지 ${rule.dustReward}).`;
+    reportJobCompletion({ title: "해독 완료", summary: log, jobType: job.type, currentMinute });
+    return log;
   }
   const shipWork = jobToLegacyShipWork(job);
-  if (shipWork) return applyShipWork(shipWork);
+  if (shipWork) {
+    const log = applyShipWork(shipWork);
+    if (log) reportJobCompletion({ title: "함선 작업 완료", summary: log, jobType: job.type, currentMinute });
+    return log;
+  }
   return null;
 }
 
@@ -409,7 +527,7 @@ export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
   processJobScheduler(currentMinute);
-  const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map(applyUnifiedJob).filter(Boolean);
+  const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map((job) => applyUnifiedJob(job, currentMinute)).filter(Boolean);
   [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processNavigation(currentMinute, deltaMinutes);
   processCrises(currentMinute, deltaMinutes);

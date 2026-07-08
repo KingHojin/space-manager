@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { processTimedJobs } from "../gameClock";
 import { isHealthy, TREATMENT_RULES } from "../injurySystem";
+import { createInitialRoomState } from "../roomJobs";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
@@ -752,5 +753,242 @@ describe("gameClock.processTimedJobs with the report system introduced but not w
     usePolicyStore.getState().resetPolicy("auto-treatment");
     usePolicyStore.getState().resetPolicy("fuel-reserve");
     usePolicyStore.getState().resetPolicy("encounter-default-choice");
+  });
+});
+
+// Phase 20-B: the report generators are wired for real now — every block
+// below drives a real event through processTimedJobs and checks
+// reportStore.reports directly, the same way the blocks above check
+// gameStore.logs/jobStore.jobs. The Phase 20-A block right above this one
+// still passes (its specific pressure scenario never actually crosses a
+// mutating-action threshold — see this PR's report for why), but it is no
+// longer a "system is inert" characterization; these blocks are.
+describe("gameClock.processTimedJobs — report generation wired to real events (Phase 20-B)", () => {
+  const SCRAP_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
+
+  function resetReportsJobsAndInventory() {
+    useReportStore.setState({ reports: [] });
+    useJobStore.setState({ jobs: [] });
+    useJobStore.getState().recomputeRoomLoad();
+    useInventoryStore.setState((state) => ({
+      items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: 0 } : item)),
+    }));
+  }
+
+  it("auto-hull-repair's enqueue action files exactly one 'policy' report (not one per tick), and the job's own completion files exactly one 'work' report", () => {
+    resetReportsJobsAndInventory();
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 10 } }));
+    useInventoryStore.setState((state) => ({
+      items: state.items.map((item) => (item.id === "salvage-scrap" ? { ...item, qty: SCRAP_COST } : item)),
+    }));
+    usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", true);
+
+    const TICKS = 60;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    // Exactly one policy report, even though the active-job guard means
+    // policyEngine.js's action would only ever fire once anyway — this
+    // proves the report call is tied 1:1 to the action firing, not to every
+    // tick evaluatePolicies runs.
+    const policyReports = useReportStore.getState().reports.filter((report) => report.category === "policy" && report.meta?.policyId === "auto-hull-repair");
+    expect(policyReports).toHaveLength(1);
+    expect(policyReports[0].body).toContain("기관실");
+    expect(policyReports[0].body).toContain("10%");
+    expect(policyReports[0].read).toBe(false);
+    expect(policyReports[0].priority).toBe("info"); // policy category's default
+
+    // The hull_repair job this action enqueued also completed and filed its
+    // own "work" report — job origin (policy vs. manual) doesn't gate the
+    // work report, only completion does (see the "정책이 예약한 작업의 완료는
+    // 제외하지 말고 포함" rule this PR follows).
+    const workReports = useReportStore.getState().reports.filter((report) => report.category === "work" && report.meta?.jobType === "hull_repair");
+    expect(workReports).toHaveLength(1);
+    expect(workReports[0].title).toBe("함선 작업 완료");
+    expect(workReports[0].priority).toBe("info");
+
+    usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", false);
+    resetReportsJobsAndInventory();
+  });
+
+  it("auto-hull-repair's diagnostic-only branch (insufficient scrap) never files a report, even though it logs a throttled warning", () => {
+    resetReportsJobsAndInventory();
+    useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 10 } }));
+    usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", true);
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    expect(useGameStore.getState().logs.some((message) => message.includes("정책") && message.includes("폐자재 부족"))).toBe(true);
+    expect(useReportStore.getState().reports).toEqual([]);
+
+    usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", false);
+    resetReportsJobsAndInventory();
+  });
+
+  it("fuel-reserve (diagnostic-only policy) never files a report, no matter how low fuel drops", () => {
+    resetReportsJobsAndInventory();
+    usePolicyStore.getState().setPolicyEnabled("fuel-reserve", true);
+    useGameStore.setState((state) => ({ resources: { ...state.resources, fuel: 5 } }));
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    expect(useGameStore.getState().logs.some((message) => message.includes("연료 예비율"))).toBe(true);
+    expect(useReportStore.getState().reports).toEqual([]);
+
+    usePolicyStore.getState().setPolicyEnabled("fuel-reserve", false);
+    resetReportsJobsAndInventory();
+  });
+
+  it("auto-treatment's enqueue action files exactly one 'policy' report, and the treatment job's completion files exactly one 'work' report", () => {
+    resetReportsJobsAndInventory();
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === "gunner-kang" ? { ...member, alive: true, injury: "minor" } : member)),
+    }));
+    useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 5000 } }));
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", true);
+
+    const TICKS = 40;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    const policyReports = useReportStore.getState().reports.filter((report) => report.category === "policy" && report.meta?.policyId === "auto-treatment");
+    expect(policyReports).toHaveLength(1);
+    expect(policyReports[0].body).toContain("₢");
+
+    const workReports = useReportStore.getState().reports.filter((report) => report.category === "work" && report.meta?.jobType === "treatment");
+    expect(workReports).toHaveLength(1);
+    expect(workReports[0].title).toBe("치료 완료");
+
+    usePolicyStore.getState().setPolicyEnabled("auto-treatment", false);
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === "gunner-kang" ? { ...member, alive: true, injury: "healthy" } : member)),
+    }));
+    resetReportsJobsAndInventory();
+  });
+
+  it("encounter-default-choice's resolve action files exactly one 'policy' report naming the chosen option", () => {
+    resetReportsJobsAndInventory();
+    useNavStore.setState({ pendingEncounter: null });
+    useExplorationStore.getState().clearPendingCombatEncounter();
+    usePolicyStore.getState().resetPolicy("encounter-default-choice");
+    const encounter = {
+      id: "gc-report-test-encounter",
+      title: "보고서 테스트 조우",
+      options: [{ id: "only", label: "유일한 선택", outcome: [{ kind: "resource", delta: { credits: 50 } }] }],
+    };
+    useNavStore.setState({ pendingEncounter: encounter });
+    usePolicyStore.getState().setPolicyEnabled("encounter-default-choice", true);
+
+    useGameStore.getState().advanceMinutes(15);
+    processTimedJobs(15);
+
+    const policyReports = useReportStore.getState().reports.filter((report) => report.category === "policy" && report.meta?.policyId === "encounter-default-choice");
+    expect(policyReports).toHaveLength(1);
+    expect(policyReports[0].body).toContain("유일한 선택");
+
+    usePolicyStore.getState().resetPolicy("encounter-default-choice");
+    useNavStore.setState({ pendingEncounter: null });
+    resetReportsJobsAndInventory();
+  });
+
+  it("a manually-queued (non-policy) training job's completion also files a 'work' report — job origin doesn't gate the report, only completion does", () => {
+    resetReportsJobsAndInventory();
+    const member = useCrewStore.getState().crew.find((entry) => entry.alive);
+    expect(member).toBeTruthy();
+    const currentMinute = useGameStore.getState().currentMinute;
+    useJobStore.getState().enqueueTraining({ memberId: member.id, statKey: "piloting", duration: 30, createdAt: currentMinute });
+
+    const TICKS = 20;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    const trainingJob = useJobStore.getState().jobs.find((job) => job.type === "training" && job.payload?.targetCrewId === member.id);
+    expect(trainingJob?.status).toBe("done");
+
+    const workReports = useReportStore.getState().reports.filter((report) => report.category === "work" && report.meta?.jobType === "training");
+    expect(workReports).toHaveLength(1);
+    expect(workReports[0].title).toBe("훈련 완료");
+    expect(workReports[0].body).toContain(member.name);
+
+    resetReportsJobsAndInventory();
+  });
+
+  it("a room-decay-triggered crisis spawn files exactly one 'crisis' report with priority 'critical' and crisisKind 'spawned'", () => {
+    resetReportsJobsAndInventory();
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+    useShipInteriorStore.setState((state) => ({
+      rooms: { ...state.rooms, engineering: { ...state.rooms.engineering, load: 94, condition: 80 } },
+    }));
+
+    useGameStore.getState().advanceMinutes(60);
+    processTimedJobs(60);
+
+    const crisisReports = useReportStore.getState().reports.filter((report) => report.category === "crisis");
+    expect(crisisReports).toHaveLength(1);
+    expect(crisisReports[0].meta).toEqual({ crisisKind: "spawned" });
+    expect(crisisReports[0].priority).toBe("critical");
+    expect(crisisReports[0].title).toBe("함내 위기 발생");
+
+    resetReportsJobsAndInventory();
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+  });
+
+  it("a crisis fully progressed (by a crew member already assigned crisis-response) files exactly one 'crisis' report with priority 'info' and crisisKind 'resolved', and never an 'escalated' report", () => {
+    resetReportsJobsAndInventory();
+    const crisisId = "gc-report-test-crisis";
+    const rooms = { ...createInitialRoomState() };
+    rooms.engineering = { ...rooms.engineering, activeCrisisId: crisisId };
+    useShipInteriorStore.setState({
+      rooms,
+      activeCrises: [{ id: crisisId, roomId: "engineering", type: "overheat", severity: 1, progress: 90, escalateAt: 1_000_000, assignedCrewId: null, assignedCrewIds: [], createdAtMinutes: 0 }],
+    });
+    // engineer-min is this roster's only "기관실"-role member — bypass real
+    // crewAI's own assignment decision (irrelevant to what's under test
+    // here) by setting crewActivities directly, the same plain shape
+    // gameClock.js's processCrises already reads off crewStore.crewActivities.
+    useCrewStore.setState((state) => ({
+      crew: state.crew.map((member) => (member.id === "engineer-min" ? { ...member, alive: true, injury: "healthy", fatigue: 0 } : member)),
+      crewActivities: state.crew.map((member) => (member.id === "engineer-min" ? { memberId: member.id, intent: "crisis-response", crisisId, roomId: "engineering" } : { memberId: member.id, intent: "idle" })),
+    }));
+
+    useGameStore.getState().advanceMinutes(60);
+    processTimedJobs(60);
+
+    const crisisReports = useReportStore.getState().reports.filter((report) => report.category === "crisis");
+    expect(crisisReports.some((report) => report.meta?.crisisKind === "escalated")).toBe(false);
+    const resolvedReport = crisisReports.find((report) => report.meta?.crisisKind === "resolved");
+    expect(resolvedReport).toBeTruthy();
+    expect(resolvedReport.priority).toBe("info");
+    expect(resolvedReport.title).toBe("함내 위기 해결");
+
+    resetReportsJobsAndInventory();
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+  });
+
+  it("regression: with every policy at its default OFF and no crisis/job activity, 30 ticks add zero reports", () => {
+    resetReportsJobsAndInventory();
+    useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
+    expect(usePolicyStore.getState().policies).toEqual(createDefaultPolicyState());
+
+    const TICKS = 30;
+    const DELTA_MINUTES = 15;
+    for (let tick = 0; tick < TICKS; tick += 1) {
+      useGameStore.getState().advanceMinutes(DELTA_MINUTES);
+      processTimedJobs(DELTA_MINUTES);
+    }
+
+    expect(useReportStore.getState().reports).toEqual([]);
+    resetReportsJobsAndInventory();
   });
 });

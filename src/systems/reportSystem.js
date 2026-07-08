@@ -96,3 +96,56 @@ export function buildCombatReport({ title, summary, outcome, currentMinute, prio
     meta: { outcome: outcome ?? null },
   });
 }
+
+// --- 20-B domain builders: crisis / work / navigation. Same thin-wrapper
+// shape as buildPolicyReport/buildCombatReport above — each just threads a
+// domain-specific field into `meta` so 20-C can filter/badge on it without
+// string-matching title/body.
+
+// buildCrisisReport({ title, summary, crisisKind, currentMinute, priority? })
+//   -> a "crisis" category report. `crisisKind` ("spawned" | "resolved") is
+//   threaded into `meta` — gameClock.js's processCrises only ever calls this
+//   for those two kinds (see shipInteriorStore.js's tickCrises `crisisEvents`
+//   return value); "escalated" crisis events are deliberately NOT reported
+//   (the spawn report already exists and ShipInterior's live crisis cards
+//   show escalation in real time — see docs/PHASE_20_REPORT_SYSTEM.md's
+//   volume-selection table for the full rationale).
+export function buildCrisisReport({ title, summary, crisisKind, currentMinute, priority } = {}) {
+  return buildReport({
+    category: "crisis",
+    title,
+    body: summary,
+    priority,
+    currentMinute,
+    meta: { crisisKind: crisisKind ?? null },
+  });
+}
+
+// buildWorkReport({ title, summary, jobType, currentMinute, priority? })
+//   -> a "work" category report. `jobType` (jobStore's normalized job.type,
+//   e.g. "training" | "treatment" | "recovery" | "module_upgrade" | "decode"
+//   | "hull_repair" | "salvage") is threaded into `meta`.
+export function buildWorkReport({ title, summary, jobType, currentMinute, priority } = {}) {
+  return buildReport({
+    category: "work",
+    title,
+    body: summary,
+    priority,
+    currentMinute,
+    meta: { jobType: jobType ?? null },
+  });
+}
+
+// buildNavigationReport({ title, summary, navKind, currentMinute, priority? })
+//   -> a "navigation" category report. `navKind` (e.g. "missionComplete") is
+//   threaded into `meta`.
+export function buildNavigationReport({ title, summary, navKind, currentMinute, priority } = {}) {
+  return buildReport({
+    category: "navigation",
+    title,
+    body: summary,
+    priority,
+    currentMinute,
+    meta: { navKind: navKind ?? null },
+  });
+}

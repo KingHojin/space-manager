@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildCombatReport, buildPolicyReport, buildReport } from "../reportSystem";
+import { buildCombatReport, buildCrisisReport, buildNavigationReport, buildPolicyReport, buildReport, buildWorkReport } from "../reportSystem";
 import { FALLBACK_REPORT_CATEGORY, REPORT_CATEGORIES, REPORT_PRIORITIES } from "../../data/reports";
 
 describe("buildReport", () => {
@@ -125,5 +125,63 @@ describe("buildCombatReport contract", () => {
   it("defaults meta.outcome to null when outcome is omitted", () => {
     const report = buildCombatReport({ title: "t", summary: "s", currentMinute: 0 });
     expect(report.meta).toEqual({ outcome: null });
+  });
+});
+
+// Phase 20-B domain builder contracts — pinned against the real gameClock.js
+// (crisis/work) and Combat.jsx/Exploration.jsx (combat/navigation) callers
+// wired in this PR.
+describe("buildCrisisReport contract", () => {
+  it("produces a 'crisis' category report with crisisKind threaded into meta", () => {
+    const report = buildCrisisReport({ title: "함내 위기 발생", summary: "화재 발생 — 기관실.", crisisKind: "spawned", currentMinute: 200, priority: "critical" });
+    expect(report.category).toBe("crisis");
+    expect(report.title).toBe("함내 위기 발생");
+    expect(report.priority).toBe("critical");
+    expect(report.meta).toEqual({ crisisKind: "spawned" });
+    expect(report.createdAtMinute).toBe(200);
+  });
+
+  it("defaults meta.crisisKind to null when omitted", () => {
+    const report = buildCrisisReport({ title: "t", summary: "s", currentMinute: 0 });
+    expect(report.meta).toEqual({ crisisKind: null });
+  });
+
+  it("falls back to the category default priority ('critical') when priority is omitted", () => {
+    const report = buildCrisisReport({ title: "t", summary: "s", currentMinute: 0 });
+    expect(report.priority).toBe("critical");
+  });
+});
+
+describe("buildWorkReport contract", () => {
+  it("produces a 'work' category report with jobType threaded into meta", () => {
+    const report = buildWorkReport({ title: "훈련 완료", summary: "포수 김 사격 +1 훈련 완료.", jobType: "training", currentMinute: 300 });
+    expect(report.category).toBe("work");
+    expect(report.meta).toEqual({ jobType: "training" });
+    expect(report.createdAtMinute).toBe(300);
+  });
+
+  it("defaults meta.jobType to null when omitted", () => {
+    const report = buildWorkReport({ title: "t", summary: "s", currentMinute: 0 });
+    expect(report.meta).toEqual({ jobType: null });
+  });
+
+  it("falls back to the category default priority ('info') when priority is omitted", () => {
+    const report = buildWorkReport({ title: "t", summary: "s", currentMinute: 0 });
+    expect(report.priority).toBe("info");
+  });
+});
+
+describe("buildNavigationReport contract", () => {
+  it("produces a 'navigation' category report with navKind threaded into meta", () => {
+    const report = buildNavigationReport({ title: "임무 완료", summary: "정찰 임무 완료. 보상: ₢200.", navKind: "missionComplete", currentMinute: 400, priority: "medium" });
+    expect(report.category).toBe("navigation");
+    expect(report.meta).toEqual({ navKind: "missionComplete" });
+    expect(report.priority).toBe("medium");
+    expect(report.createdAtMinute).toBe(400);
+  });
+
+  it("defaults meta.navKind to null when omitted", () => {
+    const report = buildNavigationReport({ title: "t", summary: "s", currentMinute: 0 });
+    expect(report.meta).toEqual({ navKind: null });
   });
 });

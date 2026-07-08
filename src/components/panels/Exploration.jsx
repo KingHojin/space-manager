@@ -17,6 +17,8 @@ import { explorationBlockLabel, explorationFuelCost } from "../../systems/explor
 import { applyCombatCasualtyWithJobs, applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
 import { applyMissionRewards } from "../../systems/missionRewards";
 import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
+import { buildNavigationReport } from "../../systems/reportSystem";
+import { useReportStore } from "../../stores/reportStore";
 import ExplorationRewardPanel from "../exploration/ExplorationRewardPanel";
 import StarMap from "../exploration/LazyStarMap";
 import MissionEncounterCard from "../ui/MissionEncounterCard";
@@ -213,6 +215,25 @@ export default function Exploration({ onNavigate }) {
     const payout = applyMissionRewards(result.reward);
     addLog(`임무 완료: ${result.mission.title}.`);
     payout.logs.forEach((message) => addLog(`임무 보상: ${message}`));
+    // Phase 20-B: mission completion is the one navigation event this PR
+    // reports — a completed result the player wasn't necessarily watching
+    // for, unlike a manual node arrival or a manually-resolved encounter
+    // (see this PR's volume-selection table). Body is built from the same
+    // structured payout fields (payout.resourcesAwarded/itemsAwarded) applyMissionRewards
+    // already returned above, not by parsing payout.logs.
+    const rewardParts = [];
+    if (payout.resourcesAwarded.credits) rewardParts.push(`₢${payout.resourcesAwarded.credits}`);
+    if (payout.resourcesAwarded.dust) rewardParts.push(`Dust ${payout.resourcesAwarded.dust}`);
+    payout.itemsAwarded.forEach((item) => rewardParts.push(`${item.label} x${item.qty}`));
+    useReportStore.getState().addReport(
+      buildNavigationReport({
+        title: "임무 완료",
+        summary: `${result.mission.title} 임무 완료 (목적지: ${result.mission.destinationName ?? "-"}). 보상: ${rewardParts.length > 0 ? rewardParts.join(", ") : "없음"}.`,
+        navKind: "missionComplete",
+        priority: "medium",
+        currentMinute,
+      }),
+    );
     return null;
   };
 
