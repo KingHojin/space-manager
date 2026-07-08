@@ -189,6 +189,21 @@ export function nodeToZone(node) {
   };
 }
 
+// Survey-contract completion check: true when at least one node of the given
+// type in `sector` has been visited (its id is in `visited`). Used by
+// Market.jsx to replace the dead explorationStore.scannedZoneIds check.
+// Deliberately scoped to the *current* sector only — navStore resets
+// `visited` on nextSector (gate transit), so a survey contract accepted in
+// one sector whose matching node type was already visited before crossing a
+// gate will need a fresh visit in the new sector. That edge case is left as a
+// known limitation (see contracts.js and the bug-fix report) rather than
+// tracked with new cross-sector state, to keep this fix scoped to the bug.
+export function hasVisitedNodeType(sector, visited, nodeType) {
+  if (!nodeType || !sector?.nodes?.length) return false;
+  const visitedSet = new Set(visited ?? []);
+  return sector.nodes.some((node) => node.type === nodeType && visitedSet.has(node.id));
+}
+
 // Docking gate for station-only services (market, contracts, module crafting):
 // the ship is docked only when it is sitting at a "station"-type node and is
 // not mid-transit. Any other node type, or a station node reached while

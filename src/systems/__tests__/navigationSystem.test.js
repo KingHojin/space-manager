@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { generateSector, isDocked, nodeToZone, routeDistance } from "../navigationSystem";
+import { generateSector, hasVisitedNodeType, isDocked, nodeToZone, routeDistance } from "../navigationSystem";
 
 describe("routeDistance", () => {
   const sector = {
@@ -62,6 +62,42 @@ describe("generateSector (sanity check backing routeDistance/nodeToZone usage)",
     const sectorB = generateSector("determinism-seed", 8);
     expect(sectorB.nodes.map((node) => node.id)).toEqual(sectorA.nodes.map((node) => node.id));
     expect(sectorB.edges).toEqual(sectorA.edges);
+  });
+});
+
+// hasVisitedNodeType backs the survey-contract completion check in Market.jsx
+// (see data/contracts.js for why survey contracts moved off the dead
+// explorationStore.scannedZoneIds field onto navStore's live sector/visited).
+describe("hasVisitedNodeType", () => {
+  const sector = {
+    nodes: [
+      { id: "n0", type: "station" },
+      { id: "n1", type: "nebula" },
+      { id: "n2", type: "debris" },
+    ],
+  };
+
+  it("is true when a node of the given type has been visited", () => {
+    expect(hasVisitedNodeType(sector, ["n0", "n1"], "nebula")).toBe(true);
+  });
+
+  it("is false when no visited node matches the given type", () => {
+    expect(hasVisitedNodeType(sector, ["n0"], "nebula")).toBe(false);
+  });
+
+  it("is false when a node of the type exists in the sector but has not been visited", () => {
+    expect(hasVisitedNodeType(sector, ["n0", "n2"], "nebula")).toBe(false);
+  });
+
+  it("is false when no node of the given type exists in the sector at all", () => {
+    expect(hasVisitedNodeType(sector, ["n0", "n1", "n2"], "exit")).toBe(false);
+  });
+
+  it("is false for a missing sector, empty visited list, or missing nodeType", () => {
+    expect(hasVisitedNodeType(null, ["n0"], "nebula")).toBe(false);
+    expect(hasVisitedNodeType(sector, [], "nebula")).toBe(false);
+    expect(hasVisitedNodeType(sector, ["n0", "n1"], undefined)).toBe(false);
+    expect(hasVisitedNodeType({ nodes: [] }, ["n0"], "nebula")).toBe(false);
   });
 });
 

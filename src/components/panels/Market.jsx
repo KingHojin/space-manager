@@ -4,9 +4,8 @@ import { contracts } from "../../data/contracts";
 import { getFactionById, factions } from "../../data/factions";
 import { formatMinutes, getModuleRule, hasRequiredItems } from "../../data/moduleRecipes";
 import { formatGameDate, processTimedJobs } from "../../systems/gameClock";
-import { isDocked } from "../../systems/navigationSystem";
+import { hasVisitedNodeType, isDocked } from "../../systems/navigationSystem";
 import { useContractStore } from "../../stores/contractStore";
-import { useExplorationStore } from "../../stores/explorationStore";
 import { useFactionStore } from "../../stores/factionStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -41,9 +40,9 @@ export default function Market() {
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const sector = useNavStore((state) => state.sector);
   const travel = useNavStore((state) => state.travel);
+  const visited = useNavStore((state) => state.visited);
   const currentNode = sector.nodes.find((node) => node.id === currentNodeId);
   const docked = isDocked(currentNode, travel);
-  const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
@@ -126,7 +125,7 @@ export default function Market() {
 
   const canCompleteContract = (contract) => {
     if (!acceptedIds.includes(contract.id)) return false;
-    if (contract.type === "survey") return scannedZoneIds.includes(contract.targetZoneId);
+    if (contract.type === "survey") return hasVisitedNodeType(sector, visited, contract.targetNodeType);
     if (!contract.itemId) return true;
     return (items.find((item) => item.id === contract.itemId)?.qty ?? 0) >= (contract.itemQty ?? 1);
   };
