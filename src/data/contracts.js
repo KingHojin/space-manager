@@ -1,22 +1,40 @@
+// NOTE (survey-contracts-mapmodal fix): survey-type contracts used to target
+// a fixed legacy zone id (data/sectors.js vocabulary, e.g. "blue-drift"),
+// checked against explorationStore.scannedZoneIds. That store field has had
+// zero write callers since Phase 18-C (scanZone/exploreZone/moveToZone are
+// dead actions), so scannedZoneIds never grows past its initial value and
+// survey contracts could never be completed. Navigation now runs on navStore's
+// procedurally generated sector (systems/navigationSystem.js#generateSector),
+// which has no relationship to the old fixed zone ids. Survey contracts are
+// rewired to target a node *type* (the live vocabulary in data/navEncounters.js
+// NODE_TYPE_LABELS: station/nebula/debris/distress/unknown/exit) and are
+// completed by visiting a matching node in the current sector — see
+// systems/navigationSystem.js#hasVisitedNodeType and its use in Market.jsx.
+//
+// The other contract types (delivery/salvage/hunt/artifact) are completed by
+// item-quantity checks only (see Market.jsx#canCompleteContract) and never
+// read targetZoneId for logic. A repo-wide grep turned up no other reader of
+// targetZoneId either, so the field has been dropped from those contracts
+// rather than kept as unused/misleading metadata pointing at zones that no
+// longer exist on the live map.
 export const contracts = [
   {
     id: "blue-drift-survey",
-    title: "청색 표류대 정밀 조사",
+    title: "성운 정밀 조사",
     type: "survey",
     factionId: "frontier-guild",
-    targetZoneId: "blue-drift",
+    targetNodeType: "nebula",
     rewardCredits: 260,
     rewardDust: 28,
     rep: 2,
-    requirement: "청색 표류대 스캔 완료",
-    desc: "개척자 조합이 성운 입자 밀도 데이터를 요구합니다.",
+    requirement: "성운(nebula) 노드 1곳 방문 조사 완료",
+    desc: "개척자 조합이 성운 입자 밀도 데이터를 요구합니다. 현재 섹터에서 성운 노드를 방문하면 완료됩니다.",
   },
   {
     id: "copper-moon-mining",
     title: "구리 달 광물 운송",
     type: "delivery",
     factionId: "orion-cartel",
-    targetZoneId: "copper-moon",
     rewardCredits: 420,
     rewardDust: 10,
     rep: 2,
@@ -30,7 +48,6 @@ export const contracts = [
     title: "무음 궤도 블랙박스 회수",
     type: "salvage",
     factionId: "federation",
-    targetZoneId: "silent-orbit",
     rewardCredits: 520,
     rewardDust: 18,
     rep: 3,
@@ -44,7 +61,6 @@ export const contracts = [
     title: "공허 만타 생체 샘플",
     type: "hunt",
     factionId: "frontier-guild",
-    targetZoneId: "black-garden",
     rewardCredits: 360,
     rewardDust: 24,
     rep: 2,
@@ -58,7 +74,6 @@ export const contracts = [
     title: "장막 관문 신호 해독",
     type: "artifact",
     factionId: "ancient-signal",
-    targetZoneId: "veil-gate",
     rewardCredits: 680,
     rewardDust: 55,
     rep: 4,
