@@ -19,16 +19,58 @@ import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 // "what happened while you weren't watching," not a migration off the flat
 // log feed. See docs/PHASE_20_REPORT_SYSTEM.md.
 //
-// --- retention policy ---
-// MAX_REPORTS caps the array at 120 entries, oldest dropped first (a plain
-// `.slice(0, MAX_REPORTS)` after unshifting the newest one in, same pattern
-// gameStore.addLog already uses for `logs` at a cap of 80). This is
-// deliberately simple: no priority-aware retention (e.g. "never drop an
-// unacknowledged critical report") — see the Phase 20-A task brief, which
-// calls that out explicitly as over-engineering for this foundation PR. If a
-// future sub-PR needs stronger guarantees for critical reports, that's a
-// deliberate, documented follow-up, not implied by this cap.
+// --- retention policy (revisited in Phase 20-D) ---
+// MAX_REPORTS caps the array at 120 entries, oldest dropped first — same
+// shape gameStore.addLog already uses for `logs` at a cap of 80. Phase 20-A
+// shipped this as a plain `.slice(0, MAX_REPORTS)` with no priority
+// awareness, explicitly calling that out as acceptable for a foundation PR
+// that didn't generate any reports yet.
+//
+// 20-D revisited this now that real generators exist (20-B/20-C): measured
+// volume in the 20-B PR's own 60-tick heavy-pressure scenario was 8 reports
+// (4 policy / 4 work) — hitting the 120 cap under sustained multi-category
+// pressure like that would take roughly 900 ticks (60 * 120/8), i.e. many
+// hours of continuous, unattended real-time play with every policy firing
+// repeatedly. That is a legitimate, if rare, long-session scenario, and a
+// dropped report in this system is not merely cosmetic the way an evicted
+// log line is: `crisis` reports default to `critical` priority and exist
+// specifically to flag a live, unresolved emergency the player has NOT yet
+// acknowledged (see `docs/PHASE_20_REPORT_SYSTEM.md`'s crisis-report
+// rationale) — silently losing one is a real information-loss bug, not an
+// aesthetic one, so this got a minimal, targeted fix rather than "document
+// and move on":
+//
+// capReports() below still drops oldest-first up to MAX_REPORTS, but any
+// unacknowledged `critical`-priority report that would otherwise be dropped
+// is preserved past the cap instead, up to a hard ceiling of
+// MAX_REPORTS_WITH_PRESERVED_CRITICAL (140) total — so a determined player
+// who never opens the inbox still can't grow the array unboundedly (an
+// unbounded critical carve-out would just move the "silently unbounded
+// growth" problem from "any report" to "critical reports", not eliminate
+// it). Once a preserved critical report is acknowledged, it becomes a normal
+// old entry again and ages out on the next cap pass like everything else.
+// This is intentionally NOT full priority-aware retention (e.g. reordering
+// by priority, or protecting `high` too) — see this PR's report for why a
+// broader scheme would be over-engineering for what is still a rare edge
+// case; only the one case with real information-loss consequences
+// (unacknowledged critical) gets special handling.
 const MAX_REPORTS = 120;
+const MAX_REPORTS_WITH_PRESERVED_CRITICAL = 140;
+
+// Applies the retention policy described above to a newest-first `reports`
+// array. Used by both addReport() and the persist `merge` (mergeReports())
+// so the two call sites can't drift — a persisted save that somehow exceeds
+// the cap (e.g. a hand-edited save, or a future lower cap) gets exactly the
+// same preserved-critical treatment a live addReport() overflow would.
+function capReports(reports) {
+  if (reports.length <= MAX_REPORTS) return reports;
+  const kept = reports.slice(0, MAX_REPORTS);
+  const overflow = reports.slice(MAX_REPORTS);
+  const preservedCritical = overflow.filter((entry) => entry.priority === "critical" && !entry.acknowledged);
+  if (preservedCritical.length === 0) return kept;
+  const budget = MAX_REPORTS_WITH_PRESERVED_CRITICAL - kept.length;
+  return budget > 0 ? [...kept, ...preservedCritical.slice(0, budget)] : kept;
+}
 
 let idCounter = 0;
 function createReportId() {
@@ -73,10 +115,7 @@ function normalizeReport(entry, { forceUnseen = false } = {}) {
 // hand-edited save has more than the current limit).
 function mergeReports(savedReports) {
   if (!Array.isArray(savedReports)) return [];
-  return savedReports
-    .map((entry) => normalizeReport(entry))
-    .filter((entry) => entry !== null)
-    .slice(0, MAX_REPORTS);
+  return capReports(savedReports.map((entry) => normalizeReport(entry)).filter((entry) => entry !== null));
 }
 
 export const useReportStore = create(
@@ -93,7 +132,7 @@ export const useReportStore = create(
       // ordering, then the array is capped at MAX_REPORTS.
       addReport: (report = {}) =>
         set((state) => ({
-          reports: [normalizeReport(report, { forceUnseen: true }), ...state.reports].slice(0, MAX_REPORTS),
+          reports: capReports([normalizeReport(report, { forceUnseen: true }), ...state.reports]),
         })),
 
       markRead: (id) =>
