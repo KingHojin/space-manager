@@ -10,10 +10,15 @@ export default function StatsModal() {
   const cards = useInventoryStore((state) => state.cards);
   const activeCardIds = useInventoryStore((state) => state.activeCardIds);
   const activeCards = cards.filter((card) => activeCardIds.includes(card.instanceId));
+  // Bug-fix round 21: statLabel includes "cooking", but the 4 starter crew in
+  // data/crew.js only define piloting/gunnery/engineering/medicine/scouting —
+  // `acc[key] += member.stats[key]` with an undefined stat produced NaN for
+  // the 조리 total on every fresh game (0 + undefined = NaN, and NaN then
+  // poisons every later add). Missing stats count as 0 instead.
   const totals = crew.reduce(
     (acc, member) => {
       Object.keys(statLabel).forEach((key) => {
-        acc[key] += member.stats[key];
+        acc[key] += member.stats?.[key] ?? 0;
       });
       return acc;
     },

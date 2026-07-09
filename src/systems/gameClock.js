@@ -1,7 +1,6 @@
 import { useEffect } from "react";
 import { DECODE_RULES, DUST, GAME_TIME } from "../data/constants";
 import { getRoomDef } from "../data/shipRooms";
-import { getZoneById } from "../data/sectors";
 import { statLabel } from "../utils/format";
 import { getActiveModifiers } from "./cardEffects";
 import { getCrisisLabel } from "./crisisSystem";
@@ -578,9 +577,16 @@ export const useGameClock = () => {
       useGameStore.getState().advanceMinutes(minutes);
       processTimedJobs(minutes);
       const node = useNavStore.getState().sector.nodes.find((entry) => entry.id === useNavStore.getState().currentNodeId);
-      const legacyZone = getZoneById(useExplorationStore.getState().currentZoneId);
       const collector = useShipStore.getState().modules.find((module) => module.id === "dust-collector");
-      const richness = node?.richness ?? legacyZone?.richness ?? 1;
+      // node is always resolvable here — currentNodeId is initialized from and
+      // kept in sync with sector.nodes by navStore (see navStore.js
+      // arriveNode/generateSector/merge) — so the ?? 1 fallback below only
+      // guards richness ever being nullish on a node, not a missing node. This
+      // used to also fall back to explorationStore.getZoneById(currentZoneId),
+      // a dead field frozen at "anchor-station" since Phase 18-C (see
+      // docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰"); that fallback never actually
+      // fired since node was always found, so it has been removed as dead code.
+      const richness = node?.richness ?? 1;
       const dustMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).dustCollectionMult;
       const dustRate = DUST.BASE_COLLECTION_PER_HOUR * (collector?.level || 1) * richness * dustMult;
       useInventoryStore.getState().addDust((dustRate * minutes) / 60);
