@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CREW_NEEDS } from "../data/constants";
 import { initialCrew } from "../data/crew";
+import { DEFAULT_CREW_TRAIT_IDS, normalizeCrewTraitIds } from "../data/crewTraits";
 import { generateCrewActivities, CREW_AI_INTERVAL } from "../systems/crewAI";
 import {
   applyInjury,
@@ -73,6 +74,7 @@ function normalizeCrew(member) {
     fatigue: member.fatigue ?? base.fatigue ?? 0,
     experience: member.experience ?? base.experience ?? 0,
     trait: member.trait ?? base.trait ?? "일반 대원",
+    personalityTraitIds: normalizeCrewTraitIds(member.personalityTraitIds, base.personalityTraitIds ?? DEFAULT_CREW_TRAIT_IDS[member.id]),
     injury: normalizeInjury(member.injury ?? base.injury),
     needs: normalizeNeeds({ ...(base.needs ?? DEFAULT_NEEDS), ...(member.needs ?? {}) }),
     stats: { ...(base.stats ?? {}), ...(member.stats ?? {}) },

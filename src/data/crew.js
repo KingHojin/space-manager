@@ -8,6 +8,7 @@ export const initialCrew = [
     fatigue: 12,
     experience: 0,
     trait: "침착한 지휘관",
+    personalityTraitIds: ["steady_hand", "by_the_book"],
     stats: { piloting: 14, gunnery: 8, engineering: 9, medicine: 6, scouting: 12 },
   },
   {
@@ -19,6 +20,7 @@ export const initialCrew = [
     fatigue: 18,
     experience: 0,
     trait: "집중 사격",
+    personalityTraitIds: ["hotshot", "steady_hand"],
     stats: { piloting: 7, gunnery: 15, engineering: 8, medicine: 5, scouting: 9 },
   },
   {
@@ -30,6 +32,7 @@ export const initialCrew = [
     fatigue: 16,
     experience: 0,
     trait: "응급 정비",
+    personalityTraitIds: ["grease_soul", "curious_mind"],
     stats: { piloting: 8, gunnery: 7, engineering: 16, medicine: 8, scouting: 10 },
   },
   {
@@ -41,6 +44,7 @@ export const initialCrew = [
     fatigue: 10,
     experience: 0,
     trait: "냉정한 처치",
+    personalityTraitIds: ["caretaker", "by_the_book"],
     stats: { piloting: 6, gunnery: 6, engineering: 9, medicine: 15, scouting: 11 },
   },
 ];
