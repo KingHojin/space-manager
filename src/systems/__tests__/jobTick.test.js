@@ -24,6 +24,12 @@ describe("tickJobs", () => {
     expect(results[0].progress).toBeCloseTo(0.3);
   });
 
+  it("uses effectiveDuration when mood-adjusted job timing is present", () => {
+    const jobs = [{ id: "a", status: "in_progress", progress: 0, duration: 100, effectiveDuration: 80 }];
+    const { results } = tickJobs(jobs, 40);
+    expect(results.find((entry) => entry.kind === "progress").progress).toBeCloseTo(0.5);
+  });
+
   it("emits a complete result (in addition to progress) once progress reaches 1", () => {
     const jobs = [{ id: "a", status: "in_progress", progress: 0.95, duration: 100, effects: ["reward"] }];
     const { results } = tickJobs(jobs, 10);

@@ -29,8 +29,19 @@ Implemented first:
 - No reports generated from traits.
 - No crew AI priority changes.
 
+### 21-B — Mood model and small work effects ✅
+
+Gameplay-affecting, but intentionally small.
+
+Implemented after 21-A:
+
+- `src/systems/crewMood.js` derives a mood band from existing needs/fatigue data without adding a new persist store.
+- Mood work multipliers stay inside the planned small band: inspired x1.12, steady x1.00, strained x0.94, low x0.88.
+- Queued jobs receive an `effectiveDuration` when they start, based on the assigned crew member's mood multiplier.
+- Room-work scoring and room-work progress use the same mood multiplier through crew AI activity `speedMultiplier`.
+- Crew AI priority order is unchanged; mood only affects work math after an activity/job is already selected.
+
 ## Next slices
 
-- **21-B**: mood model and small work-speed/room-work multipliers.
 - **21-C**: relationship state and small relation-based efficiency penalties.
 - **21-D**: UI polish plus reports for mood drops or relationship conflicts.

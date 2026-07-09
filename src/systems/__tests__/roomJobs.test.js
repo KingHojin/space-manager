@@ -100,6 +100,14 @@ describe("scoreJobForMember", () => {
     expect(matching).toBeGreaterThan(nonMatching);
   });
 
+  it("applies mood as a small multiplier to room-work scoring", () => {
+    const room = baseRoom();
+    const job = getRoomJob("engineering");
+    const inspired = scoreJobForMember(member({ fatigue: 0, needs: { mood: 95, hunger: 0, stress: 0, sleepDebt: 0, hygiene: 100 } }), room, job);
+    const strained = scoreJobForMember(member({ fatigue: 0, needs: { mood: 30, hunger: 70, stress: 75, sleepDebt: 65, hygiene: 35 } }), room, job);
+    expect(inspired).toBeGreaterThan(strained);
+  });
+
   it("penalizes higher fatigue with a lower score", () => {
     const room = baseRoom();
     const job = getRoomJob("engineering");

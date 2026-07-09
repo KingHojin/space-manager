@@ -1,6 +1,7 @@
 import { ROOM_IDS } from "../data/shipRooms";
 import { calculateRoomModifiers } from "../data/roomModules";
 import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
+import { getMoodWorkMultiplier } from "./crewMood";
 import { WEAR } from "../data/constants";
 
 export const ROOM_CONDITION_DECAY_PER_HOUR = WEAR.conditionDecayPerHour;
@@ -89,6 +90,7 @@ export function scoreJobForMember(member, room, job, context = {}) {
   if (room.id === "galley" && context.hasHungryCrew) score += 24;
   if (supportRoom && ((room.condition ?? 100) < 70 || (room.load ?? 0) > 40)) score += 14;
   score *= injuryWorkSpeedMultiplier(member.injury);
+  score *= getMoodWorkMultiplier(member);
   score *= calculateRoomModifiers(room).jobSpeedMul;
   return score;
 }

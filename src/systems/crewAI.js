@@ -1,6 +1,7 @@
 import { ROOMS } from "../data/shipRooms";
 import { getCrisisConfig, getCrisisLabel, getCrisisResponderSlots, scoreCrisisForMember } from "./crisisSystem";
 import { canWorkWithInjury, chooseTreatmentTarget, injuryActivityPriority, injuryLabel, injuryWorkSpeedMultiplier, isHealthy, isSeriousOrWorse } from "./injurySystem";
+import { getMoodWorkMultiplier } from "./crewMood";
 import { comparePriorityTasks, getPriorityConfig, normalizePriority } from "./priorities";
 import { pickRoomJobsForIdleCrew } from "./roomJobs";
 
@@ -387,7 +388,7 @@ export function generateCrewActivities({ crew = [], queues = {}, snapshot = {}, 
     if (roomAssignment) {
       const room = (snapshot.rooms ?? {})[roomAssignment.roomId];
       const roomLabel = ROOM_LABELS[roomAssignment.roomId] ?? roomAssignment.roomId;
-      return { memberId: member.id, station: roomLabel, action: roomAssignment.action, intent: "room-job", priority: room ? roomJobPriority(room) : "normal", detail: isHealthy(member.injury) ? "방 작업" : `${injuryLabel(member.injury)} · 효율 저하`, roomId: roomAssignment.roomId, jobId: roomAssignment.jobId, speedMultiplier: injuryWorkSpeedMultiplier(member.injury), updatedAt: currentMinute };
+      return { memberId: member.id, station: roomLabel, action: roomAssignment.action, intent: "room-job", priority: room ? roomJobPriority(room) : "normal", detail: isHealthy(member.injury) ? "방 작업" : `${injuryLabel(member.injury)} · 효율 저하`, roomId: roomAssignment.roomId, jobId: roomAssignment.jobId, speedMultiplier: injuryWorkSpeedMultiplier(member.injury) * getMoodWorkMultiplier(member), updatedAt: currentMinute };
     }
 
     const roleDefault = ROLE_DEFAULTS[member.role];

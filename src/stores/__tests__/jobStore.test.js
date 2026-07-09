@@ -40,6 +40,21 @@ describe("jobStore.cancelJobsForCrew", () => {
     expect(useJobStore.getState().rooms.living.currentLoad).toBe(0);
   });
 
+  it("sets a mood-adjusted effective duration when a job starts", () => {
+    const job = inProgressJob({ id: "job-mood", status: "assigned", assignedCrewId: "crew-inspired", arrivalAt: 0, duration: 112, startedAt: null, payload: { targetCrewId: "crew-inspired" } });
+    useJobStore.setState({ jobs: [job] });
+
+    useJobStore.getState().runScheduler({
+      currentMinute: 10,
+      crew: [{ id: "crew-inspired", alive: true, role: "함교", fatigue: 0, injury: "healthy", needs: { mood: 95, hunger: 0, stress: 0, sleepDebt: 0, hygiene: 100 } }],
+    });
+
+    const started = useJobStore.getState().jobs.find((entry) => entry.id === "job-mood");
+    expect(started.status).toBe("in_progress");
+    expect(started.moodWorkMultiplier).toBe(1.12);
+    expect(started.effectiveDuration).toBe(100);
+  });
+
   it("also cancels backlog and assigned jobs for the crew member (unlike cancelJob, which refuses in_progress)", () => {
     const jobs = [
       inProgressJob({ id: "job-backlog", memberId: "crew-b", status: "backlog", assignedCrewId: null, startedAt: null }),
