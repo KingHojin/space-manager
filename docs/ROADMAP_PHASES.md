@@ -1,5 +1,9 @@
 # Space Manager phased roadmap
 
+> **먼저 `docs/PROJECT_GUIDE.md`(마스터 안내서)를 읽으세요** — 최종 목표·현재 상태·앞으로 할 일·
+> 개선점·아키텍처 규칙이 한 곳에 정리돼 있습니다. 이 로드맵은 그 하위 참고 문서입니다.
+> (아래 Phase 5~7 항목은 초기 계획 시점 기준이라 실제 구현 순서/내용과 다를 수 있음 — 실제 완료 현황은 PROJECT_GUIDE §6 참조.)
+
 ## Phase 1 — FM Command Center
 Status: base implementation complete
 
