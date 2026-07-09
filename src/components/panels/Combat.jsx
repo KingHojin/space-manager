@@ -15,7 +15,6 @@ import {
   resolveCombatRound,
 } from "../../systems/combatEngine";
 import { DUST } from "../../data/constants";
-import { getAllZones } from "../../data/sectors";
 import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
 import { buildCombatReport } from "../../systems/reportSystem";
 import { useCombatStore } from "../../stores/combatStore";
@@ -194,8 +193,9 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
-  const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const activeTravel = useNavStore((state) => state.travel);
+  const navSector = useNavStore((state) => state.sector);
+  const navDiscovered = useNavStore((state) => state.discovered ?? []);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const clearPendingCombatEncounter = useExplorationStore((state) => state.clearPendingCombatEncounter);
   const currentMinute = useGameStore((state) => state.currentMinute);
@@ -223,7 +223,13 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const tacticalBonus = useMemo(() => calculateTacticalCrewBonus({ crew: activeCrew, assignments: tacticalAssignments }), [activeCrew, tacticalAssignments]);
   const activeCards = useMemo(() => cards.filter((card) => activeCardIds.includes(card.instanceId)), [cards, activeCardIds]);
   const power = calculateCombatPower({ modules: installedModules, crew, activeCards });
-  const maxDanger = Math.max(1, ...getAllZones().filter((zone) => discoveredZoneIds.includes(zone.id)).map((zone) => zone.danger));
+  // Live danger ceiling — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the old
+  // explorationStore.discoveredZoneIds is a dead field frozen at its initial
+  // value (["anchor-station", "blue-drift"], danger 1/2) since Phase 18-C, so
+  // this used to always feed pickEnemyFleet(danger) a fixed ceiling of 2
+  // regardless of actual exploration progress. navStore's sector/discovered
+  // reflect the real, currently-updating navigation state.
+  const maxDanger = Math.max(1, ...(navSector?.nodes ?? []).filter((node) => navDiscovered.includes(node.id)).map((node) => node.danger));
   const combatEngaged = combat?.status === "engaged";
   const combatTerminal = Boolean(combat && ["won", "retreated", "lost"].includes(combat.status));
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter && !combatEngaged);

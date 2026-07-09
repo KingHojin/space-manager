@@ -1,5 +1,4 @@
 import { Compass, Crosshair, Home, Menu as MenuIcon, Rocket } from "lucide-react";
-import { getAllZones } from "../../data/sectors";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useNavStore } from "../../stores/navStore";
 import { getUnreadCount, useReportStore } from "../../stores/reportStore";
@@ -13,7 +12,6 @@ const tabItems = [
 ];
 
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
-  const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
   const activeTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   // pendingTravelEvent is a save-compat-only read of the removed legacy travel
@@ -21,9 +19,15 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
   // old save happens to carry a stale value; nothing writes it going forward.
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const sector = useNavStore((state) => state.sector);
+  const discovered = useNavStore((state) => state.discovered ?? []);
   const reports = useReportStore((state) => state.reports);
   const unreadReportCount = getUnreadCount(reports);
-  const hasHighDangerZone = getAllZones().some((zone) => discoveredZoneIds.includes(zone.id) && zone.danger >= 4);
+  // Live danger check — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the old
+  // explorationStore.discoveredZoneIds/data/sectors.js getAllZones() combo is
+  // a dead, frozen-at-startup zone catalog unrelated to navStore's
+  // procedurally generated sector. Checking the actual discovered nodes here.
+  const hasHighDangerZone = (sector?.nodes ?? []).some((node) => discovered.includes(node.id) && node.danger >= 4);
 
   const handleTab = (item) => {
     if (item.id === "combat" && activeTravel && !pendingCombatEncounter) return;

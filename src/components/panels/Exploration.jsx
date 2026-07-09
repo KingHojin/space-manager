@@ -11,6 +11,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
+import { useRecruitStore } from "../../stores/recruitStore";
 import { useShipStore } from "../../stores/shipStore";
 import { createCombatState, pickEnemyFleet } from "../../systems/combatEngine";
 import { explorationBlockLabel, explorationFuelCost } from "../../systems/explorationRules";
@@ -127,7 +128,13 @@ export default function Exploration({ onNavigate }) {
   const discovered = useNavStore((state) => state.discovered ?? []);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
   const driftState = useNavStore((state) => state.driftState);
-  const recruitCandidates = useNavStore((state) => state.recruitCandidates ?? []);
+  // Bug-fix round 21: recruitStore.candidatePool is the live candidate list
+  // (addCandidate/removeCandidate/recruitFromCandidate all maintain it, and
+  // Menu.jsx's badge already reads it). navStore.recruitCandidates is a
+  // write-only mirror — addRecruitCandidate only ever grows it and nothing
+  // ever removes an entry, so the "영입 후보 N명" count here permanently
+  // diverged upward the moment a candidate was recruited or dismissed.
+  const recruitCandidates = useRecruitStore((state) => state.candidatePool ?? []);
   const navLog = useNavStore((state) => state.navLog ?? []);
   const selectNode = useNavStore((state) => state.selectNode);
   const planRoute = useNavStore((state) => state.planRoute);

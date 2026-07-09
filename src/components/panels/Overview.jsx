@@ -7,6 +7,7 @@ import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { getReportCategory } from "../../data/reports";
 import { useContractStore } from "../../stores/contractStore";
 import { useCrewStore } from "../../stores/crewStore";
+import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
@@ -194,6 +195,13 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const navFuel = useNavStore((state) => state.fuel);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
   const selectNode = useNavStore((state) => state.selectNode);
+  // Bug-fix round 21: pendingCombatEncounter (긴급 전투 플래그, a LIVE field —
+  // see docs/NEXT_CHAT_HANDOFF.md) used to be hardcoded to `null` in the
+  // getShipStatus/getSituationCards calls below, so the home screen's status
+  // chip and situation-card feed could never show the "긴급 교전" critical
+  // alert even though commandCenter.js has dedicated branches for it and
+  // BottomDock/Combat already read the same flag.
+  const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const zones = sector.nodes.map(nodeToZone);
   const shipName = useGameStore((state) => state.shipName);
   const resources = useGameStore((state) => state.resources);
@@ -224,12 +232,12 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const cargoUsed = items.reduce((sum, item) => sum + Math.max(0, item.qty ?? 0), 0) * 8 + cards.length * 2;
   const topItems = items.filter((item) => item.qty > 0).slice(0, 5);
   const travelProgress = navTravel ? Math.max(0, Math.min(100, ((currentMinute - navTravel.startedAt) / Math.max(1, navTravel.duration)) * 100)) : 0;
-  const shipStatus = getShipStatus({ resources, activeTravel: navTravel, pendingTravelEvent: pendingEncounter, pendingCombatEncounter: null, activeCrises });
+  const shipStatus = getShipStatus({ resources, activeTravel: navTravel, pendingTravelEvent: pendingEncounter, pendingCombatEncounter, activeCrises });
   const queuedWorkCount = trainingQueue.length + treatmentQueue.length + installationQueue.length;
   const tiredCrewCount = crew.filter((member) => member.alive && (member.fatigue ?? 0) >= 70).length;
   const injuredCrewCount = crew.filter((member) => member.alive && isInjured(member.injury)).length;
   const crewAiSummary = summarizeCrewAI(crewActivities);
-  const situations = getSituationCards({ resources, activeTravel: navTravel, pendingTravelEvent: pendingEncounter, pendingCombatEncounter: null, crew, trainingQueue, treatmentQueue, installationQueue, skillPoints, activeContracts, nextContracts, travelProgress, currentMinute, rooms: Object.values(rooms), activeCrises });
+  const situations = getSituationCards({ resources, activeTravel: navTravel, pendingTravelEvent: pendingEncounter, pendingCombatEncounter, crew, trainingQueue, treatmentQueue, installationQueue, skillPoints, activeContracts, nextContracts, travelProgress, currentMinute, rooms: Object.values(rooms), activeCrises });
   const situationSummary = summarizeSituations(situations);
   const topSituation = situations[0];
   const signals = getFrontierSignals({ currentMinute, discoveredCount: discovered.length, dangerCount: sector.nodes.filter((node) => discovered.includes(node.id) && node.danger >= 4).length, activeContracts: activeContracts.length });

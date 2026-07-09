@@ -18,13 +18,12 @@ import {
   Users,
 } from "lucide-react";
 import { contracts } from "../../data/contracts";
-import { getAllZones } from "../../data/sectors";
 import { useContractStore } from "../../stores/contractStore";
 import { useCrewStore } from "../../stores/crewStore";
-import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
+import { useNavStore } from "../../stores/navStore";
 import { useRecruitStore } from "../../stores/recruitStore";
 import { getUnreadCount, useReportStore } from "../../stores/reportStore";
 import { useShipStore } from "../../stores/shipStore";
@@ -32,12 +31,17 @@ import { useSkillStore } from "../../stores/skillStore";
 import { number } from "../../utils/format";
 
 const STORAGE_KEY_PREFIX = "space-manager";
+// Architecture rule 5 (docs/NEXT_CHAT_HANDOFF.md): every persist store's
+// storage key must be listed here AND in SaveLoadModal.jsx's knownSaveKeys.
+// Pinned by stores/__tests__/persistKnownKeys.test.js.
 const KNOWN_STORAGE_KEYS = [
   "space-manager-game",
   "space-manager-crew",
   "space-manager-ship",
   "space-manager-inventory",
   "space-manager-exploration",
+  "space-manager-factions",
+  "space-manager-combat",
   "space-manager-jobs",
   "space-manager-nav",
   "space-manager-ship-interior",
@@ -98,15 +102,20 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
   const boardsByScopeId = useMissionStore((state) => state.boardsByScopeId);
-  const discoveredZoneIds = useExplorationStore((state) => state.discoveredZoneIds);
-  const scannedZoneIds = useExplorationStore((state) => state.scannedZoneIds);
+  // Live navigation stats — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the
+  // old explorationStore.discoveredZoneIds/scannedZoneIds are dead fields
+  // frozen at their initial values (never updated after Phase 18-C). navStore's
+  // sector/discovered/visited are the real, currently-updating navigation state.
+  const sector = useNavStore((state) => state.sector);
+  const discovered = useNavStore((state) => state.discovered ?? []);
+  const visited = useNavStore((state) => state.visited ?? []);
   const reports = useReportStore((state) => state.reports);
   const unreadReportCount = getUnreadCount(reports);
   const itemCount = items.filter((item) => item.qty > 0).length;
   const activeContracts = contracts.filter((contract) => acceptedIds.includes(contract.id));
   const nextContracts = contracts.filter((contract) => !completedIds.includes(contract.id) && !acceptedIds.includes(contract.id));
-  const totalZones = getAllZones().length;
-  const exploredPercent = Math.round((discoveredZoneIds.length / Math.max(1, totalZones)) * 100);
+  const totalZones = sector?.nodes?.length ?? 0;
+  const exploredPercent = Math.round((discovered.length / Math.max(1, totalZones)) * 100);
   const offeredMissionCount = Object.values(boardsByScopeId ?? {}).reduce((sum, board) => sum + (board.missions?.length ?? 0), 0);
   const menuBadges = {
     missions: activeMission ? "진행 중" : offeredMissionCount > 0 ? `임무 ${offeredMissionCount}` : "신규",
@@ -142,8 +151,8 @@ export default function Menu({ onNavigate, onOpenModal }) {
         </div>
         <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
           <Status label="크레딧" value={`₢ ${number(resources.credits)}`} />
-          <Status label="구역" value={`${discoveredZoneIds.length}/${totalZones}`} />
-          <Status label="스캔" value={scannedZoneIds.length} />
+          <Status label="구역" value={`${discovered.length}/${totalZones}`} />
+          <Status label="스캔" value={visited.length} />
         </div>
       </section>
       <section>

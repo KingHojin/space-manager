@@ -3,6 +3,12 @@ import { useGameStore } from "../../stores/gameStore";
 
 const STORAGE_KEY_PREFIX = "space-manager";
 
+// Architecture rule 5 (docs/NEXT_CHAT_HANDOFF.md): every persist store's
+// storage key (`name:` in src/stores/*.js) must be listed here AND in
+// Menu.jsx's KNOWN_STORAGE_KEYS. The runtime prefix scan below usually
+// covers omissions, but this list is the only fallback when localStorage
+// enumeration is unavailable, and it documents the full save surface.
+// Pinned by stores/__tests__/persistKnownKeys.test.js.
 const knownSaveKeys = [
   "space-manager-game",
   "space-manager-ship",
@@ -10,6 +16,7 @@ const knownSaveKeys = [
   "space-manager-inventory",
   "space-manager-exploration",
   "space-manager-factions",
+  "space-manager-combat",
   "space-manager-contracts",
   "space-manager-skills",
   "space-manager-jobs",
