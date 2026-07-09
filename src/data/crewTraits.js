@@ -51,7 +51,11 @@ export const DEFAULT_CREW_TRAIT_IDS = {
 export function normalizeCrewTraitIds(traitIds = [], fallbackIds = []) {
   const ids = Array.isArray(traitIds) ? traitIds : [];
   const fallback = Array.isArray(fallbackIds) ? fallbackIds : [];
-  const unique = [...ids, ...fallback].filter((id, index, list) => CREW_TRAITS[id] && list.indexOf(id) === index);
+  const source = ids.length > 0 ? ids : fallback;
+  const unique = [];
+  source.forEach((id) => {
+    if (CREW_TRAITS[id] && !unique.includes(id)) unique.push(id);
+  });
   return unique.slice(0, 3);
 }
 
