@@ -28,4 +28,27 @@ describe("crewStore Phase 21-A personality traits", () => {
     const stored = useCrewStore.getState().crew.find((member) => member.id === id);
     expect(stored.personalityTraitIds).toEqual(["steady_hand", "curious_mind"]);
   });
+  it("updates relationship affinity when crew AI places living crew in the same room", () => {
+    const original = useCrewStore.getState();
+    useCrewStore.setState({
+      ...original,
+      crew: [
+        { id: "rel-a", name: "A", alive: true, role: "함교", fatigue: 0, injury: "healthy", needs: { hunger: 0, mood: 90, stress: 0, sleepDebt: 0, hygiene: 100 }, stats: {} },
+        { id: "rel-b", name: "B", alive: true, role: "포탑", fatigue: 0, injury: "healthy", needs: { hunger: 0, mood: 90, stress: 0, sleepDebt: 0, hygiene: 100 }, stats: {} },
+      ],
+      crewActivities: [],
+      relationships: {},
+      lastCrewAiAt: null,
+    });
+
+    useCrewStore.getState().runCrewAI({
+      currentMinute: 10,
+      rooms: { living: { id: "living", condition: 10, load: 90, activeCrisisId: null, assignedMemberIds: [], tier: 3, modules: [] } },
+      activeCrises: [],
+    });
+
+    expect(useCrewStore.getState().relationships["rel-a::rel-b"]?.affinity).toBeGreaterThan(0);
+    useCrewStore.setState(original, true);
+  });
+
 });

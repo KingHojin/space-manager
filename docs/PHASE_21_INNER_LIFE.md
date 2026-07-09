@@ -41,7 +41,18 @@ Implemented after 21-A:
 - Room-work scoring and room-work progress use the same mood multiplier through crew AI activity `speedMultiplier`.
 - Crew AI priority order is unchanged; mood only affects work math after an activity/job is already selected.
 
+### 21-C — Relationship state foundation ✅
+
+Persisted relationship state, no reports yet.
+
+Implemented after 21-B:
+
+- `src/systems/crewRelations.js` keeps relationship logic pure and pair-keyed.
+- `crewStore.relationships` is normalized during save merge and updated from structured crew activities when crew share rooms.
+- Dining/living-space co-location grows affinity slightly faster than ordinary room co-location.
+- No log parsing and no new persist store key are introduced.
+
 ## Next slices
 
-- **21-C**: relationship state and small relation-based efficiency penalties.
+- **21-C follow-up**: relation-based efficiency penalties for friction pairs during shared work.
 - **21-D**: UI polish plus reports for mood drops or relationship conflicts.
