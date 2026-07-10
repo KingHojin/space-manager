@@ -1,0 +1,307 @@
+:root {
+  --ui-card: rgb(255 255 255 / 0.045);
+  --ui-card-hover: rgb(255 255 255 / 0.075);
+  --ui-card-selected: rgb(10 132 255 / 0.13);
+  --ui-card-border: rgb(255 255 255 / 0.085);
+  --ui-card-border-hover: rgb(255 255 255 / 0.15);
+}
+
+.app-content {
+  container-type: inline-size;
+}
+
+.app-content > :where(div, section) {
+  min-width: 0;
+}
+
+.app-content section {
+  overflow-x: auto;
+}
+
+.app-content .ship-deck-section {
+  overflow: hidden;
+}
+
+.app-content section section {
+  border-color: var(--ui-card-border);
+  background: rgb(255 255 255 / 0.025);
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+/* Normalize the large amount of legacy Tailwind card chrome without touching
+   semantic red/amber/green states. This layer is intentionally scoped to the
+   content canvas and loaded after all feature styles. */
+.app-content :where(.rounded-2xl, .rounded-xl, .rounded-lg, .rounded)[class*="border-slate-700"] {
+  border-color: var(--ui-card-border) !important;
+}
+
+.app-content :where(.rounded-2xl, .rounded-xl, .rounded-lg, .rounded)[class*="bg-slate-950"] {
+  background-color: var(--ui-card) !important;
+  background-image: none !important;
+}
+
+.app-content button:where(.rounded-2xl, .rounded-xl, .rounded-lg, .rounded)[class*="border-slate-700"]:hover:not(:disabled) {
+  border-color: var(--ui-card-border-hover) !important;
+  background-color: var(--ui-card-hover) !important;
+  box-shadow: 0 12px 30px rgb(0 0 0 / 0.16);
+}
+
+.app-content :where(h1, h2, h3, h4) {
+  letter-spacing: -0.025em;
+}
+
+.app-content .font-black {
+  font-weight: 720;
+}
+
+.app-content .text-slate-500 {
+  color: var(--ui-text-tertiary);
+}
+
+.app-content .text-slate-400 {
+  color: var(--ui-text-secondary);
+}
+
+.ui-stat-tile,
+.ui-action-card,
+.ui-feed-item,
+.ui-task-row,
+.ui-empty-state {
+  border: 1px solid var(--ui-card-border);
+  background: var(--ui-card);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.025);
+}
+
+.ui-stat-tile {
+  min-height: 104px;
+  border-radius: 16px;
+  padding: 14px;
+  text-align: left;
+}
+
+.ui-stat-icon {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 10px;
+  background: rgb(10 132 255 / 0.11);
+}
+
+.ui-stat-value {
+  margin-top: 14px;
+  color: var(--ui-text);
+  font-size: 1.18rem;
+  font-weight: 720;
+  letter-spacing: -0.03em;
+}
+
+.ui-stat-label {
+  margin-top: 2px;
+  color: var(--ui-text-tertiary);
+  font-size: 0.72rem;
+}
+
+.ui-gauge-row {
+  display: grid;
+  gap: 6px;
+}
+
+.ui-gauge-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.75rem;
+}
+
+.ui-gauge-label {
+  color: var(--ui-text-secondary);
+}
+
+.ui-gauge-value {
+  color: var(--ui-text);
+  font-weight: 670;
+  font-variant-numeric: tabular-nums;
+}
+
+.ui-action-card {
+  display: flex;
+  min-height: 132px;
+  flex-direction: column;
+  border-radius: 17px;
+  padding: 14px;
+  text-align: left;
+  transition: transform 160ms ease, background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
+}
+
+.ui-action-card:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: rgb(10 132 255 / 0.32);
+  background: linear-gradient(180deg, rgb(10 132 255 / 0.1), var(--ui-card));
+  box-shadow: 0 14px 34px rgb(0 0 0 / 0.18);
+}
+
+.ui-action-card-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid rgb(10 132 255 / 0.18);
+  border-radius: 12px;
+  background: rgb(10 132 255 / 0.1);
+  color: #8ec7ff;
+  font-size: 1.1rem;
+}
+
+.ui-action-card-title {
+  margin-top: auto;
+  padding-top: 14px;
+  color: var(--ui-text);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ui-action-card-desc {
+  margin-top: 4px;
+  color: var(--ui-text-secondary);
+  font-size: 0.75rem;
+  line-height: 1.45;
+}
+
+.ui-feed-list {
+  display: grid;
+  gap: 7px;
+}
+
+.ui-feed-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  border-radius: 13px;
+  padding: 10px 12px;
+  color: #d1d1d6;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
+
+.ui-feed-marker {
+  margin-top: 0.35rem;
+  width: 5px;
+  height: 5px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--ui-text-tertiary);
+}
+
+.ui-feed-item:first-child .ui-feed-marker {
+  background: var(--ui-blue);
+  box-shadow: 0 0 0 4px rgb(10 132 255 / 0.1);
+}
+
+.ui-task-row {
+  border-radius: 15px;
+  padding: 13px;
+}
+
+.ui-task-icon {
+  display: grid;
+  width: 40px;
+  height: 40px;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid var(--ui-card-border);
+  border-radius: 11px;
+  background: rgb(255 255 255 / 0.045);
+}
+
+.ui-task-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.ui-empty-state {
+  border-radius: 15px;
+  padding: 18px;
+  color: var(--ui-text-secondary);
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+/* Mission visuals become subordinate to the actual decision and reward data. */
+.mission-poster {
+  border-color: var(--ui-card-border);
+  box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.035);
+}
+
+.mission-poster-grid {
+  opacity: 0.42;
+}
+
+.mission-poster-emblem,
+.mission-poster-label,
+.mission-poster-route {
+  border-color: var(--ui-card-border-hover);
+  background: rgb(19 21 26 / 0.66);
+  backdrop-filter: blur(12px);
+}
+
+.mission-stat-tile,
+.mission-reward-icon,
+.mission-step {
+  border-color: var(--ui-card-border);
+  background: var(--ui-card);
+}
+
+.mission-step-done {
+  border-color: rgb(48 209 88 / 0.25);
+  background: rgb(48 209 88 / 0.1);
+  color: #8ce99f;
+}
+
+.mission-step-active {
+  border-color: rgb(10 132 255 / 0.3);
+  background: rgb(10 132 255 / 0.12);
+  color: #9dceff;
+}
+
+/* Dense diagnostic tables should visually recede behind current decisions. */
+.data-table {
+  font-size: 0.8rem;
+}
+
+.data-table th {
+  color: var(--ui-text-tertiary);
+  font-weight: 620;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.data-table td {
+  color: #d1d1d6;
+}
+
+@container (max-width: 560px) {
+  .ui-stat-tile {
+    min-height: 92px;
+    padding: 11px;
+  }
+
+  .ui-action-card {
+    min-height: 118px;
+    padding: 12px;
+  }
+
+  .ui-task-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ui-action-card,
+  .app-content button {
+    transform: none !important;
+  }
+}
