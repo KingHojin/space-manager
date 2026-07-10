@@ -25,9 +25,9 @@ function TaskRow({ task, currentMinute, onNavigate, onCyclePriority }) {
   const priority = getPriorityConfig(task.priority);
 
   return (
-    <div className={`rounded border p-3 text-left ${task.tone}`}>
+    <div className={`ui-task-row ${task.tone}`}>
       <div className="flex items-start gap-3">
-        <div className="grid h-10 w-10 shrink-0 place-items-center rounded border border-white/10 bg-slate-950/50">
+        <div className="ui-task-icon">
           <Icon size={18} />
         </div>
         <div className="min-w-0 flex-1">
@@ -42,10 +42,10 @@ function TaskRow({ task, currentMinute, onNavigate, onCyclePriority }) {
             </div>
           </div>
 
-          <div className="mt-3">
-            <div className="mb-1 flex items-center justify-between text-xs">
-              <span className="hud-label">진행률</span>
-              <span className="hud-value">{progress}%</span>
+          <div className="mt-3 ui-gauge-row">
+            <div className="ui-gauge-meta">
+              <span className="ui-gauge-label">진행률</span>
+              <span className="ui-gauge-value">{progress}%</span>
             </div>
             <div className="hud-gauge">
               <span className="hud-gauge-fill" style={{ width: `${progress}%` }} />
@@ -57,9 +57,9 @@ function TaskRow({ task, currentMinute, onNavigate, onCyclePriority }) {
             <span className="hud-chip">완료 {formatGameDate(task.completeAt)}</span>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button className="secondary-button min-h-8 text-xs" onClick={() => onNavigate?.(task.targetPanel)}>관리 화면</button>
-            <button className="secondary-button min-h-8 text-xs" onClick={() => onCyclePriority?.(task)}>우선순위 변경</button>
+          <div className="ui-task-actions mt-3">
+            <button className="secondary-button text-xs" onClick={() => onNavigate?.(task.targetPanel)}>관리 화면</button>
+            <button className="secondary-button text-xs" onClick={() => onCyclePriority?.(task)}>우선순위 변경</button>
           </div>
         </div>
       </div>
@@ -73,8 +73,6 @@ export default function TaskQueuePanel({ onNavigate }) {
   const crew = useCrewStore((state) => state.crew);
   const rawJobs = useJobStore((state) => state.jobs);
   const setJobPriority = useJobStore((state) => state.setJobPriority);
-  // Panel shows only jobs actively being worked (assigned/in_progress) — backlog
-  // jobs (not yet crewed) have no meaningful startedAt/progress to render here.
   const trainingQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTraining).filter((task) => task.status !== "backlog"), [rawJobs]);
   const treatmentQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTreatment).filter((task) => task.status !== "backlog"), [rawJobs]);
   const installationQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyModuleWork).filter((task) => task.status !== "backlog"), [rawJobs]);
@@ -141,7 +139,7 @@ export default function TaskQueuePanel({ onNavigate }) {
   return (
     <section>
       <div className="flex items-center justify-between gap-3">
-        <div className="section-title"><Clock3 size={18} />진행 중 작업 큐</div>
+        <div className="section-title"><Clock3 size={18} />진행 중 작업</div>
         <div className="flex gap-1.5">
           <span className={`hud-chip ${tasks.length > 0 ? "hud-chip-accent" : ""}`}>{tasks.length}건</span>
           {tasks.length > 0 && <span className="hud-chip hud-chip-warn">최우선 {topPriority}</span>}
@@ -149,8 +147,8 @@ export default function TaskQueuePanel({ onNavigate }) {
       </div>
 
       {tasks.length === 0 ? (
-        <div className="mt-3 rounded border border-slate-700/70 bg-slate-950/60 p-4 text-sm leading-6 text-slate-400">
-          현재 진행 중인 훈련, 치료, 장착, 개선 작업이 없습니다. 승무원/함선 메뉴에서 새 작업을 예약하면 이곳에 표시됩니다.
+        <div className="ui-empty-state mt-3">
+          현재 진행 중인 훈련, 치료, 장착, 개선 작업이 없습니다. 승무원 또는 함선 화면에서 새 작업을 예약하면 이곳에 표시됩니다.
         </div>
       ) : (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
