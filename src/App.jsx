@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Header from "./components/layout/Header";
 import Sidebar from "./components/layout/Sidebar";
 import NewsTicker from "./components/layout/NewsTicker";
@@ -22,7 +22,11 @@ import LogModal from "./components/modals/LogModal";
 import SaveLoadModal from "./components/modals/SaveLoadModal";
 import PolicyModal from "./components/modals/PolicyModal";
 import ReportsModal from "./components/modals/ReportsModal";
+import GameOverOverlay from "./components/modals/GameOverOverlay";
+import { evaluateGameOver } from "./systems/gameOverSystem";
 import { useGameClock } from "./systems/gameClock";
+import { useCrewStore } from "./stores/crewStore";
+import { useGameStore } from "./stores/gameStore";
 
 const panels = {
   overview: { title: "홈", component: Overview },
@@ -62,10 +66,20 @@ export default function App() {
   useGameClock();
   const [activePanel, setActivePanel] = useState("overview");
   const [activeModal, setActiveModal] = useState(null);
+  const resources = useGameStore((state) => state.resources);
+  const gameOver = useGameStore((state) => state.gameOver);
+  const triggerGameOver = useGameStore((state) => state.triggerGameOver);
+  const crew = useCrewStore((state) => state.crew);
   const Panel = panels[activePanel].component;
   const modal = useMemo(() => (activeModal ? modals[activeModal] : null), [activeModal]);
   const ModalContent = modal?.component;
   const showPanelTitle = activePanel !== "overview";
+
+  useEffect(() => {
+    if (gameOver) return;
+    const cause = evaluateGameOver({ resources, crew });
+    if (cause) triggerGameOver(cause);
+  }, [crew, gameOver, resources, triggerGameOver]);
 
   const changePanel = (panelId) => {
     const nextPanel = normalizePanelId(panelId);
@@ -104,6 +118,7 @@ export default function App() {
           <ModalContent onNavigate={navigateFromModal} onOpenModal={setActiveModal} />
         </OverlayModal>
       )}
+      <GameOverOverlay gameOver={gameOver} />
     </div>
   );
 }
