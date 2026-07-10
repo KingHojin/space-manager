@@ -14,19 +14,12 @@ const tabItems = [
 export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) {
   const activeTravel = useNavStore((state) => state.travel);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
-  // pendingTravelEvent is a save-compat-only read of the removed legacy travel
-  // system (see stores/explorationStore.js) — kept so a badge still shows if an
-  // old save happens to carry a stale value; nothing writes it going forward.
   const pendingTravelEvent = useExplorationStore((state) => state.pendingTravelEvent);
   const navPendingEncounter = useNavStore((state) => state.pendingEncounter);
   const sector = useNavStore((state) => state.sector);
   const discovered = useNavStore((state) => state.discovered ?? []);
   const reports = useReportStore((state) => state.reports);
   const unreadReportCount = getUnreadCount(reports);
-  // Live danger check — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the old
-  // explorationStore.discoveredZoneIds/data/sectors.js getAllZones() combo is
-  // a dead, frozen-at-startup zone catalog unrelated to navStore's
-  // procedurally generated sector. Checking the actual discovered nodes here.
   const hasHighDangerZone = (sector?.nodes ?? []).some((node) => discovered.includes(node.id) && node.danger >= 4);
 
   const handleTab = (item) => {
@@ -39,29 +32,32 @@ export default function BottomDock({ activePanel, onChangePanel, onOpenModal }) 
   };
 
   return (
-    <div className="grid grid-cols-5 gap-1 border-t border-slate-700/80 bg-slate-950 px-2 pt-1.5 lg:hidden" style={{ paddingBottom: "max(0.375rem, env(safe-area-inset-bottom))" }}>
-      {tabItems.map((item) => {
-        const Icon = item.icon;
-        const active = activePanel === item.id;
-        const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
-        const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
-        // Phase 20-C: an unread report also lights up the same "메뉴" tab dot
-        // as a pending travel event/encounter — both mean "something needs
-        // your attention in the menu" rather than being a distinct signal
-        // worth its own indicator, so this reuses the existing dot instead of
-        // adding a second one that would fight for the same corner.
-        const menuAlert = item.id === "command" && Boolean(pendingTravelEvent || navPendingEncounter || unreadReportCount > 0);
-        return (
-          <button key={item.id} className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`} onClick={() => handleTab(item)} disabled={locked}>
-            <span className="relative inline-flex">
-              <Icon size={18} />
-              {item.id === "combat" && (urgent || hasHighDangerZone) && <span className={`absolute -top-0.5 -right-0.5 h-1.5 w-1.5 rounded-full ${urgent ? "bg-red-400 animate-pulse" : "bg-red-500"}`} />}
-              {menuAlert && <span className="absolute -top-0.5 -right-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />}
-            </span>
-            <span>{locked ? "잠김" : urgent ? "긴급" : menuAlert ? "대응" : item.label}</span>
-          </button>
-        );
-      })}
+    <div className="mobile-dock-shell lg:hidden">
+      <nav className="mobile-dock" aria-label="모바일 주요 화면">
+        {tabItems.map((item) => {
+          const Icon = item.icon;
+          const active = activePanel === item.id;
+          const locked = item.id === "combat" && activeTravel && !pendingCombatEncounter;
+          const urgent = item.id === "combat" && Boolean(pendingCombatEncounter);
+          const menuAlert = item.id === "command" && Boolean(pendingTravelEvent || navPendingEncounter || unreadReportCount > 0);
+          return (
+            <button
+              key={item.id}
+              className={`hud-tab-button ${active ? "hud-tab-button-active" : ""} ${locked ? "opacity-45" : ""}`}
+              onClick={() => handleTab(item)}
+              disabled={locked}
+              aria-current={active ? "page" : undefined}
+            >
+              <span className="relative inline-flex">
+                <Icon size={19} />
+                {item.id === "combat" && (urgent || hasHighDangerZone) && <span className={`absolute -right-0.5 -top-0.5 h-1.5 w-1.5 rounded-full ${urgent ? "animate-pulse bg-red-400" : "bg-red-500"}`} />}
+                {menuAlert && <span className="absolute -right-0.5 -top-0.5 h-1.5 w-1.5 animate-pulse rounded-full bg-amber-300" />}
+              </span>
+              <span>{locked ? "잠김" : urgent ? "긴급" : menuAlert ? "대응" : item.label}</span>
+            </button>
+          );
+        })}
+      </nav>
     </div>
   );
 }
