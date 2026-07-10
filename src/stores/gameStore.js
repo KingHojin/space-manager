@@ -55,12 +55,23 @@ export const useGameStore = create(
       isPaused: true,
       speed: 1,
       resources: normalizeResources(),
+      gameOver: null,
       lastLowResourceWarningAt: null,
       logs: ["우주력 2377년 3월 12일 14:20, 헬리오스 외연에서 항해를 시작했습니다."],
       news: ["항해 준비 완료. 스페이스바로 시간을 시작할 수 있습니다."],
-      togglePause: () => set((state) => ({ isPaused: !state.isPaused })),
-      setPaused: (isPaused) => set({ isPaused }),
-      cycleSpeed: () => set((state) => ({ speed: state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1 })),
+      togglePause: () => set((state) => (state.gameOver ? state : { isPaused: !state.isPaused })),
+      setPaused: (isPaused) => set((state) => (state.gameOver && !isPaused ? state : { isPaused })),
+      cycleSpeed: () => set((state) => (state.gameOver ? state : { speed: state.speed === 1 ? 2 : state.speed === 2 ? 4 : 1 })),
+      triggerGameOver: (cause) => {
+        if (!cause || get().gameOver) return false;
+        set((state) => ({
+          gameOver: { cause, atMinute: state.currentMinute },
+          isPaused: true,
+          logs: [`항해 종료: ${cause}.`, ...state.logs].slice(0, 80),
+          news: [`항해 종료: ${cause}.`, ...state.news].slice(0, 8),
+        }));
+        return true;
+      },
       addLog: (message) =>
         set((state) => ({
           logs: [message, ...state.logs].slice(0, 80),
@@ -95,6 +106,7 @@ export const useGameStore = create(
       },
       repairHull: (amount) => set((state) => ({ resources: { ...state.resources, hull: clampResource("hull", state.resources.hull + amount) } })),
       advanceMinutes: (minutes) => {
+        if (get().gameOver) return;
         const hours = minutes / 60;
         const mods = getActiveModifiers(useInventoryStore.getState().getActiveCards());
         set((state) => ({
@@ -117,6 +129,7 @@ export const useGameStore = create(
           isPaused: true,
           speed: 1,
           resources: normalizeResources(),
+          gameOver: null,
           lastLowResourceWarningAt: null,
           logs: ["새 항해 기록이 생성되었습니다."],
           news: ["새 게임이 시작되었습니다."],
@@ -130,6 +143,7 @@ export const useGameStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         resources: normalizeResources(persistedState?.resources ?? currentState.resources),
+        gameOver: persistedState?.gameOver ?? null,
         lastLowResourceWarningAt: persistedState?.lastLowResourceWarningAt ?? null,
       }),
     },
