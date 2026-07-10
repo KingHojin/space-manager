@@ -1,22 +1,24 @@
 import { Activity, ChefHat, Eye, FlaskConical, Leaf, Package, Radar, Radio, Shield, Utensils, Wrench } from "lucide-react";
 
+// Percentage coordinates are shared by the visual deck, crew anchors, and route
+// waypoints. Room ids and graph semantics are intentionally unchanged.
 export const ROOMS = [
-  { id: "bridge", label: "브릿지", icon: Radar, left: 39, top: 6, width: 22, height: 15, tone: "border-cyan-300/45 bg-cyan-300/10" },
-  { id: "ops", label: "관제실", icon: Radar, left: 10, top: 30, width: 23, height: 18, tone: "border-sky-300/35 bg-sky-300/10" },
-  { id: "medbay", label: "의무실", icon: Activity, left: 67, top: 30, width: 23, height: 18, tone: "border-emerald-300/35 bg-emerald-300/10" },
-  { id: "living", label: "생활구역", icon: Utensils, left: 8, top: 63, width: 19, height: 20, tone: "border-indigo-300/35 bg-indigo-300/10" },
-  { id: "galley", label: "식당/조리실", icon: ChefHat, left: 30, top: 63, width: 19, height: 20, tone: "border-orange-300/35 bg-orange-300/10" },
-  { id: "engineering", label: "기관실", icon: Wrench, left: 52, top: 63, width: 19, height: 20, tone: "border-amber-300/35 bg-amber-300/10" },
-  { id: "cargo", label: "창고", icon: Package, left: 74, top: 63, width: 18, height: 20, tone: "border-violet-300/35 bg-violet-300/10" },
+  { id: "bridge", label: "브릿지", icon: Radar, left: 40, top: 5, width: 20, height: 15, tone: "border-cyan-300/45 bg-cyan-300/10" },
+  { id: "ops", label: "관제실", icon: Radar, left: 20, top: 27, width: 24, height: 16, tone: "border-sky-300/35 bg-sky-300/10" },
+  { id: "medbay", label: "의무실", icon: Activity, left: 56, top: 27, width: 24, height: 16, tone: "border-emerald-300/35 bg-emerald-300/10" },
+  { id: "living", label: "생활구역", icon: Utensils, left: 18, top: 49, width: 24, height: 16, tone: "border-indigo-300/35 bg-indigo-300/10" },
+  { id: "galley", label: "식당/조리실", icon: ChefHat, left: 44, top: 49, width: 20, height: 16, tone: "border-orange-300/35 bg-orange-300/10" },
+  { id: "engineering", label: "기관실", icon: Wrench, left: 38, top: 71, width: 24, height: 17, tone: "border-amber-300/35 bg-amber-300/10" },
+  { id: "cargo", label: "창고", icon: Package, left: 64, top: 71, width: 20, height: 17, tone: "border-violet-300/35 bg-violet-300/10" },
 ];
 
 export const AUX_ZONES = [
-  { id: "armory", label: "무기고", icon: Shield, left: 10, top: 51, width: 23, height: 9, tone: "border-red-300/30 bg-red-300/10", decorative: true, tag: "AUX" },
-  { id: "lab", label: "연구실", icon: FlaskConical, left: 39, top: 24, width: 22, height: 12, tone: "border-fuchsia-300/30 bg-fuchsia-300/10", decorative: true, tag: "AUX" },
-  { id: "observatory", label: "관측돔", icon: Eye, left: 67, top: 51, width: 23, height: 9, tone: "border-blue-300/30 bg-blue-300/10", decorative: true, tag: "AUX" },
-  { id: "hydroponics", label: "수경재배실", icon: Leaf, left: 10, top: 85, width: 23, height: 8, tone: "border-lime-300/30 bg-lime-300/10", decorative: true, tag: "LIFE" },
-  { id: "comms", label: "통신실", icon: Radio, left: 39, top: 38, width: 22, height: 12, tone: "border-cyan-200/30 bg-cyan-200/10", decorative: true, tag: "AUX" },
-  { id: "survey-bay", label: "탐사 베이", icon: Package, left: 67, top: 85, width: 23, height: 8, tone: "border-teal-300/30 bg-teal-300/10", decorative: true, tag: "BAY" },
+  { id: "armory", label: "무기고", icon: Shield, left: 7, top: 29, width: 10, height: 14, tone: "border-red-300/30 bg-red-300/10", decorative: true, tag: "AUX" },
+  { id: "lab", label: "연구실", icon: FlaskConical, left: 45, top: 25, width: 10, height: 12, tone: "border-fuchsia-300/30 bg-fuchsia-300/10", decorative: true, tag: "AUX" },
+  { id: "observatory", label: "관측돔", icon: Eye, left: 83, top: 29, width: 10, height: 14, tone: "border-blue-300/30 bg-blue-300/10", decorative: true, tag: "AUX" },
+  { id: "hydroponics", label: "수경재배", icon: Leaf, left: 7, top: 51, width: 9, height: 16, tone: "border-lime-300/30 bg-lime-300/10", decorative: true, tag: "LIFE" },
+  { id: "comms", label: "통신실", icon: Radio, left: 45, top: 39, width: 10, height: 8, tone: "border-cyan-200/30 bg-cyan-200/10", decorative: true, tag: "AUX" },
+  { id: "survey-bay", label: "탐사 베이", icon: Package, left: 87, top: 69, width: 8, height: 17, tone: "border-teal-300/30 bg-teal-300/10", decorative: true, tag: "BAY" },
 ];
 
 export const DISPLAY_ROOMS = [...ROOMS, ...AUX_ZONES];
@@ -38,7 +40,7 @@ export const DISPLAY_ROUTES = [
   ["bridge", "lab"],
   ["bridge", "comms"],
   ["medbay", "observatory"],
-  ["galley", "hydroponics"],
+  ["living", "hydroponics"],
   ["cargo", "survey-bay"],
 ];
 
