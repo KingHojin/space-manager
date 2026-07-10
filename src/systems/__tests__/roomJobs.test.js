@@ -169,6 +169,18 @@ describe("applyRoomTick", () => {
     expect(logs.some((line) => line.includes("완료"))).toBe(true);
   });
 
+
+  it("applies friction penalties when conflicted crew share the same room job", () => {
+    const rooms = { engineering: baseRoom({ condition: 50, load: 50, progress: 0, tier: 3 }) };
+    const roomActivities = { engineering: [
+      { memberId: "a", roomId: "engineering", jobId: "engineering-tuning", speedMultiplier: 1 },
+      { memberId: "b", roomId: "engineering", jobId: "engineering-tuning", speedMultiplier: 1 },
+    ] };
+    const neutral = applyRoomTick({ rooms, roomActivities, deltaMinutes: 10, currentMinute: 10 }).nextRooms.engineering.progress;
+    const friction = applyRoomTick({ rooms, roomActivities, deltaMinutes: 10, currentMinute: 10, relationships: { "a::b": { crewIds: ["a", "b"], affinity: -60, band: "friction" } } }).nextRooms.engineering.progress;
+    expect(friction).toBeLessThan(neutral);
+  });
+
   it("resets progress/assignment and grows load faster while a crisis is active", () => {
     const rooms = { engineering: baseRoom({ condition: 80, load: 20, progress: 40, jobId: "engineering-tuning", assignedMemberIds: ["m1"], activeCrisisId: "crisis-1" }) };
     const { nextRooms } = applyRoomTick({ rooms, roomActivities: {}, deltaMinutes: 60, currentMinute: 60 });

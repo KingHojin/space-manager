@@ -33,6 +33,16 @@ export function normalizeRelationships(relationships = {}) {
   );
 }
 
+export function getRelationshipWorkMultiplier(memberId, peerIds = [], relationships = {}) {
+  const normalized = normalizeRelationships(relationships);
+  const bands = peerIds
+    .filter((peerId) => peerId && peerId !== memberId)
+    .map((peerId) => normalized[pairKey(memberId, peerId)]?.band ?? "neutral");
+  if (bands.includes("friction")) return 0.9;
+  if (bands.includes("close")) return 1.04;
+  return 1;
+}
+
 function groupedByRoom(activities = []) {
   const groups = new Map();
   activities.forEach((activity) => {

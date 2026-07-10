@@ -51,8 +51,8 @@ Implemented after 21-B:
 - `crewStore.relationships` is normalized during save merge and updated from structured crew activities when crew share rooms.
 - Dining/living-space co-location grows affinity slightly faster than ordinary room co-location.
 - No log parsing and no new persist store key are introduced.
+- Friction pairs apply a small x0.90 shared-room work penalty; close pairs apply a small x1.04 shared-room work bonus.
 
 ## Next slices
 
-- **21-C follow-up**: relation-based efficiency penalties for friction pairs during shared work.
 - **21-D**: UI polish plus reports for mood drops or relationship conflicts.

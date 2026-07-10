@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRelationships, pairKey, relationshipBand, updateRelationshipsFromActivities } from "../crewRelations";
+import { getRelationshipWorkMultiplier, normalizeRelationships, pairKey, relationshipBand, updateRelationshipsFromActivities } from "../crewRelations";
 
 describe("crew relationships", () => {
   it("creates stable sorted pair keys and bands affinity", () => {
@@ -11,6 +11,17 @@ describe("crew relationships", () => {
 
   it("normalizes saved relationship maps defensively", () => {
     expect(normalizeRelationships({ "b::a": { affinity: 200 } })).toEqual({ "a::b": { crewIds: ["a", "b"], affinity: 100, band: "close", lastSeenAt: null } });
+  });
+
+
+  it("returns small shared-work multipliers from relationship bands", () => {
+    const relationships = {
+      "a::b": { crewIds: ["a", "b"], affinity: -50, band: "friction" },
+      "a::c": { crewIds: ["a", "c"], affinity: 50, band: "close" },
+    };
+    expect(getRelationshipWorkMultiplier("a", ["a", "b"], relationships)).toBe(0.9);
+    expect(getRelationshipWorkMultiplier("a", ["a", "c"], relationships)).toBe(1.04);
+    expect(getRelationshipWorkMultiplier("a", ["a", "d"], relationships)).toBe(1);
   });
 
   it("updates affinity for living crew sharing the same room", () => {
