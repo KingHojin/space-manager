@@ -93,20 +93,20 @@ export default function App() {
   };
 
   return (
-    <div className="app-shell flex h-dvh flex-col overflow-hidden bg-slate-950 text-slate-100">
+    <div className="app-shell apple-app-shell flex h-dvh flex-col overflow-hidden text-slate-100">
       <Header />
-      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 lg:grid-cols-[14rem_minmax(0,1fr)]">
-        <div className="hidden lg:block">
+      <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-1 lg:grid-cols-[15.5rem_minmax(0,1fr)]">
+        <div className="app-sidebar-wrap hidden min-h-0 lg:block">
           <Sidebar activePanel={activePanel} onChange={changePanel} onOpenModal={setActiveModal} />
         </div>
-        <main className={`grid min-h-0 grid-cols-1 bg-slate-900 ${showPanelTitle ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]"}`}>
+        <main className={`app-main grid min-h-0 grid-cols-1 overflow-hidden lg:mb-3 lg:mr-3 lg:mt-3 lg:rounded-[22px] ${showPanelTitle ? "grid-rows-[auto_minmax(0,1fr)_auto]" : "grid-rows-[minmax(0,1fr)_auto]"}`}>
           {showPanelTitle && (
-            <div className="border-b border-slate-700/80 bg-slate-900 px-4 py-3 sm:px-5">
-              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-300">Space Manager</div>
-              <h2 className="mt-1 text-xl font-bold text-slate-50 sm:text-2xl">{panels[activePanel].title}</h2>
+            <div className="app-page-header px-4 py-3 sm:px-6 sm:py-4">
+              <div className="app-page-eyebrow">Space Manager</div>
+              <h2 className="app-page-title mt-1">{panels[activePanel].title}</h2>
             </div>
           )}
-          <div className="min-h-0 overflow-auto p-3 sm:p-4">
+          <div className="app-content min-h-0 overflow-auto p-3 sm:p-5">
             <Panel onNavigate={changePanel} onOpenModal={setActiveModal} />
           </div>
           <NewsTicker onOpenLog={() => setActiveModal("log")} />
