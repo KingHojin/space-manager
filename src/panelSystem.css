@@ -15,7 +15,11 @@
 }
 
 .app-content section {
-  overflow-x: clip;
+  overflow-x: auto;
+}
+
+.app-content .ship-deck-section {
+  overflow: hidden;
 }
 
 .app-content section section {
