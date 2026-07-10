@@ -20,14 +20,22 @@ export default function GameOverOverlay({ gameOver }) {
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
     const frame = window.requestAnimationFrame(() => restartRef.current?.focus());
+    const keepFocusInside = (event) => {
+      if (event.key !== "Tab") return;
+      event.preventDefault();
+      restartRef.current?.focus();
+    };
+    window.addEventListener("keydown", keepFocusInside);
     return () => {
       window.cancelAnimationFrame(frame);
+      window.removeEventListener("keydown", keepFocusInside);
       document.body.style.overflow = previousOverflow;
     };
   }, [gameOver]);
 
   if (!gameOver) return null;
   const cause = getGameOverCause(gameOver.cause);
+  const endedAt = Number.isFinite(gameOver.atMinute) ? formatGameDate(gameOver.atMinute) : "기록 없음";
 
   return (
     <div className="game-over-backdrop fixed inset-0 z-[100] grid place-items-center p-4 backdrop-blur-sm">
@@ -45,7 +53,7 @@ export default function GameOverOverlay({ gameOver }) {
         <h1 id={titleId} className="mt-2 text-3xl font-black text-white">{cause.title}</h1>
         <p id={descriptionId} className="mt-3 text-sm leading-6 text-slate-300">{cause.summary}</p>
         <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.035] p-4 text-left text-sm text-slate-300">
-          <div className="flex justify-between gap-4"><span>종료 시각</span><strong className="text-slate-100">{formatGameDate(gameOver.atMinute)}</strong></div>
+          <div className="flex justify-between gap-4"><span>종료 시각</span><strong className="text-slate-100">{endedAt}</strong></div>
           <div className="mt-2 flex justify-between gap-4"><span>종료 원인</span><strong className="text-red-200">{cause.title}</strong></div>
         </div>
         <button ref={restartRef} className="primary-button mt-6 flex w-full items-center justify-center gap-2" onClick={clearGameSaves}>
