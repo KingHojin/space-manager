@@ -30,6 +30,26 @@ export const NAVIGATION_TRAVEL = {
   discoveryRadiusSteps: 1,
 };
 
+// Phase 22-B's first expedition is a campaign milestone, not the eventual
+// ceiling for fleet progression. Later fleet campaigns can add new expedition
+// definitions without changing the live navigation/save shape introduced here.
+export const CAMPAIGN = {
+  EXPEDITION_ID: "first-frontier",
+  EXPEDITION_LABEL: "1차 개척 원정",
+  EXPEDITION_SECTORS: 5,
+  BASE_REQUIRED_FIELD_VISITS: 3,
+  MAX_REQUIRED_FIELD_VISITS: 5,
+  BASE_DANGER_THRESHOLD: 3,
+  MAX_DANGER_THRESHOLD: 5,
+  MAX_NODE_DANGER: 7,
+  MAX_NODE_RICHNESS: 7,
+  BASE_GATE_REWARD_CREDITS: 240,
+  REWARD_MULTIPLIER_PER_SECTOR: 0.2,
+  READY_FUEL: 35,
+  READY_HULL: 50,
+  READY_CREW: 3,
+};
+
 export const CREW_NEEDS = {
   HUNGER_PER_HOUR: 1.6,
   MOOD_DECAY_PER_HOUR: 0.35,
@@ -192,6 +212,9 @@ export const DRIFT = {
   HULL_LOSS_PER_HOUR: 0.35,
   CRISIS_ROLL_PER_HOUR: 0.18,
   RESCUE_CHECK_MINUTES: 180,
+  RESCUE_CREDIT_COST: 360,
+  RESCUE_FUEL: 25,
+  RESCUE_LIMIT_PER_SECTOR: 1,
 };
 
 export const DUST = {

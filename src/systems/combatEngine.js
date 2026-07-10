@@ -75,9 +75,14 @@ export const calculateCombatPower = ({ modules, crew, activeCards }) => {
   return Math.max(1, Math.round((modulePower + crewPower) * cardBonus));
 };
 
-export function pickEnemyFleet(danger = 2) {
-  const pool = ENEMY_FLEETS.filter((fleet) => fleet.risk <= Math.max(2, danger + 1));
-  return pool[Math.floor(Math.random() * pool.length)] ?? ENEMY_FLEETS[0];
+export function pickEnemyFleet(danger = 2, options = {}) {
+  const maxRisk = Math.min(Math.max(2, danger + 1), options.maxRisk ?? 7);
+  const pool = ENEMY_FLEETS.filter((fleet) => fleet.risk <= maxRisk);
+  const selected = pool[Math.floor(Math.random() * pool.length)] ?? ENEMY_FLEETS[0];
+  const rewardMultiplier = Math.max(1, options.rewardMultiplier ?? 1);
+  return rewardMultiplier === 1
+    ? selected
+    : { ...selected, baseReward: selected.reward, reward: Math.round(selected.reward * rewardMultiplier) };
 }
 
 function normalizeSubsystems(subsystems = {}) {

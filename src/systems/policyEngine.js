@@ -244,6 +244,10 @@ function optionHasCombatOutcome(option) {
   return (option?.outcome ?? []).some((effect) => effect?.kind === "combat");
 }
 
+function optionRequiresManualChoice(option) {
+  return Boolean(option?.manualOnly || (option?.outcome ?? []).some((effect) => effect?.manualOnly));
+}
+
 // Sums a single encounter option's outcome effects into { risk, reward }
 // scalars, per the weighting scheme documented above the *_WEIGHTS
 // constants. Never called on an option that contains a `combat` effect —
@@ -302,7 +306,7 @@ function evaluateEncounterDefaultChoice(policyState, encounter, pendingCombatEnc
 
   const stance = policyState.params?.stance ?? DEFAULT_ENCOUNTER_STANCE;
   const options = encounter.options ?? [];
-  const candidates = options.filter((option) => !optionHasCombatOutcome(option));
+  const candidates = options.filter((option) => !optionHasCombatOutcome(option) && !optionRequiresManualChoice(option));
 
   if (candidates.length === 0) {
     return {

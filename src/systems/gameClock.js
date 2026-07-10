@@ -9,11 +9,14 @@ import { jobToLegacyShipWork } from "./jobMigration";
 import { evaluatePolicies } from "./policyEngine";
 import { buildCrisisReport, buildPolicyReport, buildWorkReport } from "./reportSystem";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
+import { applyFuelDelta } from "./fuelSystem";
 import { useCrewStore } from "../stores/crewStore";
+import { useCombatStore } from "../stores/combatStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
 import { useJobStore } from "../stores/jobStore";
+import { useMissionStore } from "../stores/missionStore";
 import { useNavStore } from "../stores/navStore";
 import { usePolicyStore } from "../stores/policyStore";
 import { useRecruitStore } from "../stores/recruitStore";
@@ -44,8 +47,7 @@ function applyNavEffect(effect, currentMinute) {
   if (!effect) return;
   if (effect.kind === "resource" && effect.delta) useGameStore.getState().addResources(effect.delta);
   if (effect.kind === "fuel" && effect.delta) {
-    useNavStore.getState().refuel(effect.delta);
-    useGameStore.getState().addResources({ fuel: effect.delta });
+    applyFuelDelta(effect.delta);
     if (effect.delta < 0 && useNavStore.getState().fuel <= 0 && !useNavStore.getState().driftState) {
       const drift = useNavStore.getState().enterDrift(currentMinute, "fuel_loss_event");
       drift.effects.forEach((nested) => applyNavEffect(nested, currentMinute));
@@ -89,6 +91,10 @@ function applyNavEffect(effect, currentMinute) {
     useExplorationStore.getState().setPendingCombatEncounter({ id: effect.enemyId, title: "미확인 적성 함선 접촉", enemyId: effect.enemyId, fallback: true });
     useGameStore.getState().addLog(`교전 조우 기록: ${effect.enemyId}. Phase 11 전까지 전투는 텍스트 폴백으로 보관됩니다.`);
   }
+  if (effect.kind === "campaignComplete") {
+    useGameStore.getState().setPaused(true);
+    useGameStore.getState().addLog(`원정 완주 기록: ${effect.sectorsCleared ?? 0}개 섹터 항로 개척. 장기 함대 캠페인의 첫 이정표를 달성했습니다.`);
+  }
   if (effect.kind === "log" && effect.message) useGameStore.getState().addLog(effect.message);
 }
 
@@ -101,11 +107,53 @@ function processNavigation(currentMinute, deltaMinutes) {
   driftResult.logs.forEach((message) => useGameStore.getState().addLog(`표류: ${message}`));
 }
 
-export function applyNavigationEncounter(optionId, currentMinute = useGameStore.getState().currentMinute) {
-  const { effects, logs } = useNavStore.getState().resolveEncounter(optionId);
+function gateTransitBlockReason() {
+  const vesselId = useShipStore.getState().activeVesselId;
+  const missionState = useMissionStore.getState();
+  const combat = useCombatStore.getState().combatByVesselId?.[vesselId];
+  if (missionState.activeByVesselId?.[vesselId]) return "활성 임무를 완료하거나 포기해야 관문을 통과할 수 있습니다.";
+  if (missionState.pendingMissionEncountersByVesselId?.[vesselId]) return "대기 중인 임무 조우를 먼저 해결해야 합니다.";
+  if (combat?.status === "engaged") return "진행 중인 전투를 먼저 끝내야 합니다.";
+  if (useExplorationStore.getState().pendingCombatEncounter) return "대기 중인 긴급 교전을 먼저 해결해야 합니다.";
+  return null;
+}
+
+export function applyNavigationEncounter(optionId, currentMinute = useGameStore.getState().currentMinute, context = {}) {
+  const encounter = useNavStore.getState().pendingEncounter;
+  const option = encounter?.options?.find((entry) => entry.id === optionId) ?? encounter?.options?.[0];
+  const isGateTransit = (option?.outcome ?? []).some((effect) => effect.kind === "nextSector");
+  const blockReason = isGateTransit ? (context.manual ? gateTransitBlockReason() : "관문 통과는 함장의 수동 결재가 필요합니다.") : null;
+  const creditCost = (option?.outcome ?? []).reduce((sum, effect) => {
+    const credits = effect.kind === "resource" ? effect.delta?.credits ?? 0 : 0;
+    return sum + Math.max(0, -credits);
+  }, 0);
+  if (creditCost > useGameStore.getState().resources.credits) {
+    const logs = [`결재 실패: 크레딧이 부족합니다. 필요 ₢${creditCost}.`];
+    logs.forEach((message) => useGameStore.getState().addLog(`항해 조우: ${message}`));
+    return { ok: false, reason: "insufficientCredits", effects: [], logs };
+  }
+  const { effects, logs } = useNavStore.getState().resolveEncounter(optionId, currentMinute, {
+    allowGateTransit: !isGateTransit || !blockReason,
+    gateBlockReason: blockReason,
+  });
   effects.forEach((effect) => applyNavEffect(effect, currentMinute));
   logs.forEach((message) => useGameStore.getState().addLog(`항해 조우: ${message}`));
-  return { effects, logs };
+  return { ok: true, effects, logs };
+}
+
+export function requestDriftRescue(currentMinute = useGameStore.getState().currentMinute) {
+  const nav = useNavStore.getState();
+  const quote = nav.getRescueQuote(currentMinute);
+  if (!quote.ok) return quote;
+  if (!useGameStore.getState().spendCredits(quote.cost)) return { ...quote, ok: false, reason: "insufficientCredits" };
+  const result = useNavStore.getState().requestRescue(currentMinute);
+  if (!result.ok) {
+    useGameStore.getState().addResource("credits", quote.cost);
+    return result;
+  }
+  useGameStore.getState().setPaused(false);
+  useGameStore.getState().addLog(`구조 계약 체결: ₢${quote.cost} 선결제 · ${quote.delayMinutes}분 후 구조선 도착 · 비상 연료 +${quote.fuel}.`);
+  return { ok: true, ...quote, rescue: result.rescue };
 }
 
 // Orchestration wrapper around crewStore.applyCombatCasualty: crewStore
@@ -538,6 +586,10 @@ function migrateLegacyJobsOnce() {
 }
 
 export function processTimedJobs(deltaMinutes = 0) {
+  if (useNavStore.getState().campaign?.status === "completed") {
+    useGameStore.getState().setPaused(true);
+    return { blocked: true, reason: "campaignCompleted" };
+  }
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
   processJobScheduler(currentMinute);

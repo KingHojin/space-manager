@@ -18,11 +18,13 @@ import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { getCrewActivity, getFrontierSignals, getShipStatus, getSituationCards, PRIORITY_LABEL, PRIORITY_TONE, summarizeSituations } from "../../systems/commandCenter";
+import { getSectorObjective } from "../../systems/campaignProgression";
 import { summarizeCrewAI } from "../../systems/crewAI";
 import { applyNavigationEncounter, formatGameDate } from "../../systems/gameClock";
 import { isInjured } from "../../systems/injurySystem";
 import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
-import { nodeToZone, routeDistance } from "../../systems/navigationSystem";
+import { findRoute, nodeToZone, routeDistance } from "../../systems/navigationSystem";
+import CampaignObjectiveCard from "../common/CampaignObjectiveCard";
 import StarMap from "../exploration/LazyStarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
 import ShipInterior from "../ship/ShipInterior";
@@ -154,7 +156,7 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
   const travel = useNavStore((state) => state.travel);
-  const fuel = useNavStore((state) => state.fuel);
+  const fuel = useGameStore((state) => state.resources.fuel);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
   const driftState = useNavStore((state) => state.driftState);
   const selectNode = useNavStore((state) => state.selectNode);
@@ -166,7 +168,7 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const travelProgress = travel ? Math.max(0, Math.min(100, ((currentMinute - travel.startedAt) / Math.max(1, travel.duration)) * 100)) : 0;
 
   if (pendingEncounter) {
-    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => applyNavigationEncounter(option.id, currentMinute)}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}</div></section>;
+    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => applyNavigationEncounter(option.id, currentMinute, { manual: true })}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}</div></section>;
   }
 
   if (travel) {
@@ -190,9 +192,11 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
   const discovered = useNavStore((state) => state.discovered ?? EMPTY_ARRAY);
+  const visited = useNavStore((state) => state.visited ?? EMPTY_ARRAY);
+  const sectorIndex = useNavStore((state) => state.sectorIndex ?? 0);
+  const campaign = useNavStore((state) => state.campaign);
   const navRoute = useNavStore((state) => state.route ?? EMPTY_ARRAY);
   const navTravel = useNavStore((state) => state.travel);
-  const navFuel = useNavStore((state) => state.fuel);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
   const selectNode = useNavStore((state) => state.selectNode);
   // Bug-fix round 21: pendingCombatEncounter (긴급 전투 플래그, a LIVE field —
@@ -205,6 +209,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const zones = sector.nodes.map(nodeToZone);
   const shipName = useGameStore((state) => state.shipName);
   const resources = useGameStore((state) => state.resources);
+  const navFuel = resources.fuel;
   const currentMinute = useGameStore((state) => state.currentMinute);
   const logs = useGameStore((state) => state.logs);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
@@ -241,6 +246,10 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const situationSummary = summarizeSituations(situations);
   const topSituation = situations[0];
   const signals = getFrontierSignals({ currentMinute, discoveredCount: discovered.length, dangerCount: sector.nodes.filter((node) => discovered.includes(node.id) && node.danger >= 4).length, activeContracts: activeContracts.length });
+  const campaignObjective = getSectorObjective({ sector, sectorIndex, visited, campaign });
+  const gateRoute = campaignObjective.gateNode ? findRoute(sector, currentNodeId, campaignObjective.gateNode.id) : [];
+  const gateDistance = gateRoute.length > 1 ? routeDistance(sector, gateRoute) : campaignObjective.gateNode?.id === currentNodeId ? 0 : null;
+  const livingCrewCount = crew.filter((member) => member.alive !== false).length;
 
   const commandCards = [
     { id: "exploration", icon: Compass, title: "항로", desc: pendingEncounter ? "조우 대기" : navTravel ? `${Math.round(travelProgress)}%` : "목적지", badge: pendingEncounter ? "조우" : `${Math.round(navFuel)}%` },
@@ -254,6 +263,8 @@ export default function Overview({ onNavigate, onOpenModal }) {
       <section className="overflow-hidden p-0"><div className="relative"><StarMap zones={zones} currentZoneId={currentNodeId} selectedZoneId={selectedNodeId} discoveredZoneIds={discovered} route={navRoute} activeTravel={navTravel ? { ...navTravel, fromZoneId: navTravel.fromId, toZoneId: navTravel.toId } : null} currentMinute={currentMinute} onSelect={(zone) => discovered.includes(zone.id) && selectNode(zone.id)} sectorName={sector.name} exploredCount={discovered.length} totalCount={sector.nodes.length} /><div className="absolute left-3 top-3 rounded-2xl border border-cyan-400/20 bg-slate-950/85 p-3 backdrop-blur"><div className="hud-label">COMMAND</div><div className="mt-1 max-w-48 truncate font-black text-slate-100">{shipName}</div><div className="mt-2 flex flex-wrap gap-1.5"><span className={`hud-chip ${shipStatus.tone}`}>{shipStatus.label}</span><span className="hud-chip">탐사 {discovered.length}/{sector.nodes.length}</span></div></div></div></section>
 
       <section><div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><div><div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함장 HUD</div><h2 className="mt-2 text-2xl font-black text-slate-50">{shipStatus.label}</h2></div><span className={`hud-chip shrink-0 ${shipStatus.tone}`}>LIVE</span></div>{topSituation && <SituationCard card={topSituation} onNavigate={onNavigate} />}</div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><OrbTile label="Fuel" value={`${Math.round(navFuel)}%`} gauge={navFuel} tone="rgb(34 211 238)" icon={Rocket} /><OrbTile label="O2" value={`${Math.round(resources.oxygen)}%`} gauge={resources.oxygen} tone="rgb(52 211 153)" /><OrbTile label="Hull" value={`${Math.round(resources.hull)}%`} gauge={resources.hull} tone="rgb(251 191 36)" /><OrbTile label="긴급" value={`${situationSummary.critical}`} gauge={Math.min(100, situationSummary.critical * 34)} tone="rgb(248 113 113)" icon={AlertTriangle} /></div></div></section>
+
+      <CampaignObjectiveCard objective={campaignObjective} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={navFuel} hull={resources.hull} livingCrew={livingCrewCount} onNavigate={onNavigate} />
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><NavDecisionCard currentMinute={currentMinute} onNavigate={onNavigate} /><ActiveMissionOverview mission={activeMission} currentNodeId={currentNodeId} pendingEncounter={pendingEncounter} onOpenModal={onOpenModal} onNavigate={onNavigate} /></div>
 

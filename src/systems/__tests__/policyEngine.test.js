@@ -444,6 +444,15 @@ describe("evaluatePolicies", () => {
       });
     });
 
+    it("never auto-selects the gate's manualOnly nextSector option", () => {
+      const exitEncounter = ENCOUNTER_TABLE.exit.find((entry) => entry.id === "exit-next-sector");
+      ["safe", "aggressive", "balanced"].forEach((stance) => {
+        const result = evaluatePolicies({ policies: policiesWithStance(stance), pendingEncounter: exitEncounter });
+        expect(result.actions[0].detail.optionId).toBe("hold");
+        expect(result.actions[0].detail.optionId).not.toBe("jump");
+      });
+    });
+
     it("when every option leads to combat, produces a diagnostic log only, no resolve-encounter action", () => {
       const allCombatEncounter = {
         id: "test-all-combat",

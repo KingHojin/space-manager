@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
+import {
+  applySectorProgression,
+  createCampaignState,
+  getGateEncounter,
+  getSectorObjective,
+  normalizeCampaignState,
+  isFieldNode,
+} from "../systems/campaignProgression";
 import { evaluateTravelCrewReadiness, travelReadinessMessage } from "../systems/crewAvailability";
 import { generateSector, findRoute, rollEncounter, routeDistance } from "../systems/navigationSystem";
 import { useCrewStore } from "./crewStore";
@@ -15,9 +23,9 @@ function firstNodeId(sector) {
   return sector?.nodes?.[0]?.id ?? null;
 }
 
-function normalizeSector(sector) {
-  if (sector?.nodes?.length) return sector;
-  return generateSector("phase-8-start");
+function normalizeSector(sector, sectorIndex = 0) {
+  if (sector?.nodes?.length) return applySectorProgression(sector, sectorIndex);
+  return generateSector("phase-8-start", { sectorIndex });
 }
 
 function revealNeighbors(sector, discoveredIds, nodeId) {
@@ -76,7 +84,11 @@ function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) 
   if (!readiness.ok) return { ok: false, reason: travelReadinessMessage(readiness), readiness };
   const route = findRoute(state.sector, state.currentNodeId, targetNodeId);
   if (route.length < 2) return { ok: false, reason: "noRoute" };
-  const distance = routeDistance(state.sector, route);
+  // Every arrival pauses for a node encounter, so one travel order executes
+  // only the immediate leg. Charging the full multi-hop route here made the
+  // first hop consume the entire route's time/fuel and then charged it again
+  // after the mandatory encounter.
+  const distance = routeDistance(state.sector, route.slice(0, 2));
   const fuelCost = Math.max(2, distance * NAVIGATION_TRAVEL.fuelPerDistance);
   const duration = Math.max(18, Math.round(distance * NAVIGATION_TRAVEL.minutesPerDistance));
   const travel = {
@@ -98,6 +110,36 @@ function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) 
   return { ok: true, route, distance, fuelCost, duration, travel };
 }
 
+export function mergePersistedNavState(persistedState, currentState) {
+  const sectorIndex = Math.max(0, persistedState?.sectorIndex ?? currentState.sectorIndex ?? 0);
+  const sector = normalizeSector(persistedState?.sector ?? currentState.sector, sectorIndex);
+  const start = firstNodeId(sector);
+  const visited = persistedState?.visited ?? currentState.visited ?? [start];
+  const discovered = persistedState?.discovered ?? revealNeighbors(sector, visited, persistedState?.currentNodeId ?? start);
+  const visitedFieldCount = sector.nodes.filter((node) => isFieldNode(node) && visited.includes(node.id)).length;
+  const campaign = normalizeCampaignState(persistedState?.campaign, sectorIndex, visitedFieldCount);
+  return {
+    ...currentState,
+    ...(persistedState ?? {}),
+    sector: withNodeFlags(sector, visited, discovered),
+    sectorIndex,
+    campaign,
+    currentNodeId: persistedState?.currentNodeId ?? start,
+    selectedNodeId: persistedState?.selectedNodeId ?? null,
+    route: persistedState?.route ?? [persistedState?.currentNodeId ?? start],
+    travel: persistedState?.travel ?? null,
+    fuel: persistedState?.fuel ?? currentState.fuel,
+    fuelAuthorityVersion: persistedState ? (persistedState.fuelAuthorityVersion ?? 0) : 1,
+    discovered,
+    visited,
+    pendingEncounter: persistedState?.pendingEncounter ?? null,
+    driftState: persistedState?.driftState ?? null,
+    rescueUsesBySector: persistedState?.rescueUsesBySector ?? {},
+    recruitCandidates: persistedState?.recruitCandidates ?? [],
+    navLog: persistedState?.navLog ?? currentState.navLog,
+  };
+}
+
 export const useNavStore = create(
   persist(
     (set, get) => {
@@ -106,6 +148,7 @@ export const useNavStore = create(
       return {
         sector: withNodeFlags(initialSector, [startId], revealNeighbors(initialSector, [startId], startId)),
         sectorIndex: 0,
+        campaign: createCampaignState(),
         currentNodeId: startId,
         selectedNodeId: null,
         route: [startId],
@@ -115,22 +158,26 @@ export const useNavStore = create(
         visited: [startId],
         pendingEncounter: null,
         driftState: null,
+        rescueUsesBySector: {},
+        fuelAuthorityVersion: 1,
         recruitCandidates: [],
         navLog: ["항해 컴퓨터 초기화: 노드 기반 성계 지도가 활성화되었습니다."],
         selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
         generateSector: (seed = Date.now()) => {
-          const sector = generateSector(seed);
+          const sector = generateSector(seed, { sectorIndex: 0 });
           const start = firstNodeId(sector);
           const discovered = revealNeighbors(sector, [start], start);
-          set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, currentNodeId: start, selectedNodeId: null, route: [start], travel: null, fuel: 100, discovered, visited: [start], pendingEncounter: null, driftState: null, navLog: ["새 섹터 지도가 생성되었습니다."] });
+          set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, campaign: createCampaignState(), currentNodeId: start, selectedNodeId: null, route: [start], travel: null, discovered, visited: [start], pendingEncounter: null, driftState: null, rescueUsesBySector: {}, navLog: ["새 1차 개척 원정이 시작되었습니다."] });
         },
+        getCurrentObjective: () => getSectorObjective(get()),
         previewRoute: (targetNodeId, currentMinute = 0) => buildTravelPlan(get(), targetNodeId, currentMinute),
         planRoute: (targetNodeId, currentMinute = 0, metadata = {}) => {
           const state = get();
           const plan = buildTravelPlan(state, targetNodeId, currentMinute, metadata);
           if (!plan.ok) return plan;
           const missionPrefix = plan.travel.missionTitle ? `임무 항로 결재: ${plan.travel.missionTitle} · ` : "항로 결재: ";
-          set({ route: plan.route, selectedNodeId: targetNodeId, travel: plan.travel, navLog: [`${missionPrefix}${plan.route[0]} → ${targetNodeId} · ${Math.round(plan.distance)}u`, ...state.navLog].slice(0, 10) });
+          const targetSuffix = plan.route[1] === targetNodeId ? "" : ` (최종 ${targetNodeId})`;
+          set({ route: plan.route, selectedNodeId: targetNodeId, travel: plan.travel, navLog: [`${missionPrefix}${plan.route[0]} → ${plan.route[1]}${targetSuffix} · 다음 구간 ${Math.round(plan.distance)}u`, ...state.navLog].slice(0, 10) });
           return { ok: true, travel: plan.travel, route: plan.route, distance: plan.distance };
         },
         enterDrift: (currentMinute = 0, reason = "fuel_empty") => {
@@ -147,22 +194,29 @@ export const useNavStore = create(
           if (state.fuel <= 0) return get().enterDrift(currentMinute, "fuel_empty");
           const elapsed = Math.max(0, currentMinute - state.travel.startedAt);
           const progress = clamp((elapsed / Math.max(1, state.travel.duration)) * 100, 0, 100);
-          const fuelBurn = (state.travel.fuelCost / Math.max(1, state.travel.duration)) * deltaMinutes;
+          const requestedBurn = (state.travel.fuelCost / Math.max(1, state.travel.duration)) * deltaMinutes;
+          const fuelBurn = Math.min(state.fuel, requestedBurn);
           const fuel = clamp(state.fuel - fuelBurn, 0, 100);
+          const fuelEffects = fuelBurn > 0 ? [{ kind: "fuel", delta: -fuelBurn }] : [];
           if (fuel <= 0 && progress < 100) {
-            set({ fuel: 0 });
-            return get().enterDrift(currentMinute, "fuel_depleted_mid_route");
+            const drift = get().enterDrift(currentMinute, "fuel_depleted_mid_route");
+            return { effects: [...fuelEffects, ...(drift.effects ?? [])], logs: drift.logs ?? [] };
           }
           if (progress < 100) {
-            set({ travel: { ...state.travel, progress, lastFuelAt: currentMinute }, fuel });
-            return { effects: [], logs: [] };
+            set({ travel: { ...state.travel, progress, lastFuelAt: currentMinute } });
+            return { effects: fuelEffects, logs: [] };
           }
-          const arrival = get().arriveNode(state.travel.toId, currentMinute, fuel);
-          return { effects: [...(arrival.effects ?? [])], logs: arrival.logs ?? [] };
+          const arrival = get().arriveNode(state.travel.toId, currentMinute);
+          return { effects: [...fuelEffects, ...(arrival.effects ?? [])], logs: arrival.logs ?? [] };
         },
         tickDrift: (deltaMinutes = 0, currentMinute = 0) => {
           const state = get();
           if (!state.driftState || deltaMinutes <= 0) return { effects: [], logs: [] };
+          if (state.driftState.rescue?.arrivesAt <= currentMinute) {
+            const fuel = DRIFT.RESCUE_FUEL;
+            set({ driftState: null, navLog: [`구조선 도착: 비상 연료 ${fuel}을 인계받아 표류를 종료했습니다.`, ...state.navLog].slice(0, 10) });
+            return { effects: [{ kind: "fuel", delta: fuel }, { kind: "log", message: `구조선이 도착했습니다. 비상 연료 +${fuel}.` }], logs: ["유료 구조 계약 이행 완료: 표류 상태가 해제되었습니다."] };
+          }
           const minutesDrifting = Math.max(0, currentMinute - state.driftState.startedAt);
           const severity = driftSeverity(minutesDrifting);
           const hours = deltaMinutes / 60;
@@ -174,7 +228,24 @@ export const useNavStore = create(
           set({ driftState: { ...state.driftState, lastTickAt: currentMinute, severity, pressure } });
           return { effects, logs };
         },
-        arriveNode: (nodeId, currentMinute = 0, forcedFuel = null) => {
+        getRescueQuote: (currentMinute = 0) => {
+          const state = get();
+          if (!state.driftState) return { ok: false, reason: "notDrifting" };
+          if (state.driftState.rescue) return { ok: false, reason: "alreadyRequested", rescue: state.driftState.rescue };
+          const used = state.rescueUsesBySector?.[state.sectorIndex] ?? 0;
+          if (used >= DRIFT.RESCUE_LIMIT_PER_SECTOR) return { ok: false, reason: "sectorLimit", used };
+          return { ok: true, cost: DRIFT.RESCUE_CREDIT_COST, fuel: DRIFT.RESCUE_FUEL, delayMinutes: DRIFT.RESCUE_CHECK_MINUTES, arrivesAt: currentMinute + DRIFT.RESCUE_CHECK_MINUTES };
+        },
+        requestRescue: (currentMinute = 0) => {
+          const state = get();
+          const quote = get().getRescueQuote(currentMinute);
+          if (!quote.ok) return quote;
+          const rescue = { requestedAt: currentMinute, arrivesAt: quote.arrivesAt, cost: quote.cost, fuel: quote.fuel };
+          const rescueUsesBySector = { ...(state.rescueUsesBySector ?? {}), [state.sectorIndex]: (state.rescueUsesBySector?.[state.sectorIndex] ?? 0) + 1 };
+          set({ driftState: { ...state.driftState, rescue }, rescueUsesBySector, navLog: [`구조 계약 체결: ${DRIFT.RESCUE_CHECK_MINUTES}분 후 도착 예정.`, ...state.navLog].slice(0, 10) });
+          return { ok: true, rescue };
+        },
+        arriveNode: (nodeId, currentMinute = 0) => {
           const state = get();
           const node = state.sector.nodes.find((entry) => entry.id === nodeId);
           if (!node) return { effects: [], logs: [] };
@@ -182,31 +253,84 @@ export const useNavStore = create(
           const discovered = revealNeighbors(state.sector, state.discovered, nodeId);
           const remainingRoute = (state.travel?.route ?? []).slice(1);
           const sector = withNodeFlags(state.sector, visited, discovered);
-          const encounter = rollEncounter({ ...node, discovered: true, visited: true }, visited.length);
+          const objective = getSectorObjective({ ...state, visited });
+          const encounter = getGateEncounter(rollEncounter({ ...node, discovered: true, visited: true }, visited.length), objective);
           const missionArrival = state.travel?.missionId && state.travel.targetId === nodeId;
           const logs = missionArrival ? [`임무 목적지 도착: ${state.travel.missionTitle ?? "계약 임무"} · ${node.name}. 조우 결재 후 임무 처리가 가능합니다.`] : [`노드 도착: ${node.name}. 결재 대기 조우가 발생했습니다.`];
-          set({ sector, currentNodeId: nodeId, selectedNodeId: null, route: remainingRoute.length > 0 ? remainingRoute : [nodeId], travel: null, fuel: forcedFuel ?? state.fuel, discovered, visited, pendingEncounter: encounter, navLog: [...logs, ...state.navLog].slice(0, 10) });
+          const isNewFieldVisit = !state.visited.includes(nodeId) && isFieldNode(node);
+          const campaign = isNewFieldVisit
+            ? { ...state.campaign, totalFieldNodesVisited: (state.campaign?.totalFieldNodesVisited ?? 0) + 1 }
+            : state.campaign;
+          set({ sector, campaign, currentNodeId: nodeId, selectedNodeId: null, route: remainingRoute.length > 0 ? remainingRoute : [nodeId], travel: null, discovered, visited, pendingEncounter: encounter, navLog: [...logs, ...state.navLog].slice(0, 10) });
           return { effects: [{ kind: "log", message: logs[0] }], logs };
         },
-        resolveEncounter: (optionId) => {
+        resolveEncounter: (optionId, currentMinute = 0, context = {}) => {
           const state = get();
           const encounter = state.pendingEncounter;
           if (!encounter) return { effects: [], logs: [] };
           const option = encounter.options.find((entry) => entry.id === optionId) ?? encounter.options[0];
-          const effects = option?.outcome ?? [];
+          let effects = option?.outcome ?? [];
           const logs = [`조우 결재: ${encounter.title} · ${option?.label ?? "선택"}`];
           let nextSectorState = {};
           if (effects.some((effect) => effect.kind === "nextSector")) {
-            const seed = nextSeed(state.sector.seed, state.sectorIndex);
-            const sector = generateSector(seed);
-            const start = firstNodeId(sector);
-            const discovered = revealNeighbors(sector, [start], start);
-            nextSectorState = { sector: withNodeFlags(sector, [start], discovered), sectorIndex: state.sectorIndex + 1, currentNodeId: start, selectedNodeId: null, route: [start], discovered, visited: [start], driftState: null };
+            if (!context.allowGateTransit) {
+              const message = `관문 진입 차단: ${context.gateBlockReason ?? "함장의 수동 결재가 필요합니다."}`;
+              set({ navLog: [message, ...state.navLog].slice(0, 10) });
+              return { effects: [{ kind: "log", message }], logs: [message] };
+            }
+            const objective = getSectorObjective(state);
+            if (!objective.gateUnlocked) {
+              const message = objective.expeditionCompleted
+                ? "1차 개척 원정은 이미 완주했습니다. 현재 항해 기록을 계속 유지합니다."
+                : `관문 진입 차단: 현장 조사 ${objective.visitedFieldCount}/${objective.requiredFieldVisits}, 위험 ${objective.dangerThreshold}+ 생존 기록 ${objective.dangerousVisitedCount}/1.`;
+              set({ pendingEncounter: null, navLog: [message, ...state.navLog].slice(0, 10) });
+              return { effects: [{ kind: "log", message }], logs: [message] };
+            }
+            effects = [
+              ...effects.filter((effect) => effect.kind !== "nextSector"),
+              { kind: "resource", delta: { credits: objective.gateRewardCredits } },
+            ];
+            if (objective.isExpeditionFinale) {
+              const message = `1차 개척 원정 완주: ${objective.expeditionSectors}개 섹터 항로가 함대 기록에 보존되었습니다.`;
+              nextSectorState = {
+                campaign: {
+                  ...state.campaign,
+                  status: "completed",
+                  sectorsCleared: objective.expeditionSectors,
+                  highestSectorReached: objective.expeditionSectors,
+                  completedAtMinute: currentMinute,
+                },
+              };
+              effects.push({ kind: "campaignComplete", expeditionId: state.campaign?.expeditionId, sectorsCleared: objective.expeditionSectors });
+              logs.push(message, `원정 완주 보상: 크레딧 +${objective.gateRewardCredits}.`);
+            } else {
+              const nextIndex = state.sectorIndex + 1;
+              const seed = nextSeed(state.sector.seed, state.sectorIndex);
+              const sector = generateSector(seed, { sectorIndex: nextIndex });
+              const start = firstNodeId(sector);
+              const discovered = revealNeighbors(sector, [start], start);
+              nextSectorState = {
+                sector: withNodeFlags(sector, [start], discovered),
+                sectorIndex: nextIndex,
+                campaign: {
+                  ...state.campaign,
+                  sectorsCleared: nextIndex,
+                  highestSectorReached: Math.max(state.campaign?.highestSectorReached ?? 1, nextIndex + 1),
+                },
+                currentNodeId: start,
+                selectedNodeId: null,
+                route: [start],
+                discovered,
+                visited: [start],
+                driftState: null,
+              };
+              logs.push(`관문 돌파: 원정 섹터 ${nextIndex + 1} 진입 · 보상 크레딧 +${objective.gateRewardCredits}.`);
+            }
           }
           set({ pendingEncounter: null, ...nextSectorState, navLog: [...logs, ...state.navLog].slice(0, 10) });
           return { effects, logs };
         },
-        refuel: (amount = 100) => set((state) => ({ fuel: clamp(state.fuel + amount, 0, 100), driftState: state.fuel + amount > 0 ? null : state.driftState, navLog: state.fuel + amount > 0 && state.driftState ? ["긴급 보급 성공: 표류 상태 해제.", ...state.navLog].slice(0, 10) : state.navLog })),
+        setFuelSnapshot: (fuel) => set({ fuel: clamp(fuel, 0, 100), fuelAuthorityVersion: 1 }),
         revealHiddenNodes: (count = 1) => {
           const state = get();
           const discoveredSet = new Set(state.discovered);
@@ -232,13 +356,7 @@ export const useNavStore = create(
       name: "space-manager-nav",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => {
-        const sector = normalizeSector(persistedState?.sector ?? currentState.sector);
-        const start = firstNodeId(sector);
-        const visited = persistedState?.visited ?? currentState.visited ?? [start];
-        const discovered = persistedState?.discovered ?? revealNeighbors(sector, visited, persistedState?.currentNodeId ?? start);
-        return { ...currentState, ...(persistedState ?? {}), sector: withNodeFlags(sector, visited, discovered), currentNodeId: persistedState?.currentNodeId ?? start, selectedNodeId: persistedState?.selectedNodeId ?? null, route: persistedState?.route ?? [persistedState?.currentNodeId ?? start], travel: persistedState?.travel ?? null, fuel: persistedState?.fuel ?? currentState.fuel, discovered, visited, pendingEncounter: persistedState?.pendingEncounter ?? null, driftState: persistedState?.driftState ?? null, recruitCandidates: persistedState?.recruitCandidates ?? [], navLog: persistedState?.navLog ?? currentState.navLog };
-      },
+      merge: mergePersistedNavState,
     },
   ),
 );
