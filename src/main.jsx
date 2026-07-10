@@ -5,6 +5,7 @@ import "./styles.css";
 import "./crewMotion.css";
 import "./uiPolish.css";
 import "./appleUI.css";
+import "./shipDeck.css";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   <React.StrictMode>
