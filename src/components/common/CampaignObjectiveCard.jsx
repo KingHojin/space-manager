@@ -19,7 +19,7 @@ export default function CampaignObjectiveCard({ objective, gateDistance = null, 
     return (
       <section className="rounded-2xl border border-emerald-300/35 bg-emerald-300/10 p-4">
         <div className="flex items-start justify-between gap-3">
-          <div><div className="section-title"><CheckCircle2 size={18} />1차 개척 원정 완주</div><h3 className="mt-2 text-xl font-black text-emerald-100">5개 섹터 항로 확보</h3><p className="mt-2 text-sm text-slate-300">장기 함대 성장 캠페인의 첫 이정표입니다. 현재 항해와 함선 성장은 계속할 수 있습니다.</p></div>
+          <div><div className="section-title"><CheckCircle2 size={18} />1차 개척 원정 완주</div><h3 className="mt-2 text-xl font-black text-emerald-100">5개 섹터 항로 확보</h3><p className="mt-2 text-sm text-slate-300">첫 원정 이정표와 보상이 기록되었습니다. 일시정지를 해제하면 작업·정책·승무원 성장·정비를 계속 운영할 수 있습니다.</p></div>
           <span className="hud-chip hud-chip-accent shrink-0">MILESTONE</span>
         </div>
       </section>

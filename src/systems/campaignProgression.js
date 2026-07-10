@@ -31,7 +31,7 @@ export function applySectorProgression(sector, sectorIndex = 0) {
   if (!sector?.nodes?.length) return sector;
   const profile = getSectorProfile(sectorIndex);
   if (sector.progressionVersion === PROGRESSION_VERSION && sector.sectorIndex === profile.sectorIndex) return sector;
-  const nodes = sector.nodes.map((node) => {
+  let nodes = sector.nodes.map((node) => {
     const baseDanger = node.baseDanger ?? node.danger ?? 1;
     const baseRichness = node.baseRichness ?? node.richness ?? 1;
     const dangerRange = profile.dangerCeiling - profile.dangerFloor + 1;
@@ -44,6 +44,17 @@ export function applySectorProgression(sector, sectorIndex = 0) {
       richness: clamp(baseRichness + profile.richnessBonus, 1, CAMPAIGN.MAX_NODE_RICHNESS),
     };
   });
+  // A generated sector must never ask the player to survive a danger band
+  // that does not exist. Promote a stable field node when the seeded rolls
+  // produced no qualifying candidate. This is deterministic (node order is
+  // deterministic) and does not add/remove nodes or alter save identities.
+  const qualifyingFieldCount = nodes.filter((node) => isFieldNode(node) && node.danger >= profile.dangerThreshold).length;
+  if (qualifyingFieldCount < 1) {
+    const candidateIndex = nodes.findIndex(isFieldNode);
+    if (candidateIndex >= 0) {
+      nodes = nodes.map((node, index) => index === candidateIndex ? { ...node, danger: profile.dangerThreshold } : node);
+    }
+  }
   return {
     ...sector,
     name: `개척 원정 섹터 ${profile.sectorNumber}`,
@@ -87,14 +98,25 @@ export function isFieldNode(node) {
 
 export function getSectorObjective({ sector, sectorIndex = 0, visited = [], campaign } = {}) {
   const profile = getSectorProfile(sectorIndex);
+  const fieldNodes = (sector?.nodes ?? []).filter(isFieldNode);
+  // Old/hydrated sectors may contain fewer fields, or a lower danger band,
+  // than current generation rules. Derive a completable objective from what
+  // is actually present instead of permanently locking those saves.
+  const requiredFieldVisits = Math.min(profile.requiredFieldVisits, fieldNodes.length);
+  const maximumFieldDanger = fieldNodes.reduce((maximum, node) => Math.max(maximum, node.danger ?? 0), 0);
+  const dangerThreshold = fieldNodes.length > 0
+    ? Math.min(profile.dangerThreshold, maximumFieldDanger)
+    : 0;
   const visitedSet = new Set(visited);
-  const visitedFieldNodes = (sector?.nodes ?? []).filter((node) => isFieldNode(node) && visitedSet.has(node.id));
-  const dangerousVisited = visitedFieldNodes.filter((node) => (node.danger ?? 0) >= profile.dangerThreshold);
-  const visitConditionMet = visitedFieldNodes.length >= profile.requiredFieldVisits;
-  const dangerConditionMet = dangerousVisited.length >= 1;
+  const visitedFieldNodes = fieldNodes.filter((node) => visitedSet.has(node.id));
+  const dangerousVisited = visitedFieldNodes.filter((node) => (node.danger ?? 0) >= dangerThreshold);
+  const visitConditionMet = visitedFieldNodes.length >= requiredFieldVisits;
+  const dangerConditionMet = fieldNodes.length === 0 || dangerousVisited.length >= 1;
   const expeditionCompleted = campaign?.status === "completed";
   return {
     ...profile,
+    requiredFieldVisits,
+    dangerThreshold,
     visitedFieldCount: visitedFieldNodes.length,
     dangerousVisitedCount: dangerousVisited.length,
     visitConditionMet,
@@ -103,7 +125,7 @@ export function getSectorObjective({ sector, sectorIndex = 0, visited = [], camp
     expeditionCompleted,
     progressPercent: expeditionCompleted
       ? 100
-      : Math.round(((Math.min(visitedFieldNodes.length, profile.requiredFieldVisits) + Math.min(dangerousVisited.length, 1)) / (profile.requiredFieldVisits + 1)) * 100),
+      : Math.round(((Math.min(visitedFieldNodes.length, requiredFieldVisits) + (dangerConditionMet ? 1 : 0)) / Math.max(1, requiredFieldVisits + 1)) * 100),
     gateNode: (sector?.nodes ?? []).find((node) => node.type === "exit") ?? null,
   };
 }

@@ -122,11 +122,22 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   const encounter = useNavStore.getState().pendingEncounter;
   const option = encounter?.options?.find((entry) => entry.id === optionId) ?? encounter?.options?.[0];
   const isGateTransit = (option?.outcome ?? []).some((effect) => effect.kind === "nextSector");
-  const blockReason = isGateTransit ? (context.manual ? gateTransitBlockReason() : "관문 통과는 함장의 수동 결재가 필요합니다.") : null;
+  const fuelGain = (option?.outcome ?? []).reduce((sum, effect) => {
+    if (effect.kind === "fuel") return sum + Math.max(0, effect.delta ?? 0);
+    if (effect.kind === "resource") return sum + Math.max(0, effect.delta?.fuel ?? 0);
+    return sum;
+  }, 0);
   const creditCost = (option?.outcome ?? []).reduce((sum, effect) => {
     const credits = effect.kind === "resource" ? effect.delta?.credits ?? 0 : 0;
     return sum + Math.max(0, -credits);
   }, 0);
+  const isFuelPurchase = fuelGain > 0 && creditCost > 0;
+  if (useNavStore.getState().driftState && isFuelPurchase) {
+    const logs = ["결재 실패: 표류 중에는 정거장 보급을 이용할 수 없습니다. 구조 계약을 요청하세요."];
+    logs.forEach((message) => useGameStore.getState().addLog(`항해 조우: ${message}`));
+    return { ok: false, reason: "drifting", effects: [], logs };
+  }
+  const blockReason = isGateTransit ? (context.manual ? gateTransitBlockReason() : "관문 통과는 함장의 수동 결재가 필요합니다.") : null;
   if (creditCost > useGameStore.getState().resources.credits) {
     const logs = [`결재 실패: 크레딧이 부족합니다. 필요 ₢${creditCost}.`];
     logs.forEach((message) => useGameStore.getState().addLog(`항해 조우: ${message}`));
@@ -414,6 +425,10 @@ function applyPolicyActions(actions, currentMinute) {
       // encounter this action was computed for.
       const pending = useNavStore.getState().pendingEncounter;
       if (!pending) return;
+      // Every gate interaction, including the locked gate's harmless-looking
+      // "hold" option, is captain-only. Automation must not dismiss the card
+      // or strand the player without a gate decision.
+      if (pending.nodeType === "exit" || pending.id === "exit-objective-locked") return;
       if (detail.encounterId && pending.id !== detail.encounterId) return;
       if (!detail.optionId) return;
       // applyNavigationEncounter already does resolveEncounter() +
@@ -586,10 +601,6 @@ function migrateLegacyJobsOnce() {
 }
 
 export function processTimedJobs(deltaMinutes = 0) {
-  if (useNavStore.getState().campaign?.status === "completed") {
-    useGameStore.getState().setPaused(true);
-    return { blocked: true, reason: "campaignCompleted" };
-  }
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
   processJobScheduler(currentMinute);

@@ -36,6 +36,24 @@ describe("Phase 22-B sector progression", () => {
     expect(sector.nodes.filter((node) => node.type === "exit")).toHaveLength(1);
   });
 
+  it("generates a completable objective across a broad seed and sector sample", () => {
+    for (let sectorIndex = 0; sectorIndex < 5; sectorIndex += 1) {
+      for (let seedIndex = 0; seedIndex < 250; seedIndex += 1) {
+        const sector = generateSector(`property-${sectorIndex}-${seedIndex}`, { sectorIndex });
+        const fields = sector.nodes.filter((node) => node.type !== "station" && node.type !== "exit");
+        const objective = getSectorObjective({
+          sector,
+          sectorIndex,
+          visited: sector.nodes.map((node) => node.id),
+          campaign: { status: "active" },
+        });
+        expect(fields.length).toBeGreaterThanOrEqual(objective.requiredFieldVisits);
+        expect(fields.some((node) => node.danger >= objective.dangerThreshold)).toBe(true);
+        expect(objective.gateUnlocked).toBe(true);
+      }
+    }
+  });
+
   it("raises both the reward multiplier and enemy ceiling across the expedition", () => {
     const first = getSectorProfile(0);
     const last = getSectorProfile(4);
@@ -74,5 +92,27 @@ describe("sector objective", () => {
     expect(objective.expeditionCompleted).toBe(true);
     expect(objective.gateUnlocked).toBe(false);
     expect(objective.progressPercent).toBe(100);
+  });
+
+  it("clamps legacy field-count requirements to the nodes that actually exist", () => {
+    const legacy = {
+      nodes: [
+        { id: "station", type: "station", danger: 1 },
+        { id: "only-field", type: "debris", danger: 1 },
+        { id: "gate", type: "exit", danger: 5 },
+      ],
+    };
+    const objective = getSectorObjective({ sector: legacy, sectorIndex: 4, visited: ["station", "only-field", "gate"], campaign: { status: "active" } });
+    expect(objective.requiredFieldVisits).toBe(1);
+    expect(objective.dangerThreshold).toBe(1);
+    expect(objective.gateUnlocked).toBe(true);
+  });
+
+  it("keeps even a malformed legacy sector with no field nodes completable", () => {
+    const legacy = { nodes: [{ id: "station", type: "station", danger: 1 }, { id: "gate", type: "exit", danger: 5 }] };
+    const objective = getSectorObjective({ sector: legacy, sectorIndex: 4, visited: ["station", "gate"], campaign: { status: "active" } });
+    expect(objective.requiredFieldVisits).toBe(0);
+    expect(objective.dangerConditionMet).toBe(true);
+    expect(objective.gateUnlocked).toBe(true);
   });
 });

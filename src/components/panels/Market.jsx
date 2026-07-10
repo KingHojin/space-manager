@@ -40,9 +40,10 @@ export default function Market() {
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const sector = useNavStore((state) => state.sector);
   const travel = useNavStore((state) => state.travel);
+  const driftState = useNavStore((state) => state.driftState);
   const visited = useNavStore((state) => state.visited);
   const currentNode = sector.nodes.find((node) => node.id === currentNodeId);
-  const docked = isDocked(currentNode, travel);
+  const docked = isDocked(currentNode, travel, driftState);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);

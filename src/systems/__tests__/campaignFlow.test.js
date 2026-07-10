@@ -5,6 +5,7 @@ import { useGameStore } from "../../stores/gameStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { mergePersistedNavState, useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
+import { usePolicyStore } from "../../stores/policyStore";
 import { applyNavigationEncounter, processTimedJobs } from "../gameClock";
 import { generateSector } from "../navigationSystem";
 
@@ -36,6 +37,7 @@ beforeEach(() => {
   const vesselId = useShipStore.getState().activeVesselId;
   useMissionStore.setState({ activeByVesselId: {}, pendingMissionEncountersByVesselId: {} });
   useCombatStore.setState({ combatByVesselId: { [vesselId]: null } });
+  usePolicyStore.getState().resetPolicy("encounter-default-choice");
 });
 
 describe("campaign gate flow", () => {
@@ -93,7 +95,7 @@ describe("campaign gate flow", () => {
     expect(useNavStore.getState().sector.difficulty.sectorNumber).toBe(2);
   });
 
-  it("persists a terminal expedition outcome at sector five and blocks subsequent timed work", () => {
+  it("persists a one-time expedition milestone, pauses for summary, then allows timed work to resume", () => {
     useNavStore.setState(objectiveReadyState(4));
     useGameStore.setState({ isPaused: false });
     const result = applyNavigationEncounter("jump", 777, { manual: true });
@@ -101,7 +103,26 @@ describe("campaign gate flow", () => {
     expect(useNavStore.getState().campaign).toMatchObject({ status: "completed", sectorsCleared: 5, completedAtMinute: 777 });
     expect(useGameStore.getState().gameOver).toBeNull();
     expect(useGameStore.getState().isPaused).toBe(true);
-    expect(processTimedJobs(60)).toEqual({ blocked: true, reason: "campaignCompleted" });
+    useGameStore.getState().setPaused(false);
+    expect(processTimedJobs(60)).toBeUndefined();
+    expect(useGameStore.getState().isPaused).toBe(false);
+  });
+
+  it("never lets policy automation clear a locked gate hold encounter", () => {
+    const sector = generateSector("manual-locked-gate", { sectorIndex: 0 });
+    const gate = sector.nodes.find((node) => node.type === "exit");
+    const locked = {
+      id: "exit-objective-locked",
+      nodeType: "exit",
+      nodeId: gate.id,
+      title: "관문 좌표 잠금",
+      options: [{ id: "hold", label: "현재 섹터로 복귀", outcome: [] }],
+    };
+    useNavStore.setState({ sector, currentNodeId: gate.id, pendingEncounter: locked });
+    const policies = usePolicyStore.getState().policies;
+    usePolicyStore.setState({ policies: { ...policies, "encounter-default-choice": { enabled: true, params: { stance: "safe" } } } });
+    processTimedJobs(1);
+    expect(useNavStore.getState().pendingEncounter).toEqual(locked);
   });
 });
 
@@ -126,5 +147,23 @@ describe("immediate-leg travel billing", () => {
     expect(preview.distance).toBe(5);
     expect(preview.travel.toId).toBe("b");
     expect(preview.travel.fuelCost).toBeCloseTo(5 * 1.15);
+  });
+
+  it("caps an overshooting final tick so actual burn equals the preview", () => {
+    const sector = {
+      id: "billing-sector",
+      seed: "billing-sector",
+      nodes: [
+        { id: "a", type: "station", danger: 1, richness: 1, connections: ["b"] },
+        { id: "b", type: "debris", danger: 2, richness: 2, connections: ["a"] },
+      ],
+      edges: [{ from: "a", to: "b", distance: 5 }],
+    };
+    useNavStore.setState({ sector, currentNodeId: "a", fuel: 100, travel: null, driftState: null, pendingEncounter: null });
+    const preview = useNavStore.getState().previewRoute("b", 0);
+    useNavStore.getState().planRoute("b", 0);
+    const result = useNavStore.getState().tickTravel(preview.duration + 60, preview.duration + 60);
+    const burned = -result.effects.find((effect) => effect.kind === "fuel").delta;
+    expect(burned).toBeCloseTo(preview.fuelCost, 8);
   });
 });

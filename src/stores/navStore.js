@@ -190,11 +190,24 @@ export const useNavStore = create(
           if (deltaMinutes <= 0) return { effects: [], logs: [] };
           const state = get();
           if (state.driftState) return { effects: [], logs: [] };
+          const currentNode = state.sector?.nodes?.find((node) => node.id === state.currentNodeId);
+          // Fuel can also reach zero through ambient/exploration effects while
+          // parked in the field. Materialize drift even without active travel
+          // so the paid rescue path remains reachable and the save cannot
+          // softlock. A real station remains a safe zero-fuel berth.
+          if (state.fuel <= 0 && (state.travel || currentNode?.type !== "station")) {
+            return get().enterDrift(currentMinute, state.travel ? "fuel_empty" : "fuel_depleted_in_field");
+          }
           if (!state.travel || state.pendingEncounter) return { effects: [], logs: [] };
-          if (state.fuel <= 0) return get().enterDrift(currentMinute, "fuel_empty");
           const elapsed = Math.max(0, currentMinute - state.travel.startedAt);
           const progress = clamp((elapsed / Math.max(1, state.travel.duration)) * 100, 0, 100);
-          const requestedBurn = (state.travel.fuelCost / Math.max(1, state.travel.duration)) * deltaMinutes;
+          // Bill only the portion of this tick that overlaps the travel leg.
+          // A coarse clock tick may overshoot completeAt; charging the whole
+          // tick made actual fuel exceed the route preview.
+          const burnStart = Math.max(state.travel.startedAt, state.travel.lastFuelAt ?? state.travel.startedAt);
+          const burnEnd = Math.min(currentMinute, state.travel.completeAt ?? (state.travel.startedAt + state.travel.duration));
+          const billableMinutes = Math.max(0, burnEnd - burnStart);
+          const requestedBurn = (state.travel.fuelCost / Math.max(1, state.travel.duration)) * billableMinutes;
           const fuelBurn = Math.min(state.fuel, requestedBurn);
           const fuel = clamp(state.fuel - fuelBurn, 0, 100);
           const fuelEffects = fuelBurn > 0 ? [{ kind: "fuel", delta: -fuelBurn }] : [];

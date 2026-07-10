@@ -215,6 +215,6 @@ export function hasVisitedNodeType(sector, visited, nodeType) {
 // not mid-transit. Any other node type, or a station node reached while
 // `travel` is still set (should not normally happen, but defensive), counts
 // as not docked.
-export function isDocked(node, travel) {
-  return Boolean(node && node.type === "station" && !travel);
+export function isDocked(node, travel, driftState = null) {
+  return Boolean(node && node.type === "station" && !travel && !driftState);
 }
