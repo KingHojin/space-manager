@@ -103,11 +103,15 @@ function buildRoomDiagnostics(rooms, roomAssignments) {
 function RouteLine({ from, to, active }) {
   const start = displayRoomCenter(from);
   const end = displayRoomCenter(to);
-  const midX = (start.x + end.x) / 2;
-  const midY = (start.y + end.y) / 2;
-  const width = Math.hypot(end.x - start.x, end.y - start.y);
-  const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
-  return <span className={`ship-corridor-line absolute h-[2px] origin-center rounded-full ${active ? "ship-corridor-line-active" : ""}`} style={{ left: `${midX - width / 2}%`, top: `${midY}%`, width: `${width}%`, transform: `rotate(${angle}deg)` }} />;
+  const horizontalFirst = Math.abs(end.x - start.x) >= Math.abs(end.y - start.y);
+  const path = horizontalFirst
+    ? `M ${start.x} ${start.y} H ${end.x} V ${end.y}`
+    : `M ${start.x} ${start.y} V ${end.y} H ${end.x}`;
+  return (
+    <svg className="ship-corridor-route absolute inset-0 h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+      <path className={active ? "ship-corridor-path ship-corridor-path-active" : "ship-corridor-path"} d={path} vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
 }
 
 function useShipMapSize() {
@@ -241,18 +245,20 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
   }, [motionTargets, syncTargets]);
 
   return (
-    <section className="overflow-hidden">
+    <section className="ship-deck-section overflow-hidden">
       <div className="flex items-center justify-between gap-3">
-        <div className="section-title"><Activity size={18} />함선 내부</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">Living Crew D</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{roomDiagnostics.length > 0 && <span className="hud-chip hud-chip-accent">작업 {roomDiagnostics.length}</span>}{!mapInView && <span className="hud-chip">컬링</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="section-title"><Activity size={18} />함선 덱</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">DECK VIEW</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{roomDiagnostics.length > 0 && <span className="hud-chip hud-chip-accent">작업 {roomDiagnostics.length}</span>}{!mapInView && <span className="hud-chip">절전</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
-      <div ref={mapRef} className={`ship-interior-map relative mt-4 overflow-hidden rounded-2xl border border-slate-700/80 ${compact ? "h-[260px]" : "h-[460px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
-        <div className="ship-hull-shell absolute inset-x-[6%] top-[4%] h-[92%] rounded-[44%]" />
-        <div className="ship-hull-spine absolute left-[49%] top-[13%] h-[73%] w-[2px]" />
-        <div className="ship-hull-deck absolute left-[18%] top-[23%] h-[2px] w-[64%]" />
-        <div className="ship-hull-deck absolute left-[16%] top-[50%] h-[2px] w-[68%]" />
-        <div className="ship-hull-deck absolute left-[18%] top-[62%] h-[2px] w-[64%]" />
-        <div className="ship-engine-glow absolute bottom-[4%] left-[35%] h-[7%] w-[30%] rounded-full" />
+      <div ref={mapRef} className={`ship-interior-map ship-deck-map relative mt-4 overflow-hidden ${compact ? "h-[280px]" : "h-[500px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
+        <div className="ship-hull-shell absolute inset-[3%]" />
+        <div className="ship-hull-keel absolute left-1/2 top-[8%] h-[82%] w-px -translate-x-1/2" />
+        <div className="ship-engine-pod ship-engine-pod-left absolute" />
+        <div className="ship-engine-pod ship-engine-pod-right absolute" />
+        <div className="ship-engine-glow absolute bottom-[1%] left-[35%] h-[8%] w-[30%] rounded-full" />
+        <span className="ship-deck-label ship-deck-label-bow">BOW</span>
+        <span className="ship-deck-label ship-deck-label-core">CORE</span>
+        <span className="ship-deck-label ship-deck-label-stern">STERN</span>
         {DISPLAY_ROUTES.map(([from, to]) => <RouteLine key={`${from}-${to}`} from={from} to={to} active={activeRooms.has(from) && activeRooms.has(to)} />)}
         {DISPLAY_ROOMS.map((room) => {
           const Icon = room.icon;
@@ -270,32 +276,41 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
               ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" }
               : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
           const clickable = operational && Boolean(onRoomClick);
+          const activateRoom = () => {
+            if (clickable) onRoomClick(room.id);
+          };
           return (
             <div
               key={room.id}
               title={roomTooltip(room, roomState, assigned)}
               role={clickable ? "button" : undefined}
               tabIndex={clickable ? 0 : undefined}
-              onClick={clickable ? () => onRoomClick(room.id) : undefined}
-              className={`ship-room-zone absolute rounded-xl border p-2 ${!operational ? "ship-room-aux" : ""} ${clickable ? "cursor-pointer transition hover:brightness-125" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-cyan-200/40" : ""} ${operational && !crisis && (roomState?.condition ?? 100) <= WEAR.dangerCondition ? "border-amber-400/60" : ""}`}`}
+              onClick={activateRoom}
+              onKeyDown={clickable ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  activateRoom();
+                }
+              } : undefined}
+              className={`ship-room-zone absolute border p-2 ${operational ? "ship-room-operational" : "ship-room-aux"} ${clickable ? "cursor-pointer transition hover:brightness-110" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-blue-200/40" : ""} ${operational && !crisis && (roomState?.condition ?? 100) <= WEAR.dangerCondition ? "border-amber-400/60" : ""}`}`}
               style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}
             >
-              <div className="flex items-center justify-between gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-300"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
-              {operational && !compact && <div className="mt-1 flex flex-wrap gap-1"><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">C{Math.round(roomState?.condition ?? 0)}</span><span className="rounded border border-slate-500/40 bg-slate-950/60 px-1 text-[9px] font-black text-slate-200">L{Math.round(roomState?.load ?? 0)}</span></div>}
+              <div className="ship-room-title flex items-center justify-between gap-1"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>
+              {operational && !compact && <div className="ship-room-telemetry mt-1 flex flex-wrap gap-1"><span>상태 {Math.round(roomState?.condition ?? 0)}</span><span>부하 {Math.round(roomState?.load ?? 0)}</span></div>}
               {operational && showEquipment && <EquipmentBadges roomId={room.id} installed={installed} modulesById={modulesById} compact={compact} />}
-              {operational && <span className="absolute right-1 top-1 rounded border border-cyan-300/35 bg-cyan-300/10 px-1 text-[9px] font-black text-cyan-100">T{roomState?.tier ?? 1}</span>}
-              {operational && !compact && <span className="absolute right-1 bottom-1.5 rounded border border-slate-500/40 bg-slate-950/70 px-1 text-[9px] font-bold text-slate-200">S{Math.round(modifiers?.slots ?? 1)}</span>}
+              {operational && <span className="ship-room-tier absolute right-1 top-1">Lv{roomState?.tier ?? 1}</span>}
+              {operational && !compact && <span className="ship-room-slots absolute bottom-1.5 right-1">{Math.round(modifiers?.slots ?? 1)}석</span>}
               {!crisis && diagnostic && <span className={`absolute left-1 top-7 max-w-[calc(100%-0.5rem)] truncate rounded border px-1.5 py-0.5 text-[9px] font-black ${diagnostic.tone}`}>{diagnostic.label}</span>}
               {badge && <span className={`absolute bottom-1.5 left-1 rounded border px-1.5 py-0.5 text-[10px] font-bold ${badge.tone}`}>{badge.label}</span>}
               {crisis && <span className="absolute right-1 top-6 rounded border border-red-300/45 bg-red-400/20 px-1 text-[9px] font-black text-red-50">{Math.round(crisis.progress ?? 0)}%</span>}
-              {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : operational && roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-cyan-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
+              {crisis ? <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-red-300/80" style={{ width: `${crisis.progress ?? 0}%` }} /></div> : operational && roomState?.jobId && <div className="absolute inset-x-1 bottom-0.5 h-0.5 overflow-hidden rounded bg-slate-950/60"><div className="h-full bg-blue-300/70" style={{ width: `${roomState.progress}%` }} /></div>}
               {operational && !crisis && <RoomWearEffects condition={roomState?.condition ?? 100} />}
             </div>
           );
         })}
         <CrewLayer roomAssignments={roomAssignments} motionByCrewId={motionByCrewId} jobOwnerIds={jobOwnerIds} compact={compact} onCrewClick={onCrewClick} />
       </div>
-      {!compact && roomDiagnostics.length > 0 && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomDiagnostics.map(({ room, state, assigned, job, diagnostic }) => <div key={room.id} className="rounded-xl border border-slate-700/70 bg-slate-950/70 px-3 py-2"><div className="flex items-center justify-between gap-2"><div className="font-semibold text-slate-100">{room.label}</div><span className={`hud-chip shrink-0 ${state?.status === "위험" ? "hud-chip-danger" : state?.status === "점검 필요" ? "hud-chip-warn" : "hud-chip-accent"}`}>{state?.status ?? "미상"}</span></div><div className="mt-1 text-xs text-slate-400">{job?.label ?? "room-job"} · C{Math.round(state?.condition ?? 0)} / L{Math.round(state?.load ?? 0)} · {diagnostic?.label ?? "관찰 중"}</div><div className="mt-1 truncate text-[11px] text-cyan-100">담당: {assignedNames(assigned).join(", ") || "아직 없음"}</div></div>)}</div>}
+      {!compact && roomDiagnostics.length > 0 && <div className="mt-3 grid gap-2 md:grid-cols-2">{roomDiagnostics.map(({ room, state, assigned, job, diagnostic }) => <div key={room.id} className="rounded-xl border border-white/10 bg-white/[0.035] px-3 py-2"><div className="flex items-center justify-between gap-2"><div className="font-semibold text-slate-100">{room.label}</div><span className={`hud-chip shrink-0 ${state?.status === "위험" ? "hud-chip-danger" : state?.status === "점검 필요" ? "hud-chip-warn" : "hud-chip-accent"}`}>{state?.status ?? "미상"}</span></div><div className="mt-1 text-xs text-slate-400">{job?.label ?? "room-job"} · 상태 {Math.round(state?.condition ?? 0)} / 부하 {Math.round(state?.load ?? 0)} · {diagnostic?.label ?? "관찰 중"}</div><div className="mt-1 truncate text-[11px] text-blue-100">담당: {assignedNames(assigned).join(", ") || "아직 없음"}</div></div>)}</div>}
       {!compact && <CrewActivitySummary roomAssignments={roomAssignments} motionByCrewId={motionByCrewId} onCrewClick={onCrewClick} />}
     </section>
   );
