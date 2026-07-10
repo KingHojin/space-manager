@@ -135,7 +135,8 @@ export function normalizeJob(job = {}, now = null) {
   const createdAt = numeric(job.createdAt, numeric(job.startedAt, 0));
   const startedAt = job.startedAt === null || job.startedAt === undefined ? null : numeric(job.startedAt, createdAt);
   const roomId = normalizeRoomId(job.roomId, type);
-  const progress = progressFromLegacyTime({ ...job, type, duration, startedAt, createdAt }, now);
+  const effectiveDuration = job.effectiveDuration === undefined || job.effectiveDuration === null ? null : Math.max(1, numeric(job.effectiveDuration, duration));
+  const progress = progressFromLegacyTime({ ...job, type, duration: effectiveDuration ?? duration, startedAt, createdAt }, now);
   const status = job.status ?? "backlog";
   return {
     id: job.id ?? createId("job"),
@@ -147,6 +148,8 @@ export function normalizeJob(job = {}, now = null) {
     priority: normalizeJobPriority(job.priority),
     progress,
     duration,
+    effectiveDuration,
+    moodWorkMultiplier: numeric(job.moodWorkMultiplier, 1),
     loadCost: numeric(job.loadCost, JOB_LOAD_COST[type] ?? 1),
     createdAt,
     startedAt: status === "backlog" ? null : startedAt,

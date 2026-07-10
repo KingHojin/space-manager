@@ -2,7 +2,9 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { CREW_NEEDS } from "../data/constants";
 import { initialCrew } from "../data/crew";
+import { DEFAULT_CREW_TRAIT_IDS, normalizeCrewTraitIds } from "../data/crewTraits";
 import { generateCrewActivities, CREW_AI_INTERVAL } from "../systems/crewAI";
+import { normalizeRelationships, updateRelationshipsFromActivities } from "../systems/crewRelations";
 import {
   applyInjury,
   chooseTreatmentTarget,
@@ -73,6 +75,7 @@ function normalizeCrew(member) {
     fatigue: member.fatigue ?? base.fatigue ?? 0,
     experience: member.experience ?? base.experience ?? 0,
     trait: member.trait ?? base.trait ?? "일반 대원",
+    personalityTraitIds: normalizeCrewTraitIds(member.personalityTraitIds, base.personalityTraitIds ?? DEFAULT_CREW_TRAIT_IDS[member.id]),
     injury: normalizeInjury(member.injury ?? base.injury),
     needs: normalizeNeeds({ ...(base.needs ?? DEFAULT_NEEDS), ...(member.needs ?? {}) }),
     stats: { ...(base.stats ?? {}), ...(member.stats ?? {}) },
@@ -184,6 +187,7 @@ export const useCrewStore = create(
       recoveryQueue: [],
       crewActivities: [],
       crewActivityLog: [],
+      relationships: {},
       lastCrewAiAt: null,
       recruitCrew: (crewMember) => {
         const normalized = normalizeCrew({ ...crewMember, alive: true, injury: crewMember.injury ?? "healthy", fatigue: crewMember.fatigue ?? 0, morale: crewMember.morale ?? "보통", experience: crewMember.experience ?? 0 });
@@ -204,7 +208,12 @@ export const useCrewStore = create(
         const previousByMember = new Map((state.crewActivities ?? []).map((activity) => [activity.memberId, activity]));
         const changed = activities.filter((activity) => previousByMember.get(activity.memberId)?.action !== activity.action || previousByMember.get(activity.memberId)?.station !== activity.station);
         const logEntries = changed.slice(0, 3).map((activity) => { const member = state.crew.find((entry) => entry.id === activity.memberId); return `${member?.name ?? "승무원"}: ${activity.station} · ${activity.action}`; });
-        set((nextState) => ({ crewActivities: activities, lastCrewAiAt: currentMinute, crewActivityLog: [...logEntries, ...(nextState.crewActivityLog ?? [])].slice(0, 12) }));
+        set((nextState) => ({
+          crewActivities: activities,
+          relationships: updateRelationshipsFromActivities({ relationships: nextState.relationships, activities, crew: nextState.crew, currentMinute }),
+          lastCrewAiAt: currentMinute,
+          crewActivityLog: [...logEntries, ...(nextState.crewActivityLog ?? [])].slice(0, 12),
+        }));
         return logEntries;
       },
       completeTrainingJob: (task) => {
@@ -277,7 +286,7 @@ export const useCrewStore = create(
       name: "space-manager-crew",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], relationships: normalizeRelationships(persistedState?.relationships), lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
     },
   ),
 );

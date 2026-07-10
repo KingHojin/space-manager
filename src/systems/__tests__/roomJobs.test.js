@@ -100,6 +100,14 @@ describe("scoreJobForMember", () => {
     expect(matching).toBeGreaterThan(nonMatching);
   });
 
+  it("applies mood as a small multiplier to room-work scoring", () => {
+    const room = baseRoom();
+    const job = getRoomJob("engineering");
+    const inspired = scoreJobForMember(member({ fatigue: 0, needs: { mood: 95, hunger: 0, stress: 0, sleepDebt: 0, hygiene: 100 } }), room, job);
+    const strained = scoreJobForMember(member({ fatigue: 0, needs: { mood: 30, hunger: 70, stress: 75, sleepDebt: 65, hygiene: 35 } }), room, job);
+    expect(inspired).toBeGreaterThan(strained);
+  });
+
   it("penalizes higher fatigue with a lower score", () => {
     const room = baseRoom();
     const job = getRoomJob("engineering");
@@ -159,6 +167,18 @@ describe("applyRoomTick", () => {
     expect(nextRooms.engineering.condition).toBeGreaterThan(50);
     expect(nextRooms.engineering.load).toBeLessThan(50);
     expect(logs.some((line) => line.includes("완료"))).toBe(true);
+  });
+
+
+  it("applies friction penalties when conflicted crew share the same room job", () => {
+    const rooms = { engineering: baseRoom({ condition: 50, load: 50, progress: 0, tier: 3 }) };
+    const roomActivities = { engineering: [
+      { memberId: "a", roomId: "engineering", jobId: "engineering-tuning", speedMultiplier: 1 },
+      { memberId: "b", roomId: "engineering", jobId: "engineering-tuning", speedMultiplier: 1 },
+    ] };
+    const neutral = applyRoomTick({ rooms, roomActivities, deltaMinutes: 10, currentMinute: 10 }).nextRooms.engineering.progress;
+    const friction = applyRoomTick({ rooms, roomActivities, deltaMinutes: 10, currentMinute: 10, relationships: { "a::b": { crewIds: ["a", "b"], affinity: -60, band: "friction" } } }).nextRooms.engineering.progress;
+    expect(friction).toBeLessThan(neutral);
   });
 
   it("resets progress/assignment and grows load faster while a crisis is active", () => {

@@ -1,6 +1,8 @@
 import { ROOM_IDS } from "../data/shipRooms";
 import { calculateRoomModifiers } from "../data/roomModules";
 import { canWorkWithInjury, injuryWorkSpeedMultiplier } from "./injurySystem";
+import { getMoodWorkMultiplier } from "./crewMood";
+import { getRelationshipWorkMultiplier } from "./crewRelations";
 import { WEAR } from "../data/constants";
 
 export const ROOM_CONDITION_DECAY_PER_HOUR = WEAR.conditionDecayPerHour;
@@ -89,6 +91,7 @@ export function scoreJobForMember(member, room, job, context = {}) {
   if (room.id === "galley" && context.hasHungryCrew) score += 24;
   if (supportRoom && ((room.condition ?? 100) < 70 || (room.load ?? 0) > 40)) score += 14;
   score *= injuryWorkSpeedMultiplier(member.injury);
+  score *= getMoodWorkMultiplier(member);
   score *= calculateRoomModifiers(room).jobSpeedMul;
   return score;
 }
@@ -130,7 +133,7 @@ function jobCompletionEffect(job) {
   return {};
 }
 
-export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0, roleCoverage = null, usageByRoom = {} }) {
+export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, currentMinute = 0, roleCoverage = null, usageByRoom = {}, relationships = {} }) {
   const hours = deltaMinutes / 60;
   const nextRooms = {};
   const completedJobs = [];
@@ -162,7 +165,9 @@ export function applyRoomTick({ rooms, roomActivities = {}, deltaMinutes = 0, cu
       const slots = getRoomSlots(room);
       assignedMemberIds = Array.from(new Set(claims.map((claim) => claim.memberId).filter(Boolean))).slice(0, slots);
       jobId = job.id;
-      const speed = claims.slice(0, slots).reduce((sum, claim) => sum + (claim.speedMultiplier ?? 1), 0);
+      const activeClaims = claims.slice(0, slots);
+      const memberIds = activeClaims.map((claim) => claim.memberId).filter(Boolean);
+      const speed = activeClaims.reduce((sum, claim) => sum + (claim.speedMultiplier ?? 1) * getRelationshipWorkMultiplier(claim.memberId, memberIds, relationships), 0);
       progress = clamp(progress + (deltaMinutes / job.durationMinutes) * 100 * Math.max(0.5, speed) * modifiers.jobSpeedMul, 0, 100);
       if (progress >= 100) {
         condition = clamp(condition + job.conditionRestore, 0, 100);

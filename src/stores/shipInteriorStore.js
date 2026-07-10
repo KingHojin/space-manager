@@ -164,8 +164,8 @@ export const useShipInteriorStore = create(
         });
         return result;
       },
-      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {}, roleCoverage = null, usageByRoom = {} }) => {
-        const { nextRooms, completedJobs, logs } = applyRoomTick({ rooms: get().rooms, roomActivities, deltaMinutes, currentMinute, roleCoverage, usageByRoom });
+      tickRooms: ({ currentMinute, deltaMinutes, roomActivities = {}, roleCoverage = null, usageByRoom = {}, relationships = {} }) => {
+        const { nextRooms, completedJobs, logs } = applyRoomTick({ rooms: get().rooms, roomActivities, deltaMinutes, currentMinute, roleCoverage, usageByRoom, relationships });
         set({ rooms: nextRooms });
         return { completedJobs, logs };
       },

@@ -204,7 +204,7 @@ function processRoomJobs(currentMinute, deltaMinutes) {
     if (job.status !== "in_progress" || !job.roomId) return;
     usageByRoom[job.roomId] = (usageByRoom[job.roomId] ?? 0) + 1;
   });
-  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities, roleCoverage: crewStore.getRoleCoverage(), usageByRoom });
+  const { completedJobs, logs } = useShipInteriorStore.getState().tickRooms({ currentMinute, deltaMinutes, roomActivities, roleCoverage: crewStore.getRoleCoverage(), usageByRoom, relationships: crewStore.relationships });
   completedJobs.forEach((job) => applyRoomJobEffect(job.effect, job.roomId));
   logs.forEach((message) => useGameStore.getState().addLog(`함선: ${message}`));
 }

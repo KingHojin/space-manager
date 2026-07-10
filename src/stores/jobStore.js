@@ -3,6 +3,7 @@ import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG, SLOT_ROOM } from "../data/constants";
 import { getActiveModifiers } from "../systems/cardEffects";
 import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
+import { getMoodWorkMultiplier } from "../systems/crewMood";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 import { useInventoryStore } from "./inventoryStore";
@@ -50,6 +51,12 @@ function roomsFromJobs(jobs = []) {
     rooms[job.roomId].currentLoad += job.loadCost ?? JOB_LOAD_COST[job.type] ?? 1;
   });
   return rooms;
+}
+
+function durationForCrew(job, crew = []) {
+  const member = crew.find((entry) => entry.id === job.assignedCrewId || entry.id === job.payload?.targetCrewId);
+  const moodWorkMultiplier = getMoodWorkMultiplier(member);
+  return { effectiveDuration: Math.max(1, Math.round((job.duration ?? 1) / moodWorkMultiplier)), moodWorkMultiplier };
 }
 
 function makeJob(input = {}) {
@@ -188,7 +195,10 @@ export const useJobStore = create(
             if (!action) return job;
             if (action.kind === "rollback") return { ...job, status: "backlog", assignedCrewId: null, arrivalAt: null, startedAt: null };
             if (action.kind === "assign") return { ...job, status: "assigned", assignedCrewId: action.crewId, arrivalAt: action.arrivalAt };
-            if (action.kind === "start") return { ...job, status: "in_progress", arrivalAt: null, startedAt: job.startedAt ?? currentMinute };
+            if (action.kind === "start") {
+              const timing = durationForCrew({ ...job, assignedCrewId: action.crewId }, crew);
+              return { ...job, ...timing, status: "in_progress", assignedCrewId: action.crewId, arrivalAt: null, startedAt: job.startedAt ?? currentMinute };
+            }
             return job;
           });
           return { jobs, rooms: roomsFromJobs(jobs) };
@@ -217,7 +227,7 @@ export const useJobStore = create(
         set((state) => {
           const jobs = normalizeJobs(state.jobs).map((job) => {
             if (job.status !== "in_progress" || job.startedAt === null) return job;
-            const progress = clampProgress((currentMinute - job.startedAt) / Math.max(1, job.duration));
+            const progress = clampProgress((currentMinute - job.startedAt) / Math.max(1, job.effectiveDuration ?? job.duration));
             if (progress < 1) return { ...job, progress };
             const finished = { ...job, progress: 1, status: "done" };
             done.push(finished);

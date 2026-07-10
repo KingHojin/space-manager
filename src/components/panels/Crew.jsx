@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Compass, Cross, Crosshair, User, Users, Utensils, Wrench } from "lucide-react";
 import { JOB_DURATION, JOB_ECONOMY } from "../../data/constants";
+import { getCrewTrait } from "../../data/crewTraits";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { formatGameDate } from "../../systems/gameClock";
 import { summarizeCrewAI } from "../../systems/crewAI";
@@ -125,6 +126,12 @@ function NeedGrid({ member }) {
   return <div className="mt-3 grid grid-cols-5 gap-1.5 text-xs">{entries.map(([key, label, value]) => <div key={key} className={`rounded-xl border border-slate-700/70 bg-slate-950/55 p-2 text-center ${needTone(key, value)}`}><div className="font-black tabular-nums">{Math.round(value)}</div><div className="mt-0.5 truncate text-[10px] text-slate-400">{label}</div></div>)}</div>;
 }
 
+function PersonalityTraitChips({ member }) {
+  const traits = (member.personalityTraitIds ?? []).map(getCrewTrait).filter(Boolean);
+  if (traits.length === 0) return null;
+  return <div className="mt-3 flex flex-wrap gap-1.5">{traits.map((trait) => <span key={trait.id} className={`hud-chip ${trait.tone ?? ""}`} title={trait.description}>{trait.label}</span>)}</div>;
+}
+
 function ActivityCard({ activity }) {
   if (!activity) return <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-950/55 p-3 text-sm text-slate-400">AI 대기 중</div>;
   const priority = getPriorityConfig(activity.priority);
@@ -236,6 +243,7 @@ export default function Crew() {
               <article key={member.id} className={`mission-contract-card rounded-2xl border p-3 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
                 <CrewPortrait member={member} />
                 <div className="mt-3 flex items-start justify-between gap-3"><div className="min-w-0"><div className="flex items-center gap-2"><RoleIcon role={member.role} size={16} /><div className="truncate font-black text-slate-100">{member.name}</div></div><div className="mt-1 truncate text-xs text-slate-500">{member.role} · {member.trait ?? "일반 대원"}</div></div><span className={`hud-chip shrink-0 ${injuryTone(member.injury, member.alive)}`}>{!member.alive ? "전사" : injuryLabel(member.injury)}</span></div>
+                <PersonalityTraitChips member={member} />
                 <ActivityCard activity={activity} />
                 <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><Info label="피로" value={`${Math.round(member.fatigue ?? 0)}%`} tone={fatigueTone(member.fatigue ?? 0)} /><Info label="사기" value={member.morale ?? "보통"} /><Info label="경험" value={member.experience ?? 0} /></div>
                 <NeedGrid member={member} />
