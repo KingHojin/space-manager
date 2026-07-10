@@ -1,0 +1,107 @@
+.modal-panel[tabindex="-1"]:focus,
+.game-over-panel:focus {
+  outline: none;
+}
+
+.game-over-backdrop {
+  background: rgb(3 4 7 / 0.9);
+}
+
+.game-over-panel {
+  overflow: hidden;
+  border: 1px solid rgb(255 69 58 / 0.32);
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgb(35 29 32 / 0.98), rgb(22 22 27 / 0.98));
+  box-shadow: 0 30px 100px rgb(0 0 0 / 0.55), inset 0 1px 0 rgb(255 255 255 / 0.05);
+}
+
+.game-over-panel::before,
+.game-over-panel::after {
+  display: none;
+}
+
+.app-news-ticker {
+  border-top: 1px solid var(--ui-hairline);
+  background: rgb(18 20 25 / 0.82);
+  color: var(--ui-text-secondary);
+  backdrop-filter: blur(20px) saturate(120%);
+}
+
+.app-news-ticker:hover {
+  background: rgb(255 255 255 / 0.055);
+  color: var(--ui-text);
+}
+
+/* Crew markers stay visually compact, while the invisible pointer target meets
+   the 44px touch-target recommendation. */
+.ship-deck-map > button.absolute::after {
+  content: "";
+  position: absolute;
+  inset: -8px;
+  border-radius: 999px;
+}
+
+@media (max-width: 390px) {
+  .app-header-inner {
+    gap: 8px;
+  }
+
+  .ship-identity {
+    gap: 8px;
+  }
+
+  .ship-mark {
+    width: 34px;
+    height: 34px;
+  }
+
+  .time-controls {
+    gap: 5px;
+  }
+
+  .time-control-button {
+    min-width: 42px;
+    padding-inline: 10px;
+  }
+
+  .resource-strip {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .modal-panel {
+    max-height: calc(100dvh - max(8px, env(safe-area-inset-top)));
+  }
+
+  .game-over-panel {
+    padding: 20px;
+  }
+}
+
+@media (forced-colors: active) {
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  a:focus-visible {
+    outline: 2px solid Highlight;
+  }
+
+  .hud-chip,
+  .ui-action-card,
+  .ui-stat-tile,
+  .ui-feed-item,
+  .ui-task-row,
+  .ship-room-zone {
+    border: 1px solid CanvasText;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ticker-line,
+  .crew-marker-core,
+  .crew-marker-avatar,
+  .room-wear-spark,
+  .room-wear-smoke,
+  .ship-engine-pod::after {
+    animation: none !important;
+    transition: none !important;
+  }
+}
