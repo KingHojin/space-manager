@@ -5,6 +5,7 @@ import { getShipStatus, getSituationCards } from "../commandCenter";
 import { useGameStore } from "../../stores/gameStore";
 import { useNavStore } from "../../stores/navStore";
 import { useRecruitStore } from "../../stores/recruitStore";
+import { reconcileFuel } from "../fuelSystem";
 
 // Bug-fix round 21 — independent review fixes. Each block reproduces the
 // exact broken expression a component used (kept as a regression pin) next
@@ -48,12 +49,9 @@ describe("StatsModal crew stat totals (NaN fix)", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Fix 2: Market's "연료 보급" only raised gameStore.resources.fuel, never
-// navStore.fuel — but navStore.fuel is what buildTravelPlan gates on
-// (`fuel <= 0` -> { ok:false, reason:"drifting" }) and what tickTravel
-// burns. This drives the fixed buyService flow (spendCredits + addResources
-// + navStore.refuel) against the real stores and proves route planning is
-// restored, and pins the old flow's failure.
+// Fix 2 follow-up: gameStore fuel is now authoritative and navStore.fuel is a
+// compatibility mirror. A normal resource mutation must be sufficient to
+// refuel every consumer; callers must not remember a second nav action.
 // ---------------------------------------------------------------------------
 describe("Market fuel service refuels the travel-gating navStore.fuel", () => {
   const FUEL_SERVICE_CHANGES = { fuel: 35 }; // same catalog value as Market.jsx services[0]
@@ -63,32 +61,15 @@ describe("Market fuel service refuels the travel-gating navStore.fuel", () => {
     return nav.sector.nodes.find((node) => node.id === nav.currentNodeId)?.connections?.[0];
   }
 
-  it("reproduces the bug: the old flow (gameStore only) leaves navStore.fuel at 0 and route planning blocked", () => {
-    useNavStore.getState().generateSector("market-fuel-bug");
-    useNavStore.setState({ fuel: 0 });
-    useGameStore.getState().addResources({ credits: 10000, fuel: -100 });
-
-    // Old buyService body: spendCredits + addResources(changes) only.
-    expect(useGameStore.getState().spendCredits(280)).toBe(true);
-    useGameStore.getState().addResources(FUEL_SERVICE_CHANGES);
-
-    expect(useGameStore.getState().resources.fuel).toBeGreaterThan(0);
-    expect(useNavStore.getState().fuel).toBe(0); // travel meter untouched
-    const plan = useNavStore.getState().planRoute(connectedTargetId(), 0);
-    expect(plan.ok).toBe(false);
-    expect(plan.reason).toBe("drifting");
-  });
-
-  it("fixed flow also calls navStore.refuel(changes.fuel), unblocking route planning", () => {
+  it("one gameStore fuel mutation synchronizes navigation and unblocks route planning", () => {
     useNavStore.getState().generateSector("market-fuel-fix");
-    useNavStore.setState({ fuel: 0 });
-    useGameStore.getState().addResources({ credits: 10000 });
+    useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 10000, fuel: 0 } }));
+    reconcileFuel();
 
-    // Fixed buyService body: spendCredits + addResources(changes) + refuel.
     expect(useGameStore.getState().spendCredits(280)).toBe(true);
     useGameStore.getState().addResources(FUEL_SERVICE_CHANGES);
-    useNavStore.getState().refuel(FUEL_SERVICE_CHANGES.fuel);
 
+    expect(useGameStore.getState().resources.fuel).toBe(35);
     expect(useNavStore.getState().fuel).toBe(35);
     const plan = useNavStore.getState().planRoute(connectedTargetId(), 0);
     expect(plan.ok).toBe(true);

@@ -14,6 +14,7 @@ import {
   pickEnemyFleet,
   resolveCombatRound,
 } from "../../systems/combatEngine";
+import { getSectorProfile } from "../../systems/campaignProgression";
 import { DUST } from "../../data/constants";
 import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
 import { buildCombatReport } from "../../systems/reportSystem";
@@ -195,6 +196,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const activeTravel = useNavStore((state) => state.travel);
   const navSector = useNavStore((state) => state.sector);
+  const sectorIndex = useNavStore((state) => state.sectorIndex ?? 0);
   const navDiscovered = useNavStore((state) => state.discovered ?? []);
   const pendingCombatEncounter = useExplorationStore((state) => state.pendingCombatEncounter);
   const clearPendingCombatEncounter = useExplorationStore((state) => state.clearPendingCombatEncounter);
@@ -230,6 +232,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   // regardless of actual exploration progress. navStore's sector/discovered
   // reflect the real, currently-updating navigation state.
   const maxDanger = Math.max(1, ...(navSector?.nodes ?? []).filter((node) => navDiscovered.includes(node.id)).map((node) => node.danger));
+  const sectorProfile = getSectorProfile(sectorIndex);
   const combatEngaged = combat?.status === "engaged";
   const combatTerminal = Boolean(combat && ["won", "retreated", "lost"].includes(combat.status));
   const travelLocked = Boolean(activeTravel && !pendingCombatEncounter && !combatEngaged);
@@ -244,7 +247,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
     if (travelLocked) return pushFeed(["작전 제한: 항해 중에는 임의 교전을 시작할 수 없습니다."]);
     if (activeCrew.length === 0) return pushFeed(["출격 불가: 생존 승무원이 없습니다."]);
     const danger = pendingCombatEncounter?.danger ?? maxDanger;
-    const enemy = pickEnemyFleet(danger);
+    const enemy = pickEnemyFleet(danger, { maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier });
     const next = createCombatState(enemy);
     startCombatRecord({ vesselId: activeVesselId, combat: next, targetId: "hull" });
     if (pendingCombatEncounter) {

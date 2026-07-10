@@ -40,10 +40,10 @@ export default function Market() {
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const sector = useNavStore((state) => state.sector);
   const travel = useNavStore((state) => state.travel);
+  const driftState = useNavStore((state) => state.driftState);
   const visited = useNavStore((state) => state.visited);
-  const refuel = useNavStore((state) => state.refuel);
   const currentNode = sector.nodes.find((node) => node.id === currentNodeId);
-  const docked = isDocked(currentNode, travel);
+  const docked = isDocked(currentNode, travel, driftState);
   const resources = useGameStore((state) => state.resources);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const spendCredits = useGameStore((state) => state.spendCredits);
@@ -78,14 +78,6 @@ export default function Market() {
       return;
     }
     addResources(service.changes);
-    // Bug-fix round 21: the fuel that actually gates travel is navStore.fuel
-    // (buildTravelPlan blocks planning at fuel <= 0 and tickTravel burns it),
-    // not gameStore.resources.fuel — buying "연료 보급" here used to only
-    // raise the gameStore meter, leaving the ship unable to plan routes
-    // despite having just "refueled". Mirror gameClock.applyNavEffect's
-    // "fuel" effect, which applies the same delta to BOTH meters
-    // (navStore.refuel + gameStore.addResources). Same number, no new value.
-    if (service.changes.fuel) refuel(service.changes.fuel);
     addLog(`${service.label} 완료. 크레딧 ${service.cost} 사용.`);
   };
 

@@ -114,6 +114,10 @@ describe("isDocked", () => {
     expect(isDocked({ id: "n0", type: "station" }, { fromId: "n0", toId: "n1", progress: 40 })).toBe(false);
   });
 
+  it("is not docked at a station node while drift is active", () => {
+    expect(isDocked({ id: "n0", type: "station" }, null, { reason: "fuel_empty" })).toBe(false);
+  });
+
   it("is not docked when there is no current node", () => {
     expect(isDocked(null, null)).toBe(false);
     expect(isDocked(undefined, null)).toBe(false);

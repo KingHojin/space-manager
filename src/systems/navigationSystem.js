@@ -1,6 +1,7 @@
 import { ENCOUNTER_TABLE, NODE_TYPE_ICONS, NODE_TYPE_LABELS, normalizeNodeType } from "../data/navEncounters";
+import { applySectorProgression } from "./campaignProgression";
 
-const NODE_TYPES = ["station", "nebula", "debris", "distress", "unknown", "debris", "unknown", "exit"];
+const FIELD_NODE_TYPES = ["nebula", "debris", "distress", "unknown", "debris", "unknown"];
 const NAME_PARTS = ["앵커", "청색", "마레", "이온", "코퍼", "무음", "장막", "유리", "엄브라", "아크", "코로스", "에오스"];
 const NAME_SUFFIX = ["정거장", "표류대", "잔해", "암초", "달", "궤도", "관문", "등대", "회랑", "전초지", "파편장", "항로"];
 
@@ -80,11 +81,16 @@ export function assertConnected(nodes, edges, startId) {
   return seen.size === nodes.length;
 }
 
-export function generateSector(seed = "helios-rim", nodeCount = 10) {
+// The legacy second numeric argument remains nodeCount. Phase 22-B progression
+// uses an options object so old generateSector(seed, 8) callers/save fixtures
+// cannot accidentally become "sector index 8".
+export function generateSector(seed = "helios-rim", options = 10) {
+  const nodeCount = typeof options === "number" ? options : options?.nodeCount ?? 10;
+  const sectorIndex = typeof options === "object" ? options?.sectorIndex ?? 0 : 0;
   const rng = createRng(seed);
   const safeCount = Math.max(7, Math.min(14, nodeCount));
   let nodes = Array.from({ length: safeCount }).map((_, index) => {
-    const type = index === 0 ? "station" : index === safeCount - 1 ? "exit" : NODE_TYPES[index % NODE_TYPES.length];
+    const type = index === 0 ? "station" : index === safeCount - 1 ? "exit" : FIELD_NODE_TYPES[(index - 1) % FIELD_NODE_TYPES.length];
     const angle = (Math.PI * 2 * index) / safeCount + rng() * 0.55;
     const radius = index === 0 ? 8 : 18 + index * 5 + rng() * 8;
     const x = Math.round(50 + Math.cos(angle) * radius);
@@ -112,7 +118,7 @@ export function generateSector(seed = "helios-rim", nodeCount = 10) {
     nodes = hydrateNodeConnections(nodes, edges);
   }
 
-  return { id: `sector-${seed}`, name: `개척 섹터 ${String(seed).slice(-4)}`, seed, nodes, edges };
+  return applySectorProgression({ id: `sector-${seed}`, name: `개척 섹터 ${String(seed).slice(-4)}`, seed, nodes, edges }, sectorIndex);
 }
 
 export function sectorFromLegacyZones(zones = [], seed = "legacy") {
@@ -209,6 +215,6 @@ export function hasVisitedNodeType(sector, visited, nodeType) {
 // not mid-transit. Any other node type, or a station node reached while
 // `travel` is still set (should not normally happen, but defensive), counts
 // as not docked.
-export function isDocked(node, travel) {
-  return Boolean(node && node.type === "station" && !travel);
+export function isDocked(node, travel, driftState = null) {
+  return Boolean(node && node.type === "station" && !travel && !driftState);
 }

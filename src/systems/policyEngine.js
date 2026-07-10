@@ -244,6 +244,10 @@ function optionHasCombatOutcome(option) {
   return (option?.outcome ?? []).some((effect) => effect?.kind === "combat");
 }
 
+function optionRequiresManualChoice(option) {
+  return Boolean(option?.manualOnly || (option?.outcome ?? []).some((effect) => effect?.manualOnly));
+}
+
 // Sums a single encounter option's outcome effects into { risk, reward }
 // scalars, per the weighting scheme documented above the *_WEIGHTS
 // constants. Never called on an option that contains a `combat` effect —
@@ -294,6 +298,16 @@ function scoreEncounterOption(option) {
 function evaluateEncounterDefaultChoice(policyState, encounter, pendingCombatEncounter) {
   if (!policyState?.enabled) return null;
   if (!encounter) return null;
+  if (encounter.nodeType === "exit" || encounter.id === "exit-objective-locked") {
+    return {
+      action: {
+        policyId: "encounter-default-choice",
+        kind: "diagnostic",
+        detail: { reason: "manual-gate", encounterId: encounter.id ?? null },
+      },
+      log: `정책: 관문 조우 자동 대응 보류 — 함장의 수동 결재가 필요합니다 (${encounter.title ?? "관문"}).`,
+    };
+  }
   // A combat encounter is already awaiting manual resolution elsewhere
   // (e.g. spawned by a different navigation effect this same tick) — leave
   // the pending nav encounter alone until that clears, as an extra safety
@@ -302,7 +316,7 @@ function evaluateEncounterDefaultChoice(policyState, encounter, pendingCombatEnc
 
   const stance = policyState.params?.stance ?? DEFAULT_ENCOUNTER_STANCE;
   const options = encounter.options ?? [];
-  const candidates = options.filter((option) => !optionHasCombatOutcome(option));
+  const candidates = options.filter((option) => !optionHasCombatOutcome(option) && !optionRequiresManualChoice(option));
 
   if (candidates.length === 0) {
     return {

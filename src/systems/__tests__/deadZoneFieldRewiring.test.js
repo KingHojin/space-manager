@@ -17,11 +17,10 @@ import { useNavStore } from "../../stores/navStore";
 // navStore state the same way the game loop does (generateSector +
 // revealHiddenNodes — the same store actions Exploration.jsx uses).
 //
-// generateSector always makes the *last* node type "exit" with a
-// hard-fixed danger of 4 (see systems/navigationSystem.js#generateSector),
-// so revealing the whole sector deterministically produces a discovered
-// node with danger >= 4 regardless of seed — no reliance on RNG-dependent
-// danger rolls for the "then it changes" assertions below.
+// Phase 22-B makes the last node the sector's deterministic danger ceiling.
+// Sector 1's ceiling is 3 (later sectors rise through 4/5/6/7), so revealing
+// the whole first sector still guarantees danger rises above the dead legacy
+// ceiling of 2 without relying on an RNG-dependent field-node roll.
 
 function oldMaxDanger() {
   const discoveredZoneIds = useExplorationStore.getState().discoveredZoneIds;
@@ -70,9 +69,9 @@ describe("Combat.jsx maxDanger (pickEnemyFleet input)", () => {
     expect(revealed.length).toBeGreaterThan(0);
     const after = newMaxDanger();
     expect(after).toBeGreaterThanOrEqual(before);
-    // Last node is always type "exit" with a hard-fixed danger of 4.
+    // Sector 1's exit is its fixed danger ceiling of 3.
     expect(after).toBeGreaterThan(2);
-    expect(after).toBeGreaterThanOrEqual(4);
+    expect(after).toBeGreaterThanOrEqual(3);
   });
 
   it("new formula only counts nodes that are actually discovered, not the whole sector", () => {

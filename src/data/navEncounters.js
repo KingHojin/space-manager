@@ -123,7 +123,7 @@ export const ENCOUNTER_TABLE = {
       title: "섹터 관문",
       description: "장거리 점프 좌표가 안정화됐습니다. 다음 섹터로 넘어갈 수 있습니다.",
       options: [
-        { id: "jump", label: "다음 섹터 생성", outcome: [{ kind: "nextSector" }] },
+        { id: "jump", label: "다음 섹터로 점프", manualOnly: true, outcome: [{ kind: "nextSector", manualOnly: true }] },
         { id: "hold", label: "현재 섹터에 남기", outcome: [{ kind: "log", message: "관문 앞에서 현재 섹터 탐험을 계속합니다." }] },
       ],
     },
