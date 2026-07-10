@@ -36,7 +36,11 @@ export default function OverlayModal({ title, children, onClose }) {
 
       const panel = panelRef.current;
       if (!panel) return;
-      const focusable = [...panel.querySelectorAll(FOCUSABLE_SELECTOR)].filter((element) => !element.hasAttribute("hidden") && element.getAttribute("aria-hidden") !== "true");
+      const focusable = [...panel.querySelectorAll(FOCUSABLE_SELECTOR)].filter((element) => (
+        !element.hasAttribute("hidden")
+        && element.getAttribute("aria-hidden") !== "true"
+        && element.getClientRects().length > 0
+      ));
       if (focusable.length === 0) {
         event.preventDefault();
         panel.focus();
