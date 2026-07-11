@@ -6,7 +6,9 @@ import { useMissionStore } from "../../stores/missionStore";
 import { mergePersistedNavState, useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 import { usePolicyStore } from "../../stores/policyStore";
-import { applyNavigationEncounter, processTimedJobs } from "../gameClock";
+import { useInventoryStore } from "../../stores/inventoryStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { applyNavigationEncounter, claimGateRequisition, processTimedJobs } from "../gameClock";
 import { generateSector } from "../navigationSystem";
 
 function jumpEncounter() {
@@ -34,6 +36,8 @@ function objectiveReadyState(sectorIndex = 0) {
 beforeEach(() => {
   useNavStore.getState().generateSector("campaign-flow-reset");
   useGameStore.setState({ isPaused: true, gameOver: null });
+  useGameStore.setState((state) => ({ resources: { ...state.resources, credits: 600 } }));
+  useSkillStore.setState({ availablePoints: 3, earnedPoints: 0 });
   const vesselId = useShipStore.getState().activeVesselId;
   useMissionStore.setState({ activeByVesselId: {}, pendingMissionEncountersByVesselId: {} });
   useCombatStore.setState({ combatByVesselId: { [vesselId]: null } });
@@ -86,21 +90,31 @@ describe("campaign gate flow", () => {
     expect(useNavStore.getState().sectorIndex).toBe(0);
   });
 
-  it("advances exactly one sector and returns the scaled gate reward", () => {
+  it("advances exactly one sector, then grants the pending requisition exactly once", () => {
     useNavStore.setState(objectiveReadyState(0));
-    const result = applyNavigationEncounter("jump", 30, { manual: true });
+    const beforeScrap = useInventoryStore.getState().items.find((item) => item.id === "salvage-scrap")?.qty ?? 0;
+    applyNavigationEncounter("jump", 30, { manual: true });
     expect(useNavStore.getState().sectorIndex).toBe(1);
     expect(useNavStore.getState().campaign.sectorsCleared).toBe(1);
-    expect(result.effects.some((effect) => effect.kind === "resource" && effect.delta.credits === 240)).toBe(true);
+    expect(useNavStore.getState().campaign.pendingRequisition).toMatchObject({ claimId: "first-frontier:sector:1", baseCredits: 120 });
     expect(useNavStore.getState().sector.difficulty.sectorNumber).toBe(2);
+    const claim = claimGateRequisition("maintenance", "first-frontier:sector:1", 31);
+    expect(claim).toMatchObject({ ok: true, newlyClaimed: true });
+    expect(useGameStore.getState().resources.credits).toBe(720);
+    expect(useSkillStore.getState()).toMatchObject({ availablePoints: 4, earnedPoints: 1 });
+    expect(useInventoryStore.getState().items.find((item) => item.id === "salvage-scrap")?.qty).toBe(beforeScrap + 6);
+    expect(claimGateRequisition("maintenance", "first-frontier:sector:1", 32)).toMatchObject({ ok: false, newlyClaimed: false });
+    expect(useGameStore.getState().resources.credits).toBe(720);
   });
 
   it("persists a one-time expedition milestone, pauses for summary, then allows timed work to resume", () => {
     useNavStore.setState(objectiveReadyState(4));
     useGameStore.setState({ isPaused: false });
-    const result = applyNavigationEncounter("jump", 777, { manual: true });
+    applyNavigationEncounter("jump", 777, { manual: true });
+    expect(useNavStore.getState().campaign).toMatchObject({ status: "active", pendingRequisition: { isExpeditionFinale: true } });
+    const result = claimGateRequisition("personnel", "first-frontier:sector:5", 778);
     expect(result.effects.some((effect) => effect.kind === "campaignComplete")).toBe(true);
-    expect(useNavStore.getState().campaign).toMatchObject({ status: "completed", sectorsCleared: 5, completedAtMinute: 777 });
+    expect(useNavStore.getState().campaign).toMatchObject({ status: "completed", sectorsCleared: 5, completedAtMinute: 778, pendingRequisition: null });
     expect(useGameStore.getState().gameOver).toBeNull();
     expect(useGameStore.getState().isPaused).toBe(true);
     useGameStore.getState().setPaused(false);

@@ -7,7 +7,7 @@ import { getCrisisLabel } from "./crisisSystem";
 import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
 import { evaluatePolicies } from "./policyEngine";
-import { buildCrisisReport, buildPolicyReport, buildWorkReport } from "./reportSystem";
+import { buildCrisisReport, buildNavigationReport, buildPolicyReport, buildWorkReport } from "./reportSystem";
 import { getActiveVesselCrewAiSnapshot } from "./vesselScope";
 import { applyFuelDelta } from "./fuelSystem";
 import { useCrewStore } from "../stores/crewStore";
@@ -23,6 +23,8 @@ import { useRecruitStore } from "../stores/recruitStore";
 import { useReportStore } from "../stores/reportStore";
 import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
+import { useSkillStore } from "../stores/skillStore";
+import { settleGateRequisition } from "./requisitionSettlement";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -45,6 +47,30 @@ function itemQty(items, itemId) {
 
 function applyNavEffect(effect, currentMinute) {
   if (!effect) return;
+  if (effect.kind === "gateRequisition") {
+    const credits = Math.max(0, (effect.baseCredits ?? 0) + (effect.bonusCredits ?? 0));
+    if (credits > 0) useGameStore.getState().addResources({ credits });
+    (effect.items ?? []).forEach(({ itemId, qty }) => {
+      if (itemId && qty > 0) useInventoryStore.getState().addItem(itemId, qty);
+    });
+    if ((effect.skillPoints ?? 0) > 0) useSkillStore.getState().grantPoint(effect.skillPoints);
+    const itemSummary = (effect.items ?? []).map(({ itemId, qty }) => `${itemId} x${qty}`).join(", ");
+    const packageSummary = [effect.bonusCredits ? `₢${effect.bonusCredits}` : null, itemSummary || null].filter(Boolean).join(" · ");
+    useReportStore.getState().addReport(buildNavigationReport({
+      title: effect.isExpeditionFinale ? "최종 관문 보급 수령" : `섹터 ${effect.sectorNumber} 관문 보급`,
+      summary: `기본 보급 ₢${effect.baseCredits ?? 0} · 선택 ${effect.packageLabel ?? effect.packageId}${packageSummary ? ` ${packageSummary}` : ""} · 스킬 포인트 +${effect.skillPoints ?? 0}.`,
+      navKind: "gateRequisition",
+      currentMinute,
+      details: {
+        claimId: effect.claimId,
+        sectorNumber: effect.sectorNumber,
+        packageId: effect.packageId,
+        credits,
+        items: effect.items ?? [],
+        skillPoints: effect.skillPoints ?? 0,
+      },
+    }));
+  }
   if (effect.kind === "resource" && effect.delta) useGameStore.getState().addResources(effect.delta);
   if (effect.kind === "fuel" && effect.delta) {
     applyFuelDelta(effect.delta);
@@ -120,7 +146,18 @@ function gateTransitBlockReason() {
 
 export function applyNavigationEncounter(optionId, currentMinute = useGameStore.getState().currentMinute, context = {}) {
   const encounter = useNavStore.getState().pendingEncounter;
-  const option = encounter?.options?.find((entry) => entry.id === optionId) ?? encounter?.options?.[0];
+  if (context.expectedClaimId && encounter?.claimId !== context.expectedClaimId) {
+    return { ok: false, reason: "staleClaim", effects: [], logs: [] };
+  }
+  const option = encounter?.options?.find((entry) => entry.id === optionId);
+  if (!option) return { ok: false, reason: "invalidOption", effects: [], logs: [] };
+  const requisitionClaim = (option?.outcome ?? []).find((effect) => effect.kind === "gateRequisitionClaim");
+  if (requisitionClaim) {
+    if (encounter.claimId !== requisitionClaim.claimId || context.expectedClaimId !== requisitionClaim.claimId) {
+      return { ok: false, reason: "staleClaim", effects: [], logs: [] };
+    }
+    return claimGateRequisition(requisitionClaim.packageId, requisitionClaim.claimId, currentMinute, { optionId });
+  }
   const isGateTransit = (option?.outcome ?? []).some((effect) => effect.kind === "nextSector");
   const fuelGain = (option?.outcome ?? []).reduce((sum, effect) => {
     if (effect.kind === "fuel") return sum + Math.max(0, effect.delta ?? 0);
@@ -150,6 +187,12 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   effects.forEach((effect) => applyNavEffect(effect, currentMinute));
   logs.forEach((message) => useGameStore.getState().addLog(`항해 조우: ${message}`));
   return { ok: true, effects, logs };
+}
+
+export function claimGateRequisition(packageId, claimId, currentMinute = useGameStore.getState().currentMinute, options = {}) {
+  if (!claimId) return { ok: false, reason: "missingClaimId", newlyClaimed: false, effects: [] };
+  const optionId = options.optionId ?? `claim:${claimId}:${packageId}`;
+  return settleGateRequisition({ packageId, claimId, optionId, currentMinute, afterStep: options.afterStep });
 }
 
 export function requestDriftRescue(currentMinute = useGameStore.getState().currentMinute) {
@@ -428,7 +471,7 @@ function applyPolicyActions(actions, currentMinute) {
       // Every gate interaction, including the locked gate's harmless-looking
       // "hold" option, is captain-only. Automation must not dismiss the card
       // or strand the player without a gate decision.
-      if (pending.nodeType === "exit" || pending.id === "exit-objective-locked") return;
+      if (pending.nodeType === "exit" || pending.nodeType === "requisition" || pending.id === "exit-objective-locked") return;
       if (detail.encounterId && pending.id !== detail.encounterId) return;
       if (!detail.optionId) return;
       // applyNavigationEncounter already does resolveEncounter() +

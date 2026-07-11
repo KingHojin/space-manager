@@ -1,8 +1,9 @@
 import { Sparkles, Ticket, Users } from "lucide-react";
-import { CREW_CAPACITY_FALLBACK, RECRUIT_COST, RECRUIT_PITY, RECRUIT_RATES, getCrewTemplate } from "../../data/recruitment";
+import { CREW_CAPACITY_FALLBACK, RECRUIT_COST, RECRUIT_PITY, RECRUIT_RATES, getCandidateRecruitCost, getCrewTemplate } from "../../data/recruitment";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useRecruitStore } from "../../stores/recruitStore";
+import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 
 const rarityTone = {
   common: "border-slate-500/40 bg-slate-500/10 text-slate-100",
@@ -10,6 +11,11 @@ const rarityTone = {
   epic: "border-violet-400/40 bg-violet-400/10 text-violet-100",
   legendary: "border-amber-300/50 bg-amber-300/10 text-amber-100",
 };
+
+export function formatRecruitPullLog(result) {
+  const rollCount = result.results?.length ?? 0;
+  return `영입 ${rollCount}회 완료: 비용 ₢${result.cost}, 환급 ₢${result.refund}.`;
+}
 
 function CrewCard({ result, compact = false }) {
   const template = result.templateId ? getCrewTemplate(result.templateId) : null;
@@ -44,17 +50,20 @@ export default function Recruit() {
   const pull = useRecruitStore((state) => state.pull);
   const recruitFromCandidate = useRecruitStore((state) => state.recruitFromCandidate);
   const capacity = CREW_CAPACITY_FALLBACK;
+  const availableSlots = Math.max(0, capacity - crew.length);
+  const batchRolls = Math.min(10, availableSlots);
+  const batchCost = batchRolls === 1 ? RECRUIT_COST.single : (RECRUIT_COST.ten / 10) * batchRolls;
 
   const doPull = (count) => {
     const result = pull(count);
     if (!result.ok) return addLog(`영입 실패: ${result.reason === "credits" ? "크레딧 부족" : result.reason}`);
-    addLog(`영입 ${count}회 완료: 비용 ₢${result.cost}, 환급 ₢${result.refund}.`);
+    addLog(formatRecruitPullLog(result));
   };
 
   const acceptCandidate = (candidateId) => {
     const result = recruitFromCandidate(candidateId);
-    if (!result.ok) return addLog(`후보 영입 실패: ${result.reason}`);
-    return addLog(`후보 영입 완료: ${result.member.name}.`);
+    if (!result.ok) return addLog(`후보 영입 실패: ${result.reason === "credits" ? `크레딧 부족 · 필요 ₢${result.cost}` : result.reason}`);
+    return addLog(`후보 영입 완료: ${result.member.name} · 비용 ₢${result.cost}.`);
   };
 
   return (
@@ -66,13 +75,13 @@ export default function Recruit() {
             <div>
               <div className="hud-label">RECRUITMENT</div>
               <div className="mt-2 text-3xl font-black text-slate-50">₢ {resources.credits}</div>
-              <p className="mt-2 text-sm leading-6 text-slate-300">1회/10회 영입으로 역할 공백을 메우고, 항해 조우 후보를 편입합니다.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-300">무작위 영입 또는 검증된 후보 편입으로 승무원 예비 인력과 갤리 운용 폭을 확장합니다.</p>
             </div>
             <span className="hud-chip hud-chip-accent">{crew.length}/{capacity}</span>
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
-            <button className="primary-button" disabled={resources.credits < RECRUIT_COST.single || crew.length >= capacity} onClick={() => doPull(1)}><Ticket size={16} />1회 ₢{RECRUIT_COST.single}</button>
-            <button className="primary-button" disabled={resources.credits < RECRUIT_COST.ten || crew.length >= capacity} onClick={() => doPull(10)}><Ticket size={16} />10회 ₢{RECRUIT_COST.ten}</button>
+            <div><button className="primary-button w-full" disabled={resources.credits < RECRUIT_COST.single || crew.length >= capacity} onClick={() => doPull(1)}><Ticket size={16} />1회 ₢{RECRUIT_COST.single}</button><InvestmentBalanceHint credits={resources.credits} cost={RECRUIT_COST.single} /></div>
+            <div><button className="primary-button w-full" disabled={batchRolls <= 0 || resources.credits < batchCost} onClick={() => doPull(10)}><Ticket size={16} />{batchRolls}회 ₢{batchCost}</button>{batchRolls > 0 && <InvestmentBalanceHint credits={resources.credits} cost={batchCost} />}</div>
           </div>
         </div>
 
@@ -90,7 +99,8 @@ export default function Recruit() {
             {candidatePool.length === 0 && <div className="rounded border border-slate-700/70 bg-slate-900/70 p-3 text-sm text-slate-400">아직 후보가 없습니다. 정거장/조난 조우에서 후보를 확보하세요.</div>}
             {candidatePool.map((candidate) => {
               const template = getCrewTemplate(candidate.templateId);
-              return <div key={candidate.id} className="rounded border border-slate-700/70 bg-slate-900/70 p-3"><CrewCard result={{ ...template, templateId: candidate.templateId, stats: template?.baseStats }} compact /><button className="secondary-button mt-3 w-full" disabled={crew.length >= capacity} onClick={() => acceptCandidate(candidate.id)}>후보 편입</button></div>;
+              const cost = getCandidateRecruitCost(template?.rarity);
+              return <div key={candidate.id} className="rounded border border-slate-700/70 bg-slate-900/70 p-3"><CrewCard result={{ ...template, templateId: candidate.templateId, stats: template?.baseStats }} compact /><button className="secondary-button mt-3 w-full" disabled={crew.length >= capacity || resources.credits < cost} onClick={() => acceptCandidate(candidate.id)}>후보 편입 · ₢{cost}</button><InvestmentBalanceHint credits={resources.credits} cost={cost} /></div>;
             })}
           </div>
         </section>

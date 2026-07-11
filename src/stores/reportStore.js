@@ -122,6 +122,7 @@ export const useReportStore = create(
   persist(
     (set) => ({
       reports: [],
+      requisitionReceipts: {},
 
       // addReport(report): report is normally systems/reportSystem.js's
       // buildReport() (or a domain builder built on top of it) output —
@@ -134,6 +135,15 @@ export const useReportStore = create(
         set((state) => ({
           reports: capReports([normalizeReport(report, { forceUnseen: true }), ...state.reports]),
         })),
+      applyRequisitionReport: (claimId, report = {}) => {
+        let applied = false;
+        set((state) => {
+          if (!claimId || state.requisitionReceipts?.[claimId]) return state;
+          applied = true;
+          return { reports: capReports([normalizeReport(report, { forceUnseen: true }), ...state.reports]), requisitionReceipts: { ...(state.requisitionReceipts ?? {}), [claimId]: true } };
+        });
+        return applied;
+      },
 
       markRead: (id) =>
         set((state) => {
@@ -180,6 +190,7 @@ export const useReportStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         reports: mergeReports(persistedState?.reports),
+        requisitionReceipts: persistedState?.requisitionReceipts ?? {},
       }),
     },
   ),

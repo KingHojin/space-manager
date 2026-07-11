@@ -74,7 +74,7 @@ function EncounterCard({ encounter, onResolve }) {
         </div>
       </div>
       <div className="mt-4 grid gap-2">
-        {encounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => onResolve(option.id)}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}
+        {encounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => onResolve(option.id, encounter.claimId)}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}
       </div>
     </section>
   );
@@ -295,7 +295,7 @@ export default function Exploration({ onNavigate }) {
     return started;
   };
 
-  const handleResolve = (optionId) => applyNavigationEncounter(optionId, currentMinute, { manual: true });
+  const handleResolve = (optionId, expectedClaimId) => applyNavigationEncounter(optionId, currentMinute, { manual: true, expectedClaimId });
   const handleResolveMissionEncounter = (optionId) => {
     if (combatEngaged) return addLog("임무 조우 선택 실패: 진행 중인 전투를 먼저 끝내야 합니다.");
     const result = resolveMissionEncounter({ vesselId: activeVesselId, optionId, currentMinute });
@@ -344,7 +344,7 @@ export default function Exploration({ onNavigate }) {
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"><Info label="현재 노드" value={current?.name ?? "-"} /><Info label="발견" value={`${discovered.length}/${nodes.length}`} /><Info label="영입 후보" value={`${recruitCandidates.length}명`} /><Info label="상태" value={pendingEncounter ? "조우 대기" : pendingMissionEncounter ? "임무 카드" : combatEngaged ? "전투 중" : travel ? travel.missionId ? "임무 항해" : "항해 중" : driftState ? "표류" : "정박"} tone={pendingEncounter || driftState || combatEngaged ? "text-red-300" : pendingMissionEncounter || travel ? "text-amber-300" : ""} /></div>
       </section>
       <aside className="space-y-4">
-        <CampaignObjectiveCard objective={campaignObjective} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={fuel} hull={hull} livingCrew={crew.filter((member) => member.alive !== false).length} onNavigate={onNavigate} />
+        <CampaignObjectiveCard objective={campaignObjective} credits={resources.credits} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={fuel} hull={hull} livingCrew={crew.filter((member) => member.alive !== false).length} onNavigate={onNavigate} />
         <EncounterCard encounter={pendingEncounter} onResolve={handleResolve} />
         {pendingMissionEncounter && <MissionEncounterCard encounter={pendingMissionEncounter} disabled={Boolean(pendingEncounter) || combatEngaged} onSelectOption={handleResolveMissionEncounter} />}
         <ActiveMissionPanel mission={activeMission} currentNodeId={currentNodeId} travel={travel} pendingEncounter={pendingEncounter} pendingMissionEncounter={pendingMissionEncounter} activeCombat={activeCombat} onPlan={handlePlanMission} onComplete={handleCompleteMission} />

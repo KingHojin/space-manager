@@ -12,6 +12,7 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
 import Recruit from "./Recruit";
+import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 
 const services = [
   { id: "fuel", label: "연료 보급", desc: "항해 가능 거리를 회복합니다.", icon: Fuel, cost: 280, changes: { fuel: 35 } },
@@ -194,6 +195,7 @@ export default function Market() {
                 <span className="hud-chip">₢ {service.cost}</span>
               </div>
               <button className="primary-button mt-4 w-full" disabled={disabled} onClick={() => buyService(service)}>구매</button>
+              <InvestmentBalanceHint credits={resources.credits} cost={service.cost} />
             </div>
           );
         })}
@@ -218,6 +220,7 @@ export default function Market() {
                   <span className="hud-chip">₢ {good.cost}</span>
                 </div>
                 <button className="primary-button mt-4 w-full" disabled={disabled} onClick={() => buyFood(good)}>구매</button>
+                <InvestmentBalanceHint credits={resources.credits} cost={good.cost} />
               </div>
             );
           })}
@@ -291,6 +294,7 @@ export default function Market() {
                     </div>
                   </div>
                   <button className="primary-button mt-4 w-full" disabled={disabled} onClick={() => buyModule(module)}>제작/해금</button>
+                  <InvestmentBalanceHint credits={resources.credits} cost={rule.purchaseCredits} />
                 </div>
               );
             })

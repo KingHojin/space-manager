@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { AlertTriangle, Archive, Bell, Briefcase, ChevronRight, Compass, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
+import { AlertTriangle, Archive, Bell, Briefcase, ChevronRight, Compass, Cpu, GraduationCap, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
 import { RESOURCES } from "../../data/constants";
 import { contracts } from "../../data/contracts";
 import { formatMinutes } from "../../data/moduleRecipes";
@@ -14,6 +14,7 @@ import { useJobStore } from "../../stores/jobStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { getUnreadCount, useReportStore } from "../../stores/reportStore";
+import { useRecruitStore } from "../../stores/recruitStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
@@ -25,6 +26,7 @@ import { isInjured } from "../../systems/injurySystem";
 import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyTraining, jobToLegacyTreatment } from "../../systems/jobMigration";
 import { findRoute, nodeToZone, routeDistance } from "../../systems/navigationSystem";
 import CampaignObjectiveCard from "../common/CampaignObjectiveCard";
+import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 import StarMap from "../exploration/LazyStarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
 import ShipInterior from "../ship/ShipInterior";
@@ -80,6 +82,7 @@ function CommandCard({ card, onNavigate, onOpenModal }) {
       <div className="flex items-start justify-between gap-2"><div className="grid h-12 w-12 place-items-center rounded-xl border border-cyan-300/25 bg-cyan-300/10 text-cyan-100"><Icon size={24} /></div><span className="hud-chip">{card.badge}</span></div>
       <div className="mt-3 font-black text-slate-50">{card.title}</div>
       <div className="mt-1 truncate text-xs leading-5 text-slate-400">{card.desc}</div>
+      {card.cost > 0 && <InvestmentBalanceHint credits={card.credits} cost={card.cost} />}
     </button>
   );
 }
@@ -168,7 +171,7 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const travelProgress = travel ? Math.max(0, Math.min(100, ((currentMinute - travel.startedAt) / Math.max(1, travel.duration)) * 100)) : 0;
 
   if (pendingEncounter) {
-    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => applyNavigationEncounter(option.id, currentMinute, { manual: true })}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}</div></section>;
+    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => applyNavigationEncounter(option.id, currentMinute, { manual: true, expectedClaimId: pendingEncounter.claimId })}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}</div></section>;
   }
 
   if (travel) {
@@ -229,6 +232,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const completedIds = useContractStore((state) => state.completedIds);
   const skillPoints = useSkillStore((state) => state.availablePoints);
   const reports = useReportStore((state) => state.reports);
+  const recruitCandidates = useRecruitStore((state) => state.candidatePool ?? EMPTY_ARRAY);
   const unreadReportCount = getUnreadCount(reports);
   const unreadReports = useMemo(() => reports.filter((report) => !report.read).slice(0, 3), [reports]);
   const activeContracts = contracts.filter((contract) => acceptedIds.includes(contract.id));
@@ -250,6 +254,22 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const gateRoute = campaignObjective.gateNode ? findRoute(sector, currentNodeId, campaignObjective.gateNode.id) : [];
   const gateDistance = gateRoute.length > 1 ? routeDistance(sector, gateRoute) : campaignObjective.gateNode?.id === currentNodeId ? 0 : null;
   const livingCrewCount = crew.filter((member) => member.alive !== false).length;
+  const salvageScrap = items.find((item) => item.id === "salvage-scrap")?.qty ?? 0;
+  const tritanium = items.find((item) => item.id === "tritanium")?.qty ?? 0;
+  const docked = sector.nodes.find((node) => node.id === currentNodeId)?.type === "station" && !navTravel;
+  const growthActions = campaign?.pendingRequisition
+    ? [{ id: "exploration", icon: Package, title: "관문 보급 선택", desc: "다음 항해를 여는 필수 성장 결재", badge: "우선" }]
+    : [
+        resources.hull < 100 && salvageScrap >= 6
+          ? { id: "ship", icon: Wrench, title: "선체 정비", desc: `폐자재 ${salvageScrap} · Hull ${Math.round(resources.hull)}%`, badge: "복구" }
+          : { id: "ship", icon: Wrench, title: "함선 작업", desc: `폐자재 ${salvageScrap} · 작업 ${queuedWorkCount}`, badge: "정비" },
+        docked && tritanium >= 2
+          ? { id: "market", icon: Cpu, title: "모듈 개장", desc: `트리타늄 ${tritanium} · 제작 후보 확인`, badge: "함선" }
+          : { id: "crew", icon: GraduationCap, title: "승무원 훈련", desc: `₢120 · 생존 승무원 ${livingCrewCount}명`, badge: "성장", cost: 120, credits: resources.credits },
+        recruitCandidates.length > 0
+          ? { id: "market", icon: Users, title: "검증 후보 영입", desc: `대기 후보 ${recruitCandidates.length}명 · 등급별 계약`, badge: "후보" }
+          : { id: "market", icon: Users, title: "무작위 영입", desc: "₢240 · 예비 인력 확장", badge: "인사", cost: 240, credits: resources.credits },
+      ];
 
   const commandCards = [
     { id: "exploration", icon: Compass, title: "항로", desc: pendingEncounter ? "조우 대기" : navTravel ? `${Math.round(travelProgress)}%` : "목적지", badge: pendingEncounter ? "조우" : `${Math.round(navFuel)}%` },
@@ -264,7 +284,9 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <section><div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]"><div><div className="flex items-start justify-between gap-3"><div><div className="section-title"><Rocket size={18} />함장 HUD</div><h2 className="mt-2 text-2xl font-black text-slate-50">{shipStatus.label}</h2></div><span className={`hud-chip shrink-0 ${shipStatus.tone}`}>LIVE</span></div>{topSituation && <SituationCard card={topSituation} onNavigate={onNavigate} />}</div><div className="grid grid-cols-2 gap-3 sm:grid-cols-4"><OrbTile label="Fuel" value={`${Math.round(navFuel)}%`} gauge={navFuel} tone="rgb(34 211 238)" icon={Rocket} /><OrbTile label="O2" value={`${Math.round(resources.oxygen)}%`} gauge={resources.oxygen} tone="rgb(52 211 153)" /><OrbTile label="Hull" value={`${Math.round(resources.hull)}%`} gauge={resources.hull} tone="rgb(251 191 36)" /><OrbTile label="긴급" value={`${situationSummary.critical}`} gauge={Math.min(100, situationSummary.critical * 34)} tone="rgb(248 113 113)" icon={AlertTriangle} /></div></div></section>
 
-      <CampaignObjectiveCard objective={campaignObjective} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={navFuel} hull={resources.hull} livingCrew={livingCrewCount} onNavigate={onNavigate} />
+      <CampaignObjectiveCard objective={campaignObjective} credits={resources.credits} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={navFuel} hull={resources.hull} livingCrew={livingCrewCount} onNavigate={onNavigate} />
+
+      <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Rocket size={18} />다음 성장 투자</div><span className="hud-chip hud-chip-accent">함대 성장</span></div><div className="mt-3 grid gap-3 sm:grid-cols-3">{growthActions.map((card) => <CommandCard key={card.id + card.title} card={card} onNavigate={onNavigate} onOpenModal={onOpenModal} />)}</div></section>
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><NavDecisionCard currentMinute={currentMinute} onNavigate={onNavigate} /><ActiveMissionOverview mission={activeMission} currentNodeId={currentNodeId} pendingEncounter={pendingEncounter} onOpenModal={onOpenModal} onNavigate={onNavigate} /></div>
 

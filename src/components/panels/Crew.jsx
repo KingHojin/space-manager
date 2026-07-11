@@ -24,6 +24,7 @@ import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { statLabel } from "../../utils/format";
 import CrewFacilityStatus from "../crew/CrewFacilityStatus";
 import ShipInterior from "../ship/ShipInterior";
+import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 
 const cancelableJobStatuses = new Set(["backlog", "assigned"]);
 
@@ -258,6 +259,7 @@ export default function Crew() {
                   <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || treatmentTask) || (!recoveryTask && resources.credits < RECOVERY_COST) || (recoveryTask && !canCancelTask(recoveryTask))} onClick={() => recover(member, recoveryTask)}>{recoveryTask ? canCancelTask(recoveryTask) ? "회복 취소" : "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button>
                   {isInjuredNow && <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || recoveryTask) || (!treatmentTask && resources.credits < rule.cost) || (treatmentTask && !canCancelTask(treatmentTask))} onClick={() => treat(member, treatmentTask)}>{treatmentTask ? canCancelTask(treatmentTask) ? "치료 취소" : "치료 중" : recoveryTask ? "회복 중" : "치료"}</button>}
                 </div>
+                {!trainingTask && <InvestmentBalanceHint credits={resources.credits} cost={TRAINING_COST} label="훈련 결재 후" />}
               </article>
             );
           })}

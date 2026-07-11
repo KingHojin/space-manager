@@ -1,10 +1,12 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
+import { CAMPAIGN, DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
 import {
   applySectorProgression,
+  createGateRequisitionEncounter,
   createCampaignState,
   getGateEncounter,
+  getGateClaimId,
   getSectorObjective,
   normalizeCampaignState,
   isFieldNode,
@@ -77,6 +79,7 @@ function currentTravelReadiness() {
 }
 
 function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) {
+  if (state.campaign?.pendingRequisition) return { ok: false, reason: "pendingRequisition" };
   if (state.pendingEncounter) return { ok: false, reason: "pendingEncounter" };
   if (state.travel) return { ok: false, reason: "traveling" };
   if (state.driftState || state.fuel <= 0) return { ok: false, reason: "drifting" };
@@ -118,6 +121,14 @@ export function mergePersistedNavState(persistedState, currentState) {
   const discovered = persistedState?.discovered ?? revealNeighbors(sector, visited, persistedState?.currentNodeId ?? start);
   const visitedFieldCount = sector.nodes.filter((node) => isFieldNode(node) && visited.includes(node.id)).length;
   const campaign = normalizeCampaignState(persistedState?.campaign, sectorIndex, visitedFieldCount);
+  const savedEncounter = persistedState?.pendingEncounter ?? null;
+  const isSavedGateEncounter = savedEncounter?.nodeType === "exit"
+    || (savedEncounter?.options ?? []).some((option) => (option.outcome ?? []).some((effect) => effect.kind === "nextSector"));
+  const pendingEncounter = campaign.pendingRequisition
+    ? createGateRequisitionEncounter(campaign.pendingRequisition)
+    : isSavedGateEncounter
+      ? (campaign.status === "completed" ? null : getGateEncounter(savedEncounter, getSectorObjective({ sector, sectorIndex, visited, campaign })))
+      : savedEncounter;
   return {
     ...currentState,
     ...(persistedState ?? {}),
@@ -132,7 +143,7 @@ export function mergePersistedNavState(persistedState, currentState) {
     fuelAuthorityVersion: persistedState ? (persistedState.fuelAuthorityVersion ?? 0) : 1,
     discovered,
     visited,
-    pendingEncounter: persistedState?.pendingEncounter ?? null,
+    pendingEncounter,
     driftState: persistedState?.driftState ?? null,
     rescueUsesBySector: persistedState?.rescueUsesBySector ?? {},
     recruitCandidates: persistedState?.recruitCandidates ?? [],
@@ -281,7 +292,8 @@ export const useNavStore = create(
           const state = get();
           const encounter = state.pendingEncounter;
           if (!encounter) return { effects: [], logs: [] };
-          const option = encounter.options.find((entry) => entry.id === optionId) ?? encounter.options[0];
+          const option = encounter.options.find((entry) => entry.id === optionId);
+          if (!option) return { ok: false, reason: "invalidOption", effects: [], logs: [] };
           let effects = option?.outcome ?? [];
           const logs = [`조우 결재: ${encounter.title} · ${option?.label ?? "선택"}`];
           let nextSectorState = {};
@@ -299,23 +311,36 @@ export const useNavStore = create(
               set({ pendingEncounter: null, navLog: [message, ...state.navLog].slice(0, 10) });
               return { effects: [{ kind: "log", message }], logs: [message] };
             }
-            effects = [
-              ...effects.filter((effect) => effect.kind !== "nextSector"),
-              { kind: "resource", delta: { credits: objective.gateRewardCredits } },
-            ];
+            if (state.campaign?.pendingRequisition) {
+              const message = "관문 진입 차단: 이전 관문 보급을 먼저 결재해야 합니다.";
+              set({ navLog: [message, ...state.navLog].slice(0, 10) });
+              return { effects: [{ kind: "log", message }], logs: [message] };
+            }
+            const claimId = getGateClaimId(state.campaign, objective.sectorNumber);
+            if (state.campaign?.claimedRequisitions?.[claimId]) {
+              const message = "관문 진입 차단: 이 섹터의 관문 보급은 이미 처리되었습니다.";
+              set({ pendingEncounter: null, navLog: [message, ...state.navLog].slice(0, 10) });
+              return { effects: [{ kind: "log", message }], logs: [message] };
+            }
+            const pendingRequisition = {
+              claimId,
+              sectorNumber: objective.sectorNumber,
+              baseCredits: objective.gateRewardCredits,
+              skillPoints: 1,
+              isExpeditionFinale: objective.isExpeditionFinale,
+              createdAtMinute: currentMinute,
+            };
+            effects = [];
+            const campaignWithPending = {
+              ...state.campaign,
+              pendingRequisition,
+            };
             if (objective.isExpeditionFinale) {
-              const message = `1차 개척 원정 완주: ${objective.expeditionSectors}개 섹터 항로가 함대 기록에 보존되었습니다.`;
               nextSectorState = {
-                campaign: {
-                  ...state.campaign,
-                  status: "completed",
-                  sectorsCleared: objective.expeditionSectors,
-                  highestSectorReached: objective.expeditionSectors,
-                  completedAtMinute: currentMinute,
-                },
+                campaign: campaignWithPending,
+                pendingEncounter: createGateRequisitionEncounter(pendingRequisition),
               };
-              effects.push({ kind: "campaignComplete", expeditionId: state.campaign?.expeditionId, sectorsCleared: objective.expeditionSectors });
-              logs.push(message, `원정 완주 보상: 크레딧 +${objective.gateRewardCredits}.`);
+              logs.push("최종 관문 통과 승인: 마지막 보급 패키지 선택 후 1차 원정이 완주됩니다.");
             } else {
               const nextIndex = state.sectorIndex + 1;
               const seed = nextSeed(state.sector.seed, state.sectorIndex);
@@ -326,7 +351,7 @@ export const useNavStore = create(
                 sector: withNodeFlags(sector, [start], discovered),
                 sectorIndex: nextIndex,
                 campaign: {
-                  ...state.campaign,
+                  ...campaignWithPending,
                   sectorsCleared: nextIndex,
                   highestSectorReached: Math.max(state.campaign?.highestSectorReached ?? 1, nextIndex + 1),
                 },
@@ -336,12 +361,70 @@ export const useNavStore = create(
                 discovered,
                 visited: [start],
                 driftState: null,
+                pendingEncounter: createGateRequisitionEncounter(pendingRequisition),
               };
-              logs.push(`관문 돌파: 원정 섹터 ${nextIndex + 1} 진입 · 보상 크레딧 +${objective.gateRewardCredits}.`);
+              logs.push(`관문 돌파: 원정 섹터 ${nextIndex + 1} 진입 · 보급 패키지 결재 대기.`);
             }
           }
           set({ pendingEncounter: null, ...nextSectorState, navLog: [...logs, ...state.navLog].slice(0, 10) });
           return { effects, logs };
+        },
+        prepareGateRequisitionClaim: (packageId, claimId, optionId, currentMinute = 0) => {
+          const state = get();
+          const pending = state.campaign?.pendingRequisition;
+          if (!pending) return { ok: false, reason: "noPendingRequisition", newlyClaimed: false, effects: [] };
+          const packageDef = CAMPAIGN.GATE_REQUISITION_PACKAGES[packageId];
+          if (!packageDef) return { ok: false, reason: "invalidPackage", newlyClaimed: false, effects: [] };
+          const expectedClaimId = getGateClaimId(state.campaign, pending.sectorNumber);
+          if (claimId !== expectedClaimId || pending.claimId !== expectedClaimId) return { ok: false, reason: "staleClaim", newlyClaimed: false, effects: [] };
+          const expectedOptionId = `claim:${expectedClaimId}:${packageId}`;
+          if (optionId !== expectedOptionId) return { ok: false, reason: "staleOption", newlyClaimed: false, effects: [] };
+          if (state.campaign.claimedRequisitions?.[expectedClaimId]) {
+            return { ok: true, newlyClaimed: false, effects: [] };
+          }
+          const claim = {
+            packageId,
+            claimedAtMinute: currentMinute,
+            baseCredits: pending.baseCredits,
+            bonusCredits: packageDef.credits ?? 0,
+            items: packageDef.items ?? [],
+            skillPoints: pending.skillPoints ?? 1,
+          };
+          const completedCampaign = pending.isExpeditionFinale;
+          const effect = {
+            kind: "gateRequisition",
+            claimId: expectedClaimId,
+            sectorNumber: pending.sectorNumber,
+            packageId,
+            packageLabel: packageDef.label,
+            baseCredits: pending.baseCredits,
+            bonusCredits: packageDef.credits ?? 0,
+            items: packageDef.items ?? [],
+            skillPoints: pending.skillPoints ?? 1,
+            isExpeditionFinale: completedCampaign,
+          };
+          const effects = completedCampaign
+            ? [effect, { kind: "campaignComplete", expeditionId: state.campaign.expeditionId, sectorsCleared: CAMPAIGN.EXPEDITION_SECTORS }]
+            : [effect];
+          return { ok: true, newlyClaimed: true, claim, effects };
+        },
+        finalizeGateRequisitionClaim: (claimId, claim, currentMinute = 0) => {
+          const state = get();
+          const pending = state.campaign?.pendingRequisition;
+          if (!pending || pending.claimId !== claimId || !claim) return { ok: false, reason: "staleClaim" };
+          if (state.campaign.claimedRequisitions?.[claimId]) return { ok: true, newlyClaimed: false };
+          const completedCampaign = Boolean(pending.isExpeditionFinale);
+          const campaign = {
+            ...state.campaign,
+            status: completedCampaign ? "completed" : state.campaign.status,
+            sectorsCleared: completedCampaign ? CAMPAIGN.EXPEDITION_SECTORS : state.campaign.sectorsCleared,
+            highestSectorReached: completedCampaign ? CAMPAIGN.EXPEDITION_SECTORS : state.campaign.highestSectorReached,
+            completedAtMinute: completedCampaign ? currentMinute : state.campaign.completedAtMinute,
+            pendingRequisition: null,
+            claimedRequisitions: { ...(state.campaign.claimedRequisitions ?? {}), [claimId]: claim },
+          };
+          set({ campaign, pendingEncounter: null, navLog: [`관문 보급 결재: ${claim.packageId}.`, ...state.navLog].slice(0, 10) });
+          return { ok: true, newlyClaimed: true, completedCampaign };
         },
         setFuelSnapshot: (fuel) => set({ fuel: clamp(fuel, 0, 100), fuelAuthorityVersion: 1 }),
         revealHiddenNodes: (count = 1) => {

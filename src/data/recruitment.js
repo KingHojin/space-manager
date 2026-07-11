@@ -11,8 +11,15 @@ export const RECRUIT_PITY = {
 };
 
 export const RECRUIT_COST = {
-  single: 120,
-  ten: 1080,
+  single: 240,
+  ten: 2160,
+  tenDiscount: 240,
+  candidateByRarity: {
+    common: 160,
+    rare: 240,
+    epic: 480,
+    legendary: 720,
+  },
   duplicateRefund: {
     common: 35,
     rare: 85,
@@ -149,6 +156,10 @@ export function getCrewTemplate(templateId) {
 
 export function getTemplatesByRarity(rarity) {
   return CREW_TEMPLATES.filter((template) => template.rarity === rarity);
+}
+
+export function getCandidateRecruitCost(rarity) {
+  return RECRUIT_COST.candidateByRarity[rarity] ?? RECRUIT_COST.candidateByRarity.common;
 }
 
 export function validateRecruitRates(rates = RECRUIT_RATES) {

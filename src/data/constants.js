@@ -15,7 +15,7 @@ export const DEV_FLAGS = {
 };
 
 export const RESOURCES = {
-  START_CREDITS: 1800,
+  START_CREDITS: 600,
   START_FUEL: 100,
   START_OXYGEN: 100,
   START_HULL: 100,
@@ -43,8 +43,13 @@ export const CAMPAIGN = {
   MAX_DANGER_THRESHOLD: 5,
   MAX_NODE_DANGER: 7,
   MAX_NODE_RICHNESS: 7,
-  BASE_GATE_REWARD_CREDITS: 240,
+  BASE_GATE_REWARD_CREDITS: 120,
   REWARD_MULTIPLIER_PER_SECTOR: 0.2,
+  GATE_REQUISITION_PACKAGES: {
+    maintenance: { label: "정비 물자", summary: "폐자재 +6", items: [{ itemId: "salvage-scrap", qty: 6 }] },
+    refit: { label: "개장 자재", summary: "트리타늄 +2 · ₢140", credits: 140, items: [{ itemId: "tritanium", qty: 2 }] },
+    personnel: { label: "인사 예산", summary: "₢240", credits: 240 },
+  },
   READY_FUEL: 35,
   READY_HULL: 50,
   READY_CREW: 3,
@@ -147,7 +152,7 @@ export const WEAR = {
 export const JOB_ECONOMY = {
   defaultPriority: JOB_PRIORITY.normal,
   cancelRefundRatio: 0.5,
-  training: { credits: 180 },
+  training: { credits: 120 },
   recovery: { credits: 90, fatigueRecovery: 32 },
   hullRepair: { salvageScrapCost: 6, hullDelta: 8 },
   salvageProcessing: { salvageScrapCost: 4, tritaniumReward: 2 },

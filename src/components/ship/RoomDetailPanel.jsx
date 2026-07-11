@@ -16,6 +16,7 @@ import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { RoomCustomizationCard } from "./RoomCustomization";
+import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 
 const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary: 12 };
 const TABS = [
@@ -145,6 +146,7 @@ function EquipTab({ roomId }) {
                       <button className="secondary-button justify-center" disabled={equipped || !owned || Boolean(currentSlotTask) || Boolean(task) || !powerOk} onClick={() => equip(slot, module)}>{equipped ? "장착 중" : !owned ? "구매 필요" : powerOk ? "장착 지시" : "동력 부족"}</button>
                       <button className="secondary-button justify-center" disabled={!canUpgrade} onClick={() => upgrade(module)}>개선 지시</button>
                     </div>
+                    <div className="grid grid-cols-2 gap-2"><InvestmentBalanceHint credits={resources.credits} cost={rule.installCredits} label="장착 후" /><InvestmentBalanceHint credits={resources.credits} cost={rule.upgradeCredits} label="개선 후" /></div>
                   </article>
                 );
               })}

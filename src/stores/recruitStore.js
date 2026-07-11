@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { CREW_CAPACITY_FALLBACK, CREW_TEMPLATES, RECRUIT_COST, RECRUIT_PITY, RECRUIT_RATES, getCrewTemplate, getTemplatesByRarity, validateRecruitRates } from "../data/recruitment";
+import { CREW_CAPACITY_FALLBACK, CREW_TEMPLATES, RECRUIT_COST, RECRUIT_PITY, RECRUIT_RATES, getCandidateRecruitCost, getCrewTemplate, getTemplatesByRarity, validateRecruitRates } from "../data/recruitment";
 import { useCrewStore } from "./crewStore";
 import { useGameStore } from "./gameStore";
 import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
@@ -41,8 +41,8 @@ function canAcceptCrew(templateId) {
   return { ok: true };
 }
 
-function refundFor(template) {
-  return RECRUIT_COST.duplicateRefund[template?.rarity] ?? 35;
+function refundFor(template, paidAmount = RECRUIT_COST.single) {
+  return Math.min(Math.max(0, paidAmount), RECRUIT_COST.duplicateRefund[template?.rarity] ?? 35);
 }
 
 export const useRecruitStore = create(
@@ -67,10 +67,12 @@ export const useRecruitStore = create(
       },
       removeCandidate: (candidateId) => set((state) => ({ candidatePool: (state.candidatePool ?? []).filter((candidate) => candidate.id !== candidateId) })),
       pull: (count = 1) => {
-        const safeCount = count === 10 ? 10 : 1;
-        const cost = safeCount === 10 ? RECRUIT_COST.ten : RECRUIT_COST.single;
+        const requestedCount = count === 10 ? 10 : 1;
         const crew = useCrewStore.getState().crew ?? [];
-        if (crew.length >= currentCapacity()) return { ok: false, reason: "capacity" };
+        const safeCount = Math.min(requestedCount, Math.max(0, currentCapacity() - crew.length));
+        if (safeCount <= 0) return { ok: false, reason: "capacity" };
+        const unitCost = requestedCount === 10 && safeCount >= 2 ? RECRUIT_COST.ten / 10 : RECRUIT_COST.single;
+        const cost = unitCost * safeCount;
         if (!useGameStore.getState().spendCredits(cost)) return { ok: false, reason: "credits" };
         const results = [];
         let pity = get().pity ?? 0;
@@ -85,16 +87,18 @@ export const useRecruitStore = create(
             member = instantiateCrew(template);
             const recruitResult = useCrewStore.getState().recruitCrew(member);
             if (!recruitResult.ok) {
-              duplicateRefund = refundFor(template);
+              member = null;
+              duplicateRefund = refundFor(template, unitCost);
               refund += duplicateRefund;
             }
           } else {
-            duplicateRefund = refundFor(template);
+            duplicateRefund = refundFor(template, unitCost);
             refund += duplicateRefund;
           }
           pity = rarityRoll.rarity === "epic" || rarityRoll.rarity === "legendary" || rarityRoll.pityTriggered ? 0 : pity + 1;
-          results.push({ id: crypto.randomUUID(), templateId: template.templateId, name: template.name, role: template.role, rarity: template.rarity, trait: template.trait, portrait: template.portrait, stats: template.baseStats, memberId: member?.id ?? null, duplicate: !member, duplicateRefund, pityTriggered: rarityRoll.pityTriggered, reason: accept.reason ?? null });
+          results.push({ id: crypto.randomUUID(), templateId: template.templateId, name: template.name, role: template.role, rarity: template.rarity, trait: template.trait, portrait: template.portrait, stats: template.baseStats, memberId: member?.id ?? null, duplicate: !member, duplicateRefund, paidCost: unitCost, netCost: unitCost - duplicateRefund, pityTriggered: rarityRoll.pityTriggered, reason: accept.reason ?? null });
         }
+        refund = Math.min(cost, refund);
         if (refund > 0) useGameStore.getState().addResources({ credits: refund });
         set((state) => ({ pity, lastResults: results, pullHistory: [...results, ...(state.pullHistory ?? [])].slice(0, 40) }));
         return { ok: true, results, cost, refund };
@@ -106,11 +110,16 @@ export const useRecruitStore = create(
         if (!template) return { ok: false, reason: "templateNotFound" };
         const accept = canAcceptCrew(template.templateId);
         if (!accept.ok) return { ok: false, reason: accept.reason };
+        const cost = getCandidateRecruitCost(template.rarity);
+        if (!useGameStore.getState().spendCredits(cost)) return { ok: false, reason: "credits", cost };
         const member = instantiateCrew(template);
         const recruitResult = useCrewStore.getState().recruitCrew(member);
-        if (!recruitResult.ok) return recruitResult;
+        if (!recruitResult.ok) {
+          useGameStore.getState().addResources({ credits: cost });
+          return { ...recruitResult, refunded: cost, cost };
+        }
         set((state) => ({ candidatePool: (state.candidatePool ?? []).filter((entry) => entry.id !== candidateId), lastResults: [{ id: crypto.randomUUID(), templateId: template.templateId, name: template.name, role: template.role, rarity: template.rarity, trait: template.trait, portrait: template.portrait, stats: template.baseStats, memberId: member.id, duplicate: false, fromCandidate: true }] }));
-        return { ok: true, member };
+        return { ok: true, member, cost };
       },
       getCapacity: () => currentCapacity(),
     }),

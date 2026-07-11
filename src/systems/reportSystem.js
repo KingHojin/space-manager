@@ -139,13 +139,13 @@ export function buildWorkReport({ title, summary, jobType, currentMinute, priori
 // buildNavigationReport({ title, summary, navKind, currentMinute, priority? })
 //   -> a "navigation" category report. `navKind` (e.g. "missionComplete") is
 //   threaded into `meta`.
-export function buildNavigationReport({ title, summary, navKind, currentMinute, priority } = {}) {
+export function buildNavigationReport({ title, summary, navKind, currentMinute, priority, details = null } = {}) {
   return buildReport({
     category: "navigation",
     title,
     body: summary,
     priority,
     currentMinute,
-    meta: { navKind: navKind ?? null },
+    meta: { navKind: navKind ?? null, ...(details && typeof details === "object" ? details : {}) },
   });
 }
