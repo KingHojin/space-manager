@@ -21,6 +21,7 @@ import {
 } from "../systems/injurySystem";
 import { normalizePriority } from "../systems/priorities";
 import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
+import { applyTrainingOutcome } from "../systems/skillEffects";
 
 const moraleOrder = ["나쁨", "보통", "좋음", "최상"];
 const DEFAULT_NEEDS = { hunger: 12, mood: 68, stress: 18, sleepDebt: 8, hygiene: 78 };
@@ -94,10 +95,11 @@ function mergeCrew(savedCrew = []) {
   return [...mergedBase, ...extras];
 }
 
-function applyTraining(member, statKey) {
+function applyTraining(member, statKey, trainingEffects = null) {
   if (!member.alive) return member;
   const needs = applyNeedDelta(member.needs, { hunger: 8, mood: 2, stress: 8, sleepDebt: 4, hygiene: -4 });
-  return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) + 12 * fatigueMultiplier(member), 0, 100), experience: (member.experience ?? 0) + 8, morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs), stats: { ...member.stats, [statKey]: (member.stats[statKey] ?? 0) + 1 } };
+  const outcome = applyTrainingOutcome({ experience: 8, fatigue: 12 }, trainingEffects);
+  return { ...member, needs, fatigue: clamp((member.fatigue ?? 0) + outcome.fatigue * fatigueMultiplier(member), 0, 100), experience: (member.experience ?? 0) + outcome.experience, morale: moraleFromNeeds(shiftMorale(member.morale, 1), needs), stats: { ...member.stats, [statKey]: (member.stats[statKey] ?? 0) + 1 } };
 }
 
 function applyTreatment(member, task = {}) {
@@ -221,7 +223,7 @@ export const useCrewStore = create(
         const statKey = task?.statKey ?? task?.payload?.statKey;
         if (!memberId || !statKey) return null;
         const member = get().crew.find((entry) => entry.id === memberId);
-        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyTraining(entry, statKey) : entry)) }));
+        set((state) => ({ crew: state.crew.map((entry) => (entry.id === memberId ? applyTraining(entry, statKey, task?.skillEffects) : entry)) }));
         return `${member?.name ?? "승무원"} 역할 훈련 완료.`;
       },
       completeTreatmentJob: (task) => {

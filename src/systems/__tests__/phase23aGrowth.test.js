@@ -179,7 +179,7 @@ describe("pending gate requisition", () => {
 
   it("keeps earned points through a skill reset", () => {
     useSkillStore.getState().grantPoint(2);
-    useSkillStore.getState().resetSkills();
+    useSkillStore.getState().applyValidatedReset(0);
     expect(useSkillStore.getState()).toMatchObject({ availablePoints: 5, earnedPoints: 2 });
   });
 });

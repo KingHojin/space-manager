@@ -1,5 +1,6 @@
 import { getActiveModifiers } from "./cardEffects";
 import { isHealthy } from "./injurySystem";
+import { applyOutgoingDamage } from "./skillEffects";
 
 const moraleScore = {
   나쁨: -4,
@@ -167,7 +168,7 @@ export function calculateTacticalCrewBonus({ crew = [], assignments = {} } = {})
   return { damageMul, takenMul, retreatThresholdShift, casualtyRiskMul, labels };
 }
 
-export function resolveCombatRound({ directive, combat, power, targetId = "hull", tacticalCrewBonus = null }) {
+export function resolveCombatRound({ directive, combat, power, targetId = "hull", tacticalCrewBonus = null, skillEffects = null }) {
   if (!combat || combat.status !== "engaged") return { combat, logs: ["교전 대상이 없습니다."], resourceChanges: {}, loot: null };
 
   const tactical = tacticalCrewBonus ?? { damageMul: 1, takenMul: 1, retreatThresholdShift: 0, labels: [] };
@@ -185,7 +186,8 @@ export function resolveCombatRound({ directive, combat, power, targetId = "hull"
     skill: { damage: 1.12, taken: 0.8, label: "카드 발동" },
   }[directive] ?? { damage: 1, taken: 1, label: "표준 교전" };
 
-  const baseDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage * target.damage * (tactical.damageMul ?? 1)));
+  const unmodifiedDamage = Math.max(6, Math.round((power / 8 + roll(4, 14)) * directiveBonus.damage * target.damage * (tactical.damageMul ?? 1)));
+  const baseDamage = applyOutgoingDamage(unmodifiedDamage, skillEffects?.combat);
   const shieldDamage = Math.min(next.enemy.shieldNow, Math.round(baseDamage * target.shieldRatio * shieldDamageMul));
   const hullDamage = Math.max(0, baseDamage - shieldDamage);
   next.enemy.shieldNow = Math.max(0, next.enemy.shieldNow - shieldDamage);

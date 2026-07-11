@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { applyNavigationFuelCost } from "../systems/skillEffects";
 import { CAMPAIGN, DRIFT, NAVIGATION_TRAVEL } from "../data/constants";
 import {
   applySectorProgression,
@@ -78,7 +79,7 @@ function currentTravelReadiness() {
   return evaluateTravelCrewReadiness({ crew: crew.crew, jobs: jobs.jobs });
 }
 
-function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) {
+function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}, skillEffects = null) {
   if (state.campaign?.pendingRequisition) return { ok: false, reason: "pendingRequisition" };
   if (state.pendingEncounter) return { ok: false, reason: "pendingEncounter" };
   if (state.travel) return { ok: false, reason: "traveling" };
@@ -92,7 +93,7 @@ function buildTravelPlan(state, targetNodeId, currentMinute = 0, metadata = {}) 
   // first hop consume the entire route's time/fuel and then charged it again
   // after the mandatory encounter.
   const distance = routeDistance(state.sector, route.slice(0, 2));
-  const fuelCost = Math.max(2, distance * NAVIGATION_TRAVEL.fuelPerDistance);
+  const fuelCost = applyNavigationFuelCost(distance * NAVIGATION_TRAVEL.fuelPerDistance, skillEffects?.navigation);
   const duration = Math.max(18, Math.round(distance * NAVIGATION_TRAVEL.minutesPerDistance));
   const travel = {
     fromId: route[0],
@@ -181,10 +182,10 @@ export const useNavStore = create(
           set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, campaign: createCampaignState(), currentNodeId: start, selectedNodeId: null, route: [start], travel: null, discovered, visited: [start], pendingEncounter: null, driftState: null, rescueUsesBySector: {}, navLog: ["새 1차 개척 원정이 시작되었습니다."] });
         },
         getCurrentObjective: () => getSectorObjective(get()),
-        previewRoute: (targetNodeId, currentMinute = 0) => buildTravelPlan(get(), targetNodeId, currentMinute),
-        planRoute: (targetNodeId, currentMinute = 0, metadata = {}) => {
+        previewRoute: (targetNodeId, currentMinute = 0, skillEffects = null) => buildTravelPlan(get(), targetNodeId, currentMinute, {}, skillEffects),
+        planRoute: (targetNodeId, currentMinute = 0, metadata = {}, skillEffects = null) => {
           const state = get();
-          const plan = buildTravelPlan(state, targetNodeId, currentMinute, metadata);
+          const plan = buildTravelPlan(state, targetNodeId, currentMinute, metadata, skillEffects);
           if (!plan.ok) return plan;
           const missionPrefix = plan.travel.missionTitle ? `임무 항로 결재: ${plan.travel.missionTitle} · ` : "항로 결재: ";
           const targetSuffix = plan.route[1] === targetNodeId ? "" : ` (최종 ${targetNodeId})`;

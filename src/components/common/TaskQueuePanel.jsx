@@ -9,6 +9,8 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipStore } from "../../stores/shipStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { applyTrainingOutcome, getSkillEffects } from "../../systems/skillEffects";
 import { statLabel } from "../../utils/format";
 
 function clampProgress(task, currentMinute) {
@@ -68,6 +70,8 @@ function TaskRow({ task, currentMinute, onNavigate, onCyclePriority }) {
 }
 
 export default function TaskQueuePanel({ onNavigate }) {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const trainingOutcome = applyTrainingOutcome({ experience: 8, fatigue: 12 }, getSkillEffects(skillLevels).training);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const addLog = useGameStore((state) => state.addLog);
   const crew = useCrewStore((state) => state.crew);
@@ -90,7 +94,7 @@ export default function TaskQueuePanel({ onNavigate }) {
         queueType: "training",
         kind: "훈련 중",
         title: member?.name ?? "승무원 훈련",
-        subtitle: `${member?.role ?? "승무원"} · ${statLabel[task.statKey] ?? task.statKey} +1 예정`,
+        subtitle: `${member?.role ?? "승무원"} · ${statLabel[task.statKey] ?? task.statKey} +1 · XP +${trainingOutcome.experience} · 피로 +${trainingOutcome.fatigue}`,
         icon: Users,
         tone: "border-cyan-400/30 bg-cyan-400/10 text-cyan-100",
         targetPanel: "crew",

@@ -15,6 +15,8 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { applyHullRepair, getSkillEffects } from "../../systems/skillEffects";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
 const SCRAP_REPAIR_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
@@ -42,12 +44,12 @@ export function Progress({ task, currentMinute, label = "작업 진행" }) {
   );
 }
 
-function ScrapRepairCard({ hull, scrap, task, currentMinute, onRepair }) {
+function ScrapRepairCard({ hull, scrap, task, currentMinute, onRepair, repairAmount = SCRAP_REPAIR_HULL }) {
   const canRepair = hull < 100 && scrap >= SCRAP_REPAIR_COST && !task;
   return (
     <section className="mt-4 rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4">
       <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Hammer size={18} />캠페인 응급 정비</div><p className="mt-2 text-sm leading-6 text-slate-300">폐자재로 선체 정비 작업을 대기열에 올립니다. 기관실 슬롯이 비어야 시작됩니다.</p></div><span className="hud-chip hud-chip-warn">Scrap {scrap}</span></div>
-      <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><div className="mission-stat-tile"><span>Hull</span><span>{Math.round(hull)}%</span></div><div className="mission-stat-tile"><span>비용</span><span>Scrap {SCRAP_REPAIR_COST}</span></div><div className="mission-stat-tile"><span>복구</span><span>+{SCRAP_REPAIR_HULL}% / {formatMinutes(SCRAP_REPAIR_MINUTES)}</span></div></div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-sm"><div className="mission-stat-tile"><span>Hull</span><span>{Math.round(hull)}%</span></div><div className="mission-stat-tile"><span>비용</span><span>Scrap {SCRAP_REPAIR_COST}</span></div><div className="mission-stat-tile"><span>복구</span><span>+{repairAmount}% / {formatMinutes(SCRAP_REPAIR_MINUTES)}</span></div></div>
       {task && <Progress task={task} currentMinute={currentMinute} label="선체 정비 진행" />}
       <button className="primary-button mt-4 w-full justify-center" disabled={!canRepair} onClick={onRepair}>{task ? "정비 대기/진행 중" : hull >= 100 ? "선체 양호" : scrap < SCRAP_REPAIR_COST ? "폐자재 부족" : "선체 정비 지시"}</button>
     </section>
@@ -99,6 +101,8 @@ function BacklogPanel({ jobs, rooms, crew, onUp, onDown, onCancel }) {
 }
 
 export default function Ship() {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const repairAmount = applyHullRepair(SCRAP_REPAIR_HULL, getSkillEffects(skillLevels).repair);
   const { modules, installed } = useShipStore();
   const shipGrade = useGameStore((state) => state.shipGrade);
   const crewInterior = useCrewStore((state) => state.crew);
@@ -187,7 +191,7 @@ export default function Ship() {
         <div className="mt-4">
           <ShipInterior crew={crewInterior} activities={crewActivities} rooms={interiorRooms} activeCrises={activeCrises} showEquipment onRoomClick={setSelectedRoomId} />
         </div>
-        <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} />
+        <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} repairAmount={repairAmount} />
         <SalvageProcessingCard scrap={salvageScrap} tritanium={tritanium} task={salvageProcessingTask} currentMinute={currentMinute} onProcess={processSalvage} />
       </section>
       <section className="grid gap-4">

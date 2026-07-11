@@ -25,6 +25,7 @@ import { useShipInteriorStore } from "../stores/shipInteriorStore";
 import { useShipStore } from "../stores/shipStore";
 import { useSkillStore } from "../stores/skillStore";
 import { settleGateRequisition } from "./requisitionSettlement";
+import { applyHullRepair, getSkillEffects } from "./skillEffects";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -544,7 +545,10 @@ function applyItemOutputs(outputItems = []) {
 
 function applyShipWork(task) {
   if (task.type === "hullRepair") {
-    const hullDelta = task.payload?.hullDelta ?? 0;
+    // Deliberately resolve against the doctrine active at completion time.
+    // Skill changes while a job is queued therefore affect the final result.
+    const effects = getSkillEffects(useSkillStore.getState().levels);
+    const hullDelta = applyHullRepair(task.payload?.hullDelta ?? 0, effects.repair);
     if (hullDelta > 0) useGameStore.getState().addResources({ hull: hullDelta });
     return `선체 정비 완료: 선체 +${hullDelta}%.`;
   }
@@ -572,7 +576,10 @@ function reportJobCompletion({ title, summary, jobType, currentMinute }) {
 function applyUnifiedJob(job, currentMinute = 0) {
   if (job.type === "training") {
     const member = useCrewStore.getState().crew.find((entry) => entry.id === job.payload?.targetCrewId);
-    const log = useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey });
+    // Like repair, training uses the doctrine active when the clock settles
+    // the job rather than snapshotting levels at enqueue time.
+    const effects = getSkillEffects(useSkillStore.getState().levels);
+    const log = useCrewStore.getState().completeTrainingJob({ memberId: job.payload?.targetCrewId, statKey: job.payload?.statKey, skillEffects: effects.training });
     if (log) reportJobCompletion({ title: "훈련 완료", summary: `${member?.name ?? "승무원"} ${statLabel[job.payload?.statKey] ?? job.payload?.statKey ?? ""} +1 훈련 완료.`, jobType: job.type, currentMinute });
     return log;
   }

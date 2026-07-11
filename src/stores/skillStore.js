@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import { getSkillById, starterSkillLevels } from "../data/skills";
+import { getSkillById, isImplementedSkill, starterSkillLevels } from "../data/skills";
 import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 export const useSkillStore = create(
@@ -9,12 +9,13 @@ export const useSkillStore = create(
       availablePoints: 3,
       earnedPoints: 0,
       levels: starterSkillLevels,
-      selectedSkillId: "exploration-deep-scan",
+      selectedSkillId: "combat-targeting",
+      lastResetSectorIndex: -1,
       requisitionReceipts: {},
       selectSkill: (skillId) => set({ selectedSkillId: skillId }),
       upgradeSkill: (skillId) => {
         const skill = getSkillById(skillId);
-        if (!skill) return false;
+        if (!skill || !isImplementedSkill(skillId)) return false;
         const level = get().levels[skillId] ?? 0;
         const requiredLevel = skill.requires ? get().levels[skill.requires] ?? 0 : 1;
         if (level >= skill.maxLevel) return false;
@@ -27,7 +28,7 @@ export const useSkillStore = create(
         }));
         return true;
       },
-      resetSkills: () => set((state) => ({ availablePoints: 3 + Math.max(0, state.earnedPoints ?? 0), levels: starterSkillLevels, selectedSkillId: "exploration-deep-scan" })),
+      applyValidatedReset: (sectorIndex) => set((state) => ({ availablePoints: 3 + Math.max(0, state.earnedPoints ?? 0), levels: { ...starterSkillLevels }, selectedSkillId: "combat-targeting", lastResetSectorIndex: sectorIndex })),
       grantPoint: (amount = 1) => set((state) => {
         const granted = Math.max(0, Math.floor(amount));
         return {
@@ -54,6 +55,7 @@ export const useSkillStore = create(
         earnedPoints: persistedState?.earnedPoints ?? 0,
         selectedSkillId: persistedState?.selectedSkillId ?? currentState.selectedSkillId,
         requisitionReceipts: persistedState?.requisitionReceipts ?? {},
+        lastResetSectorIndex: persistedState?.lastResetSectorIndex ?? -1,
       }),
     },
   ),
