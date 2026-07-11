@@ -1,8 +1,10 @@
 import { useMemo, useState } from "react";
 import { Crosshair, FlaskConical, Flag, Handshake, Lock, Radar, RotateCcw, Sparkles, Wrench } from "lucide-react";
-import { getSkillById, getSkillsByBranch, skillBranches, skills } from "../../data/skills";
+import { getSkillById, getSkillsByBranch, isImplementedSkill, skillBranches, skills, starterSkillLevels } from "../../data/skills";
 import { useGameStore } from "../../stores/gameStore";
 import { useSkillStore } from "../../stores/skillStore";
+import { getSkillEffects } from "../../systems/skillEffects";
+import { requestSkillReset } from "../../orchestration/skillReset";
 
 const branchIcons = {
   command: Flag,
@@ -52,25 +54,23 @@ const branchTone = {
   },
 };
 
-const synergyCards = [
-  { label: "탐사 전문가", value: "탐사 속도 +15%", progress: "2 / 4", branch: "exploration" },
-  { label: "연료 효율", value: "연료 소비 -10%", progress: "2 / 4", branch: "engineering" },
-  { label: "전투 준비", value: "전투력 +12%", progress: "3 / 5", branch: "combat" },
-  { label: "연구 집중", value: "연구 속도 +10%", progress: "2 / 4", branch: "science" },
-  { label: "계약 평판", value: "계약 보상 +10%", progress: "2 / 4", branch: "diplomacy" },
-];
-
 const buildPresets = [
   { title: "탐사 특화 빌드", desc: "미지 영역 탐사와 자원 수집 최적화", branch: "exploration" },
   { title: "전투 지휘 빌드", desc: "전투 성능과 생존력 강화", branch: "combat" },
   { title: "연구 전문가 빌드", desc: "연구 속도와 유물 보상 집중", branch: "science" },
 ];
 
+export const INACTIVE_SKILL_COPY = "준비 중 · 현재 게임 효과 미적용";
+
+export function getSkillDisplayDescription(skill) {
+  return isImplementedSkill(skill.id) ? skill.desc : INACTIVE_SKILL_COPY;
+}
+
 export default function SkillTree() {
   const [filter, setFilter] = useState("all");
-  const { availablePoints, levels, selectedSkillId, selectSkill, upgradeSkill, resetSkills } = useSkillStore();
+  const { availablePoints, levels, selectedSkillId, selectSkill, upgradeSkill } = useSkillStore();
   const addLog = useGameStore((state) => state.addLog);
-  const selected = getSkillById(selectedSkillId) ?? skills[0];
+  const selected = getSkillById(selectedSkillId) ?? getSkillById("combat-targeting");
   const selectedLevel = levels[selected.id] ?? 0;
   const selectedReady = canUpgrade(selected, levels, availablePoints);
   const visibleBranches = filter === "all" ? skillBranches : skillBranches.filter((branch) => branch.id === filter);
@@ -78,6 +78,14 @@ export default function SkillTree() {
   const mobileBranchSkills = getSkillsByBranch(mobileBranch.id);
   const MobileBranchIcon = branchIcons[mobileBranch.id];
   const mobileTone = branchTone[mobileBranch.id];
+  const liveEffects = useMemo(() => getSkillEffects(levels), [levels]);
+  const synergyCards = useMemo(() => [
+    { label: "표적 분석", value: `실제 피해 +${Math.round((liveEffects.combat.outgoingDamageMultiplier - 1) * 100)}%`, progress: `Lv ${liveEffects.combat.level} / 3`, branch: "combat" },
+    { label: "동력 효율", value: `항법 연료 -${Math.round((1 - liveEffects.navigation.fuelCostMultiplier) * 100)}%`, progress: `Lv ${liveEffects.navigation.level} / 3`, branch: "engineering" },
+    { label: "현장 수리", value: `선체 정비 +${Math.round((liveEffects.repair.hullRepairMultiplier - 1) * 100)}%`, progress: `Lv ${liveEffects.repair.level} / 3`, branch: "engineering" },
+    { label: "승무원 훈련", value: `XP +${liveEffects.training.experienceFlatBonus} · 피로 -${Math.round((1 - liveEffects.training.fatigueMultiplier) * 100)}%`, progress: `Lv ${liveEffects.training.level} / 3`, branch: "command" },
+    { label: "계약 보상", value: `일반 보상 +${Math.round((liveEffects.mission.payoutMultiplier - 1) * 100)}%`, progress: `Lv ${liveEffects.mission.level} / 3`, branch: "diplomacy" },
+  ], [liveEffects]);
 
   const totals = useMemo(() => {
     return skillBranches.map((branch) => {
@@ -94,8 +102,8 @@ export default function SkillTree() {
   };
 
   const handleReset = () => {
-    resetSkills();
-    addLog("스킬트리를 초기화했습니다.");
+    const result = requestSkillReset();
+    addLog(result.message);
   };
 
   return (
@@ -139,6 +147,7 @@ export default function SkillTree() {
               const locked = skill.requires && (levels[skill.requires] ?? 0) <= 0;
               const active = skill.id === selected.id;
               const maxed = level >= skill.maxLevel;
+              const implemented = isImplementedSkill(skill.id);
               return (
                 <button
                   key={skill.id}
@@ -153,10 +162,10 @@ export default function SkillTree() {
                       </div>
                       <div className="min-w-0">
                         <div className="font-bold text-slate-50">{skill.name}</div>
-                        <p className="mt-1 text-xs leading-5 text-slate-400">{skill.desc}</p>
+                        <p className="mt-1 text-xs leading-5 text-slate-400">{getSkillDisplayDescription(skill)}</p>
                       </div>
                     </div>
-                    {maxed && <span className="hud-chip hud-chip-success shrink-0">완성</span>}
+                    {!implemented ? <span className="hud-chip shrink-0">준비 중</span> : maxed && <span className="hud-chip hud-chip-success shrink-0">완성</span>}
                   </div>
                 </button>
               );
@@ -186,6 +195,7 @@ export default function SkillTree() {
                       const locked = skill.requires && (levels[skill.requires] ?? 0) <= 0;
                       const active = skill.id === selected.id;
                       const maxed = level >= skill.maxLevel;
+                      const implemented = isImplementedSkill(skill.id);
                       return (
                         <div key={skill.id} className="relative grid place-items-center">
                           {index > 0 && <span className={`absolute -top-4 h-4 w-px ${locked ? "bg-slate-700" : tone.line}`} />}
@@ -196,7 +206,7 @@ export default function SkillTree() {
                             {locked ? <Lock size={18} /> : <span>{level}/{skill.maxLevel}</span>}
                           </button>
                           <div className="mt-1 max-w-20 truncate text-center text-[0.64rem] text-slate-400">{skill.name}</div>
-                          {maxed && <span className="hud-chip hud-chip-success mt-1">완성</span>}
+                          {!implemented ? <span className="hud-chip mt-1">준비 중</span> : maxed && <span className="hud-chip hud-chip-success mt-1">완성</span>}
                         </div>
                       );
                     })}
@@ -279,6 +289,9 @@ export default function SkillTree() {
 }
 
 function SkillDetail({ selected, selectedLevel, selectedReady, handleUpgrade, addLog }) {
+  const implemented = isImplementedSkill(selected.id);
+  const totalEffects = skillEffectSummary(selected.id, selectedLevel);
+  const nextEffects = selectedLevel < selected.maxLevel ? skillEffectSummary(selected.id, selectedLevel + 1) : [];
   return (
     <>
       <div className="section-title">선택된 스킬</div>
@@ -290,12 +303,14 @@ function SkillDetail({ selected, selectedLevel, selectedReady, handleUpgrade, ad
         <div className="mt-1 flex flex-wrap gap-2">
           <span className="hud-chip hud-chip-success">Lv {selectedLevel} / {selected.maxLevel}</span>
           <span className="hud-chip">{skillBranches.find((branch) => branch.id === selected.branch)?.label}</span>
+          {starterSkillLevels[selected.id] > 0 && <span className="hud-chip">기본 교리</span>}
         </div>
-        <p className="mt-4 text-sm leading-6 text-slate-300">{selected.desc}</p>
+        <p className="mt-4 text-sm leading-6 text-slate-300">{getSkillDisplayDescription(selected)}</p>
       </div>
 
       <div className="mt-4 space-y-3">
-        <DetailBlock title="현재 효과" items={selected.bonus.map((bonus) => `${bonus} · Lv ${selectedLevel}`)} />
+        <DetailBlock title="현재 총효과" items={implemented ? totalEffects : [INACTIVE_SKILL_COPY]} />
+        {implemented && nextEffects.length > 0 && <DetailBlock title="다음 레벨 총효과" items={nextEffects} />}
         <DetailBlock title="필요 조건" items={[`사용 포인트 ${selected.cost}`, selected.requires ? `선행 스킬: ${getSkillById(selected.requires)?.name ?? selected.requires}` : "선행 스킬 없음"]} />
       </div>
 
@@ -305,7 +320,20 @@ function SkillDetail({ selected, selectedLevel, selectedReady, handleUpgrade, ad
   );
 }
 
+function skillEffectSummary(skillId, level) {
+  const safe = Math.max(0, Math.min(3, level ?? 0));
+  const table = {
+    "combat-targeting": [`실제 라운드 피해 +${safe * 6}%`],
+    "engineering-efficiency": [`항법 이동 연료 -${safe * 5}%`],
+    "engineering-repair": [`대기열 선체 수리량 +${safe * 12}%`],
+    "command-crew-drill": [`훈련 경험치 +${safe}`, `훈련 피로 -${safe * 5}%`],
+    "diplomacy-contract": [`일반 임무 확정 자원 보상 +${safe * 8}%`, "평판 미적용"],
+  };
+  return table[skillId] ?? [];
+}
+
 function canUpgrade(skill, levels, availablePoints) {
+  if (!isImplementedSkill(skill.id)) return false;
   const level = levels[skill.id] ?? 0;
   if (level >= skill.maxLevel) return false;
   if (availablePoints < skill.cost) return false;

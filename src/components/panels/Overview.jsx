@@ -32,6 +32,7 @@ import TaskQueuePanel from "../common/TaskQueuePanel";
 import ShipInterior from "../ship/ShipInterior";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
 import { number } from "../../utils/format";
+import { applyMissionPayout, getSkillEffects } from "../../systems/skillEffects";
 
 const EMPTY_ARRAY = [];
 
@@ -155,6 +156,8 @@ function ActiveMissionOverview({ mission, currentNodeId, pendingEncounter, onOpe
 }
 
 function NavDecisionCard({ currentMinute, onNavigate }) {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const skillEffects = useMemo(() => getSkillEffects(skillLevels), [skillLevels]);
   const sector = useNavStore((state) => state.sector);
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
@@ -187,10 +190,12 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const connected = (current?.connections ?? []).map((id) => sector.nodes.find((node) => node.id === id)).filter(Boolean);
   const target = selected?.id === current?.id ? connected[0] : selected;
   const distance = target ? routeDistance(sector, [current.id, target.id]) : 0;
-  return <section className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="section-title"><Compass size={18} />다음 목적지</div><div className="mt-3 grid h-28 place-items-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-4xl">{target ? NODE_TYPE_ICONS[target.type] : "?"}</div><div className="mt-3 flex items-center justify-between gap-3"><div className="min-w-0"><div className="truncate font-black text-slate-50">{target?.name ?? "연결 노드 없음"}</div><div className="mt-1 text-xs text-slate-400">{target ? `${NODE_TYPE_LABELS[target.type]} · ${distance.toFixed(1)}u · Fuel ${Math.round(fuel)}%` : "지도에서 선택"}</div></div><span className="hud-chip hud-chip-accent">결재</span></div><div className="mt-3 grid grid-cols-2 gap-2">{connected.slice(0, 2).map((node) => <button key={node.id} className="secondary-button min-h-8 text-xs" onClick={() => selectNode(node.id)}>{NODE_TYPE_ICONS[node.type]} {node.name}</button>)}</div><button className="primary-button mt-3 w-full" disabled={!target || fuel <= 0} onClick={() => { const result = planRoute(target.id, currentMinute); if (result.ok) { setPaused(false); addLog(`${target.name} 항로 결재 완료.`); } else addLog(`항로 설정 실패: ${result.reason}`); }}>항해 시작</button></section>;
+  return <section className="rounded-2xl border border-cyan-400/30 bg-cyan-400/10 p-4"><div className="section-title"><Compass size={18} />다음 목적지</div><div className="mt-3 grid h-28 place-items-center rounded-2xl border border-cyan-300/25 bg-cyan-300/10 text-4xl">{target ? NODE_TYPE_ICONS[target.type] : "?"}</div><div className="mt-3 flex items-center justify-between gap-3"><div className="min-w-0"><div className="truncate font-black text-slate-50">{target?.name ?? "연결 노드 없음"}</div><div className="mt-1 text-xs text-slate-400">{target ? `${NODE_TYPE_LABELS[target.type]} · ${distance.toFixed(1)}u · Fuel ${Math.round(fuel)}%` : "지도에서 선택"}</div></div><span className="hud-chip hud-chip-accent">결재</span></div><div className="mt-3 grid grid-cols-2 gap-2">{connected.slice(0, 2).map((node) => <button key={node.id} className="secondary-button min-h-8 text-xs" onClick={() => selectNode(node.id)}>{NODE_TYPE_ICONS[node.type]} {node.name}</button>)}</div><button className="primary-button mt-3 w-full" disabled={!target || fuel <= 0} onClick={() => { const result = planRoute(target.id, currentMinute, {}, skillEffects); if (result.ok) { setPaused(false); addLog(`${target.name} 항로 결재 완료.`); } else addLog(`항로 설정 실패: ${result.reason}`); }}>항해 시작</button></section>;
 }
 
 export default function Overview({ onNavigate, onOpenModal }) {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const skillEffects = useMemo(() => getSkillEffects(skillLevels), [skillLevels]);
   const sector = useNavStore((state) => state.sector);
   const currentNodeId = useNavStore((state) => state.currentNodeId);
   const selectedNodeId = useNavStore((state) => state.selectedNodeId);
@@ -288,7 +293,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Rocket size={18} />다음 성장 투자</div><span className="hud-chip hud-chip-accent">함대 성장</span></div><div className="mt-3 grid gap-3 sm:grid-cols-3">{growthActions.map((card) => <CommandCard key={card.id + card.title} card={card} onNavigate={onNavigate} onOpenModal={onOpenModal} />)}</div></section>
 
-      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><NavDecisionCard currentMinute={currentMinute} onNavigate={onNavigate} /><ActiveMissionOverview mission={activeMission} currentNodeId={currentNodeId} pendingEncounter={pendingEncounter} onOpenModal={onOpenModal} onNavigate={onNavigate} /></div>
+      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><NavDecisionCard currentMinute={currentMinute} onNavigate={onNavigate} /><ActiveMissionOverview mission={activeMission ? { ...activeMission, reward: applyMissionPayout(activeMission.reward, skillEffects.mission) } : null} currentNodeId={currentNodeId} pendingEncounter={pendingEncounter} onOpenModal={onOpenModal} onNavigate={onNavigate} /></div>
 
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Briefcase size={18} />빠른 명령</div><button className="secondary-button min-h-8 px-3 text-xs" onClick={() => onOpenModal?.("command")}>전체 메뉴</button></div><div className="mt-3 grid grid-cols-2 gap-3 lg:grid-cols-4">{commandCards.map((card) => <CommandCard key={card.id} card={card} onNavigate={onNavigate} onOpenModal={onOpenModal} />)}</div></section>
 

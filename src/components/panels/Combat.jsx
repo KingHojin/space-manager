@@ -27,6 +27,8 @@ import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useReportStore } from "../../stores/reportStore";
 import { useShipStore } from "../../stores/shipStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { getSkillEffects } from "../../systems/skillEffects";
 import Hunting from "./Hunting";
 
 const COMBAT_OUTCOME_META = {
@@ -190,6 +192,8 @@ function CheckCircleIcon({ won }) {
 }
 
 export default function Combat({ onNavigate, onOpenModal }) {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const skillEffects = useMemo(() => getSkillEffects(skillLevels), [skillLevels]);
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
@@ -276,7 +280,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const issueDirective = (directive) => {
     if (!combat || combat.status !== "engaged") return pushFeed([getCombatDirectiveResult(directive), travelLocked ? "항해 중이라 훈련 교전도 제한됩니다." : "교전이 없어 훈련 중계만 기록됩니다."]);
     if (activeCrew.length === 0) return pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
-    const result = resolveCombatRound({ directive, combat, power, targetId, tacticalCrewBonus: tacticalBonus });
+    const result = resolveCombatRound({ directive, combat, power, targetId, tacticalCrewBonus: tacticalBonus, skillEffects });
     updateCombatRecord({ vesselId: activeVesselId, combat: result.combat });
     addResources(result.resourceChanges);
     if (result.loot) addItem(result.loot.itemId, result.loot.qty);

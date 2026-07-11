@@ -21,6 +21,8 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { applyTrainingOutcome, getSkillEffects } from "../../systems/skillEffects";
 import { statLabel } from "../../utils/format";
 import CrewFacilityStatus from "../crew/CrewFacilityStatus";
 import ShipInterior from "../ship/ShipInterior";
@@ -147,6 +149,8 @@ function CrewPortrait({ member }) {
 }
 
 export default function Crew() {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const trainingOutcome = applyTrainingOutcome({ experience: 8, fatigue: 12 }, getSkillEffects(skillLevels).training);
   const { crew, trainingQueue: legacyTrainingQueue, treatmentQueue: legacyTreatmentQueue, crewActivities, crewActivityLog } = useCrewStore();
   const rawJobs = useJobStore((state) => state.jobs);
   const jobTrainingQueue = useMemo(() => activeLegacyJobs(rawJobs, jobToLegacyTraining), [rawJobs]);
@@ -199,7 +203,7 @@ export default function Crew() {
     const completeAt = currentMinute + TRAINING_MINUTES;
     const priority = inferTrainingPriority(member);
     startTraining({ memberId: member.id, statKey, completeAt, cost: TRAINING_COST, duration: TRAINING_MINUTES, priority, createdAt: currentMinute });
-    return addLog(`${member.name} 훈련 대기열 등록: ${statLabel[statKey] ?? statKey} +1, 우선순위 ${getPriorityConfig(priority).label}, ₢${TRAINING_COST}, ${formatMinutes(TRAINING_MINUTES)}.`);
+    return addLog(`${member.name} 훈련 대기열 등록: ${statLabel[statKey] ?? statKey} +1 · XP +${trainingOutcome.experience} · 피로 +${trainingOutcome.fatigue}, 우선순위 ${getPriorityConfig(priority).label}, ₢${TRAINING_COST}, ${formatMinutes(TRAINING_MINUTES)}.`);
   };
 
   const recover = (member, recoveryTask) => {

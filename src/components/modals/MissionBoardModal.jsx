@@ -6,6 +6,8 @@ import { useInventoryStore } from "../../stores/inventoryStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useShipStore } from "../../stores/shipStore";
+import { useSkillStore } from "../../stores/skillStore";
+import { applyMissionPayout, getSkillEffects } from "../../systems/skillEffects";
 import { MissionPoster, MissionStatStrip, RewardIconRow } from "../ui/MissionVisuals";
 
 function Info({ label, value, tone = "" }) {
@@ -56,6 +58,8 @@ function MissionCard({ mission, disabled, routePreview, reputation, onAccept }) 
 }
 
 export default function MissionBoardModal({ onNavigate }) {
+  const skillLevels = useSkillStore((state) => state.levels);
+  const skillEffects = useMemo(() => getSkillEffects(skillLevels), [skillLevels]);
   const currentMinute = useGameStore((state) => state.currentMinute);
   const addLog = useGameStore((state) => state.addLog);
   const setPaused = useGameStore((state) => state.setPaused);
@@ -92,11 +96,11 @@ export default function MissionBoardModal({ onNavigate }) {
     const mission = (board?.missions ?? []).find((entry) => entry.id === missionId);
     if (!mission) return addLog("임무 수락 실패: 임무 정보를 찾을 수 없습니다.");
     if ((mission.reputationRequired ?? 0) > reputation) return addLog(`임무 수락 실패: 평판 ${mission.reputationRequired} 이상이 필요합니다. 현재 ${reputation}.`);
-    const preview = previewRoute(mission.destinationNodeId, currentMinute);
+    const preview = previewRoute(mission.destinationNodeId, currentMinute, skillEffects);
     if (!preview.ok) return addLog(`임무 항로 설정 실패: ${preview.reason}`);
     const accepted = acceptMission({ scopeId, missionId, vesselId: activeVesselId, currentMinute, availableReputation: reputation });
     if (!accepted.ok) return addLog(accepted.reason === "reputationLocked" ? `임무 수락 실패: 평판 ${accepted.required} 필요, 현재 ${accepted.available}.` : `임무 수락 실패: ${accepted.reason}`);
-    const planned = planRoute(mission.destinationNodeId, currentMinute, { missionId: accepted.mission.id, missionTitle: accepted.mission.title, missionDestinationName: accepted.mission.destinationName });
+    const planned = planRoute(mission.destinationNodeId, currentMinute, { missionId: accepted.mission.id, missionTitle: accepted.mission.title, missionDestinationName: accepted.mission.destinationName }, skillEffects);
     if (!planned.ok) {
       abandonMission({ vesselId: activeVesselId, currentMinute });
       return addLog(`임무 항로 결재 실패: ${planned.reason}. 임무 수락을 취소했습니다.`);
@@ -117,9 +121,9 @@ export default function MissionBoardModal({ onNavigate }) {
   return (
     <div className="grid gap-4">
       <section className="rounded border border-slate-700/80 bg-slate-950/50 p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><div className="section-title"><Briefcase size={18} />계약 임무 게시판</div><p className="mt-2 text-sm leading-6 text-slate-400">임무를 포스터 카드로 고르고, 위험도·항로·보상만 빠르게 확인합니다.</p></div><button className="secondary-button" onClick={handleRefresh}><RefreshCw size={15} />새로고침</button></div><div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4"><Info label="현재 위치" value={currentNode?.name ?? "미확인"} /><Info label="게시판" value={scopeId} /><Info label="평판" value={`${reputation}`} tone="text-cyan-200" /><Info label="함선" value={vesselName} /></div><p className="mt-3 text-xs leading-5 text-slate-400">평판은 고위험 계약 접근권입니다. 수락할 때 소모되지 않습니다.</p></section>
-      <ActiveMissionCard mission={activeMission} vesselName={vesselName} onAbandon={handleAbandon} onOpenMap={() => onNavigate?.("exploration")} />
+      <ActiveMissionCard mission={activeMission ? { ...activeMission, reward: applyMissionPayout(activeMission.reward, skillEffects.mission) } : null} vesselName={vesselName} onAbandon={handleAbandon} onOpenMap={() => onNavigate?.("exploration")} />
       {!activeMission && missions.length === 0 && <section className="rounded border border-amber-300/35 bg-amber-300/10 p-4"><div className="section-title"><AlertTriangle size={18} />임무 없음</div><p className="mt-2 text-sm leading-6 text-slate-300">현재 게시판에서 표시할 임무가 없습니다. 새로고침을 시도하세요.</p></section>}
-      <section><div className="flex items-center justify-between gap-2"><div className="section-title"><MapPin size={18} />수락 가능 임무</div><span className="hud-chip hud-chip-accent">{missions.length}건</span></div><div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{missions.map((mission) => <MissionCard key={mission.id} mission={mission} routePreview={previewRoute(mission.destinationNodeId, currentMinute)} reputation={reputation} disabled={Boolean(activeMission)} onAccept={handleAccept} />)}</div></section>
+      <section><div className="flex items-center justify-between gap-2"><div className="section-title"><MapPin size={18} />수락 가능 임무</div><span className="hud-chip hud-chip-accent">{missions.length}건</span></div><div className="mt-3 grid gap-4 md:grid-cols-2 xl:grid-cols-3">{missions.map((mission) => <MissionCard key={mission.id} mission={{ ...mission, reward: applyMissionPayout(mission.reward, skillEffects.mission) }} routePreview={previewRoute(mission.destinationNodeId, currentMinute, skillEffects)} reputation={reputation} disabled={Boolean(activeMission)} onAccept={handleAccept} />)}</div></section>
       <section><div className="section-title"><Clock3 size={18} />임무 로그</div><div className="mt-3 grid gap-2">{missionLog.slice(0, 4).map((entry, index) => <div key={`${entry}-${index}`} className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-300">{entry}</div>)}{missionLog.length === 0 && <div className="rounded border border-slate-700/70 bg-slate-950/60 px-3 py-2 text-xs leading-5 text-slate-500">아직 임무 기록이 없습니다.</div>}</div></section>
       <section className="rounded border border-violet-300/30 bg-violet-300/10 p-4"><div className="section-title"><Sparkles size={18} />다음 개선 방향</div><p className="mt-2 text-sm leading-6 text-slate-300">다음 단계는 전투 연출보다 먼저, 전투 중 의미 있는 선택 구조와 함대 운영 연결을 설계하는 것입니다.</p></section>
     </div>
