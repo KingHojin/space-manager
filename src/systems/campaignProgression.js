@@ -74,6 +74,8 @@ export function createCampaignState(overrides = {}) {
     highestSectorReached: 1,
     totalFieldNodesVisited: 0,
     completedAtMinute: null,
+    pendingRequisition: null,
+    claimedRequisitions: {},
     ...overrides,
   };
 }
@@ -84,11 +86,62 @@ export function normalizeCampaignState(campaign, sectorIndex = 0, visitedFieldCo
     highestSectorReached: Math.max(1, sectorIndex + 1),
     totalFieldNodesVisited: Math.max(0, visitedFieldCount),
   });
+  const expeditionId = campaign?.expeditionId ?? CAMPAIGN.EXPEDITION_ID;
+  const status = campaign?.status === "completed" ? "completed" : "active";
+  const claimedRequisitions = Object.fromEntries(Object.entries(
+    campaign?.claimedRequisitions && typeof campaign.claimedRequisitions === "object" ? campaign.claimedRequisitions : {},
+  ).filter(([claimId]) => claimId.startsWith(`${expeditionId}:sector:`)));
+  const normalizedPending = status === "completed" ? null : normalizePendingRequisition(campaign?.pendingRequisition, expeditionId);
+  const pendingRequisition = normalizedPending && !claimedRequisitions[normalizedPending.claimId] ? normalizedPending : null;
   return {
     ...fallback,
     ...(campaign ?? {}),
-    expeditionId: campaign?.expeditionId ?? CAMPAIGN.EXPEDITION_ID,
-    status: campaign?.status === "completed" ? "completed" : "active",
+    expeditionId,
+    status,
+    pendingRequisition,
+    claimedRequisitions,
+  };
+}
+
+export function getGateClaimId(campaign, sectorNumber) {
+  return `${campaign?.expeditionId ?? CAMPAIGN.EXPEDITION_ID}:sector:${sectorNumber}`;
+}
+
+function normalizePendingRequisition(pending, expeditionId) {
+  if (!pending || typeof pending !== "object") return null;
+  const sectorNumber = Math.max(1, Math.floor(pending.sectorNumber ?? 0));
+  const claimId = `${expeditionId}:sector:${sectorNumber}`;
+  if (pending.claimId !== claimId) return null;
+  return {
+    claimId,
+    sectorNumber,
+    baseCredits: Math.max(0, Math.round(pending.baseCredits ?? 0)),
+    skillPoints: 1,
+    isExpeditionFinale: Boolean(pending.isExpeditionFinale),
+    createdAtMinute: Number.isFinite(pending.createdAtMinute) ? pending.createdAtMinute : 0,
+  };
+}
+
+export function getGateRequisitionPackages() {
+  return Object.entries(CAMPAIGN.GATE_REQUISITION_PACKAGES).map(([id, packageDef]) => ({ id, ...packageDef }));
+}
+
+export function createGateRequisitionEncounter(pending) {
+  if (!pending) return null;
+  return {
+    id: `gate-requisition-choice:${pending.claimId}`,
+    claimId: pending.claimId,
+    nodeType: "requisition",
+    icon: "📦",
+    typeLabel: "관문 보급",
+    title: pending.isExpeditionFinale ? "최종 관문 보급 선택" : `섹터 ${pending.sectorNumber} 관문 보급 선택`,
+    description: `기본 보급 ₢${pending.baseCredits}과 스킬 포인트 1을 확보합니다. 함대의 다음 성장 방향을 하나 선택하십시오.`,
+    options: getGateRequisitionPackages().map((packageDef) => ({
+      id: `claim:${pending.claimId}:${packageDef.id}`,
+      label: `${packageDef.label} · ${packageDef.summary}`,
+      manualOnly: true,
+      outcome: [{ kind: "gateRequisitionClaim", packageId: packageDef.id, claimId: pending.claimId }],
+    })),
   };
 }
 
@@ -113,6 +166,7 @@ export function getSectorObjective({ sector, sectorIndex = 0, visited = [], camp
   const visitConditionMet = visitedFieldNodes.length >= requiredFieldVisits;
   const dangerConditionMet = fieldNodes.length === 0 || dangerousVisited.length >= 1;
   const expeditionCompleted = campaign?.status === "completed";
+  const pendingRequisition = campaign?.pendingRequisition ?? null;
   return {
     ...profile,
     requiredFieldVisits,
@@ -121,8 +175,9 @@ export function getSectorObjective({ sector, sectorIndex = 0, visited = [], camp
     dangerousVisitedCount: dangerousVisited.length,
     visitConditionMet,
     dangerConditionMet,
-    gateUnlocked: !expeditionCompleted && visitConditionMet && dangerConditionMet,
+    gateUnlocked: !expeditionCompleted && !pendingRequisition && visitConditionMet && dangerConditionMet,
     expeditionCompleted,
+    pendingRequisition,
     progressPercent: expeditionCompleted
       ? 100
       : Math.round(((Math.min(visitedFieldNodes.length, requiredFieldVisits) + (dangerConditionMet ? 1 : 0)) / Math.max(1, requiredFieldVisits + 1)) * 100),
@@ -131,7 +186,14 @@ export function getSectorObjective({ sector, sectorIndex = 0, visited = [], camp
 }
 
 export function getGateEncounter(encounter, objective) {
-  if (!encounter || !objective || objective.gateUnlocked || objective.expeditionCompleted) return encounter;
+  if (!encounter || !objective || objective.expeditionCompleted) return encounter;
+  if (objective.gateUnlocked) {
+    return {
+      ...encounter,
+      id: "exit-next-sector",
+      description: `장거리 점프 좌표가 안정화됐습니다. 통과 후 기본 보급 ₢${objective.gateRewardCredits}과 성장 패키지 하나를 결재해야 다음 항해가 가능합니다.`,
+    };
+  }
   return {
     ...encounter,
     id: "exit-objective-locked",

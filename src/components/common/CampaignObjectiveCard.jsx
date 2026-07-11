@@ -1,5 +1,6 @@
-import { CheckCircle2, Flag, LockKeyhole, Route, ShieldCheck } from "lucide-react";
+import { CheckCircle2, Flag, LockKeyhole, PackageCheck, Route, ShieldCheck } from "lucide-react";
 import { CAMPAIGN } from "../../data/constants";
+import InvestmentBalanceHint from "./InvestmentBalanceHint";
 
 function Condition({ done, children }) {
   return (
@@ -10,10 +11,27 @@ function Condition({ done, children }) {
   );
 }
 
-export default function CampaignObjectiveCard({ objective, gateDistance = null, gateHops = null, fuel = 0, hull = 0, livingCrew = 0, onNavigate }) {
+export default function CampaignObjectiveCard({ objective, credits = 0, gateDistance = null, gateHops = null, fuel = 0, hull = 0, livingCrew = 0, onNavigate }) {
   if (!objective) return null;
   const ready = fuel >= CAMPAIGN.READY_FUEL && hull >= CAMPAIGN.READY_HULL && livingCrew >= CAMPAIGN.READY_CREW;
   const nextUnlock = objective.isExpeditionFinale ? "1차 원정 완주 기록" : `원정 섹터 ${objective.sectorNumber + 1} 해금`;
+
+  if (objective.pendingRequisition) {
+    return (
+      <section className="rounded-2xl border border-amber-300/45 bg-amber-300/10 p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><div className="section-title"><PackageCheck size={18} />관문 보급 결재 대기</div><h3 className="mt-2 text-xl font-black text-amber-100">성장 패키지 하나를 선택해야 합니다</h3><p className="mt-2 text-sm text-slate-300">기본 ₢{objective.pendingRequisition.baseCredits} + 스킬 포인트 1 · 선택 후 다음 항해가 열립니다.</p></div>
+          <span className="hud-chip hud-chip-warn shrink-0">필수 결재</span>
+        </div>
+        <div className="mt-3 grid gap-2 text-xs sm:grid-cols-3">
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-3"><strong className="text-slate-100">정비 물자</strong><div className="mt-1 text-slate-400">폐자재 +6</div><InvestmentBalanceHint credits={credits + objective.pendingRequisition.baseCredits} cost={0} label="수령 후" /></div>
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-3"><strong className="text-slate-100">개장 자재</strong><div className="mt-1 text-slate-400">트리타늄 +2 · ₢140</div><InvestmentBalanceHint credits={credits + objective.pendingRequisition.baseCredits + 140} cost={0} label="수령 후" /></div>
+          <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-3"><strong className="text-slate-100">인사 예산</strong><div className="mt-1 text-slate-400">₢240</div><InvestmentBalanceHint credits={credits + objective.pendingRequisition.baseCredits + 240} cost={0} label="수령 후" /></div>
+        </div>
+        <button className="primary-button mt-3 w-full justify-center" onClick={() => onNavigate?.("exploration")}>보급 패키지 선택</button>
+      </section>
+    );
+  }
 
   if (objective.expeditionCompleted) {
     return (
@@ -39,7 +57,7 @@ export default function CampaignObjectiveCard({ objective, gateDistance = null, 
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-2"><div className="hud-label">관문 경로</div><div className="mt-1 font-bold text-slate-100"><Route className="mr-1 inline" size={13} />{gateDistance === null ? "미확인" : `${gateDistance.toFixed(1)}u · ${gateHops ?? 0}홉`}</div></div>
-        <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-2"><div className="hud-label">진입 보상</div><div className="mt-1 font-bold text-amber-100">₢{objective.gateRewardCredits}</div></div>
+        <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-2"><div className="hud-label">관문 보급</div><div className="mt-1 font-bold text-amber-100">₢{objective.gateRewardCredits} + 패키지 + SP1</div></div>
         <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-2"><div className="hud-label">다음 해금</div><div className="mt-1 truncate font-bold text-violet-100">{nextUnlock}</div></div>
         <div className="rounded-xl border border-slate-700/70 bg-slate-950/55 p-2"><div className="hud-label">출항 준비</div><div className={`mt-1 font-bold ${ready ? "text-emerald-100" : "text-amber-100"}`}><ShieldCheck className="mr-1 inline" size={13} />{ready ? "권장치 충족" : `Fuel ${Math.round(fuel)} · Hull ${Math.round(hull)} · ${livingCrew}명`}</div></div>
       </div>

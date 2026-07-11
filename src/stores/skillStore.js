@@ -7,8 +7,10 @@ export const useSkillStore = create(
   persist(
     (set, get) => ({
       availablePoints: 3,
+      earnedPoints: 0,
       levels: starterSkillLevels,
       selectedSkillId: "exploration-deep-scan",
+      requisitionReceipts: {},
       selectSkill: (skillId) => set({ selectedSkillId: skillId }),
       upgradeSkill: (skillId) => {
         const skill = getSkillById(skillId);
@@ -25,8 +27,20 @@ export const useSkillStore = create(
         }));
         return true;
       },
-      resetSkills: () => set({ availablePoints: 3, levels: starterSkillLevels, selectedSkillId: "exploration-deep-scan" }),
-      grantPoint: (amount = 1) => set((state) => ({ availablePoints: Math.max(0, state.availablePoints + amount) })),
+      resetSkills: () => set((state) => ({ availablePoints: 3 + Math.max(0, state.earnedPoints ?? 0), levels: starterSkillLevels, selectedSkillId: "exploration-deep-scan" })),
+      grantPoint: (amount = 1) => set((state) => {
+        const granted = Math.max(0, Math.floor(amount));
+        return {
+          availablePoints: Math.max(0, state.availablePoints + granted),
+          earnedPoints: Math.max(0, (state.earnedPoints ?? 0) + granted),
+        };
+      }),
+      applyRequisitionPoint: (claimId, amount = 1) => {
+        if (!claimId || get().requisitionReceipts?.[claimId]) return false;
+        const granted = Math.max(0, Math.floor(amount));
+        set((state) => ({ availablePoints: state.availablePoints + granted, earnedPoints: (state.earnedPoints ?? 0) + granted, requisitionReceipts: { ...(state.requisitionReceipts ?? {}), [claimId]: true } }));
+        return true;
+      },
     }),
     {
       name: "space-manager-skills",
@@ -37,7 +51,9 @@ export const useSkillStore = create(
         ...(persistedState ?? {}),
         levels: { ...starterSkillLevels, ...(persistedState?.levels ?? {}) },
         availablePoints: persistedState?.availablePoints ?? currentState.availablePoints,
+        earnedPoints: persistedState?.earnedPoints ?? 0,
         selectedSkillId: persistedState?.selectedSkillId ?? currentState.selectedSkillId,
+        requisitionReceipts: persistedState?.requisitionReceipts ?? {},
       }),
     },
   ),

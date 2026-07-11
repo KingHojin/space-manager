@@ -2,7 +2,7 @@ export const items = [
   { id: "food-ration", name: "표준 식량", rarity: "common", qty: 16, type: "food" },
   { id: "raw-ingredients", name: "식재료", rarity: "common", qty: 8, type: "food" },
   { id: "alloy-plate", name: "합금 장갑판", rarity: "common", qty: 8, type: "material" },
-  { id: "tritanium", name: "트리타늄", rarity: "common", qty: 24, type: "material" },
+  { id: "tritanium", name: "트리타늄", rarity: "common", qty: 2, type: "material" },
   { id: "oxygen-cell", name: "산소 셀", rarity: "common", qty: 6, type: "consumable" },
   { id: "fuel-rod", name: "연료봉", rarity: "common", qty: 5, type: "consumable" },
   { id: "survey-probe", name: "탐사 프로브", rarity: "common", qty: 4, type: "tool" },
@@ -32,7 +32,7 @@ export const items = [
   { id: "recruit-signal", name: "영입 신호", rarity: "uncommon", qty: 0, type: "mission-reward" },
 
   { id: "nanite-gel", name: "나노머신 겔", rarity: "rare", qty: 2, type: "consumable" },
-  { id: "ancient-relay", name: "고대 중계기", rarity: "rare", qty: 1, type: "artifact" },
+  { id: "ancient-relay", name: "고대 중계기", rarity: "rare", qty: 0, type: "artifact" },
   { id: "blackbox", name: "함선 블랙박스", rarity: "rare", qty: 0, type: "salvage" },
   { id: "alien-spore", name: "외계 포자", rarity: "rare", qty: 0, type: "biology" },
   { id: "mirror-scale", name: "반사 비늘", rarity: "rare", qty: 0, type: "material" },

@@ -6,7 +6,7 @@ import { items as baseItems } from "../data/items";
 import { drawCard, drawPityCard } from "../systems/gachaEngine";
 import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
-function mergeItems(savedItems = []) {
+export function mergeItems(savedItems = []) {
   const savedById = new Map(savedItems.map((item) => [item.id, item]));
   const mergedBase = baseItems.map((item) => ({ ...item, ...(savedById.get(item.id) ?? {}) }));
   const extraSaved = savedItems.filter((item) => !baseItems.some((base) => base.id === item.id));
@@ -23,6 +23,7 @@ export const useInventoryStore = create(
       activeCardIds: [],
       lastDraw: [],
       pityCount: 0,
+      requisitionReceipts: {},
       addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
       addItem: (itemId, qty = 1) =>
         set((state) => {
@@ -40,6 +41,21 @@ export const useInventoryStore = create(
           };
           return { items: [...state.items, { ...template, qty: Math.max(0, qty) }] };
         }),
+      applyRequisitionItems: (claimId, grants = []) => {
+        if (!claimId || get().requisitionReceipts?.[claimId]) return false;
+        set((state) => {
+          let items = state.items;
+          for (const { itemId, qty } of grants) {
+            if (!itemId || !(qty > 0)) continue;
+            const existing = items.find((item) => item.id === itemId);
+            items = existing
+              ? items.map((item) => item.id === itemId ? { ...item, qty: Math.max(0, (item.qty ?? 0) + qty) } : item)
+              : [...items, { ...(baseItems.find((item) => item.id === itemId) ?? { id: itemId, name: itemId, rarity: "common", type: "misc" }), qty }];
+          }
+          return { items, requisitionReceipts: { ...(state.requisitionReceipts ?? {}), [claimId]: true } };
+        });
+        return true;
+      },
       removeItem: (itemId, qty = 1) =>
         set((state) => ({
           items: state.items.map((item) => (item.id === itemId ? { ...item, qty: Math.max(0, (item.qty ?? 0) - qty) } : item)),
@@ -112,6 +128,7 @@ export const useInventoryStore = create(
         ...currentState,
         ...(persistedState ?? {}),
         items: mergeItems(persistedState?.items),
+        requisitionReceipts: persistedState?.requisitionReceipts ?? {},
       }),
     },
   ),

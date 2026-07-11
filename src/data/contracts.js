@@ -39,8 +39,8 @@ export const contracts = [
     rewardDust: 10,
     rep: 2,
     itemId: "tritanium",
-    itemQty: 2,
-    requirement: "트리타늄 2개 납품",
+    itemQty: 4,
+    requirement: "트리타늄 4개 납품",
     desc: "오리온 카르텔이 고순도 광물 샘플을 매입합니다.",
   },
   {
