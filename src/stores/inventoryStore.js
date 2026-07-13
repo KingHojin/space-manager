@@ -26,6 +26,7 @@ export const useInventoryStore = create(
       requisitionReceipts: {},
       encounterReceipts: {},
       storyConsumeReceipts: {},
+      incidentReceipts: {},
       addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
       addItem: (itemId, qty = 1) =>
         set((state) => {
@@ -83,6 +84,25 @@ export const useInventoryStore = create(
           }),
           storyConsumeReceipts: { ...(state.storyConsumeReceipts ?? {}), [claimId]: true },
         }));
+        return { ok: true, repeated: false };
+      },
+      applyIncidentItems: (claimId, { costs = [], grants = [] } = {}) => {
+        if (!claimId || get().incidentReceipts?.[claimId]) return { ok: true, repeated: true };
+        const items = get().items ?? [];
+        const missing = costs.find(({ itemId, qty }) => itemId && qty > 0 && (items.find((item) => item.id === itemId)?.qty ?? 0) < qty);
+        if (missing) return { ok: false, reason: "missingItem", itemId: missing.itemId };
+        set((state) => {
+          let next = state.items.map((item) => {
+            const cost = costs.find((entry) => entry.itemId === item.id);
+            return cost ? { ...item, qty: Math.max(0, (item.qty ?? 0) - (cost.qty ?? 0)) } : item;
+          });
+          grants.forEach(({ itemId, qty }) => {
+            if (!itemId || !(qty > 0)) return;
+            const existing = next.find((item) => item.id === itemId);
+            next = existing ? next.map((item) => item.id === itemId ? { ...item, qty: (item.qty ?? 0) + qty } : item) : [...next, { ...(baseItems.find((item) => item.id === itemId) ?? { id: itemId, name: itemId, rarity: "common", type: "misc" }), qty }];
+          });
+          return { items: next, incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true } };
+        });
         return { ok: true, repeated: false };
       },
       removeItem: (itemId, qty = 1) =>
@@ -160,6 +180,7 @@ export const useInventoryStore = create(
         requisitionReceipts: persistedState?.requisitionReceipts ?? {},
         encounterReceipts: persistedState?.encounterReceipts ?? {},
         storyConsumeReceipts: persistedState?.storyConsumeReceipts ?? {},
+        incidentReceipts: persistedState?.incidentReceipts ?? {},
       }),
     },
   ),

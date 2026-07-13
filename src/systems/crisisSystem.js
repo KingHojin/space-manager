@@ -103,10 +103,10 @@ function crisisId(roomId, type, currentMinute) {
   return `crisis-${type}-${roomId}-${Math.floor(currentMinute)}-${random}`;
 }
 
-export function createCrisisRecord({ roomId, type, severity = 1, currentMinute = 0 }) {
+export function createCrisisRecord({ id = null, roomId, type, severity = 1, currentMinute = 0 }) {
   const config = CRISIS_CATALOG[type] ?? CRISIS_CATALOG.overheat;
   return {
-    id: crisisId(roomId, config.type, currentMinute),
+    id: id ?? crisisId(roomId, config.type, currentMinute),
     roomId,
     type: config.type,
     severity: clamp(Math.round(severity), 1, 3),

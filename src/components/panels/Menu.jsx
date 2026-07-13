@@ -22,6 +22,7 @@ import { useContractStore } from "../../stores/contractStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useIncidentStore } from "../../stores/incidentStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
 import { useRecruitStore } from "../../stores/recruitStore";
@@ -51,6 +52,7 @@ const KNOWN_STORAGE_KEYS = [
   "space-manager-skills",
   "space-manager-policies",
   "space-manager-reports",
+  "space-manager-incidents",
 ];
 
 const primaryMenus = [
@@ -100,7 +102,11 @@ export default function Menu({ onNavigate, onOpenModal }) {
   const acceptedIds = useContractStore((state) => state.acceptedIds);
   const completedIds = useContractStore((state) => state.completedIds);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const incidentRuntimesById = useIncidentStore((state) => state.runtimesById);
+  const incidentQueueByVesselId = useIncidentStore((state) => state.queueByVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
+  const incidentQueue = incidentQueueByVesselId?.[activeVesselId] ?? [];
+  const activeIncidentCount = Object.values(incidentRuntimesById).filter((runtime) => runtime.vesselId === activeVesselId && ["queued", "pending", "settling", "waitingJob", "monitoring"].includes(runtime.status)).length;
   const boardsByScopeId = useMissionStore((state) => state.boardsByScopeId);
   // Live navigation stats — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the
   // old explorationStore.discoveredZoneIds/scannedZoneIds are dead fields
@@ -147,12 +153,13 @@ export default function Menu({ onNavigate, onOpenModal }) {
             <div className="section-title text-lg"><Rocket size={20} />함장 메뉴</div>
             <p className="mt-2 text-sm leading-6 text-slate-400">모바일에서는 핵심 진행 탭만 하단에 두고, 성장·관리·보조 기능은 여기서 크게 열 수 있습니다.</p>
           </div>
-          <span className="hud-chip hud-chip-accent shrink-0">탐사율 {exploredPercent}%</span>
+          <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent shrink-0">탐사율 {exploredPercent}%</span>{activeIncidentCount > 0 && <span className="hud-chip hud-chip-warn">항해 사건 {activeIncidentCount} · 대기 {incidentQueue.length}</span>}</div>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-2 text-sm">
+        <div className="mt-4 grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
           <Status label="크레딧" value={`₢ ${number(resources.credits)}`} />
           <Status label="구역" value={`${discovered.length}/${totalZones}`} />
           <Status label="스캔" value={visited.length} />
+          <Status label="항해 사건" value={activeIncidentCount > 0 ? `${activeIncidentCount}건 · 대기 ${incidentQueue.length}` : "없음"} />
         </div>
       </section>
       <section>

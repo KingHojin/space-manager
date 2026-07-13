@@ -11,6 +11,7 @@ import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useIncidentStore } from "../../stores/incidentStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useMissionStore } from "../../stores/missionStore";
 import { useNavStore } from "../../stores/navStore";
@@ -32,6 +33,8 @@ import StarMap from "../exploration/LazyStarMap";
 import TaskQueuePanel from "../common/TaskQueuePanel";
 import ShipInterior from "../ship/ShipInterior";
 import { MissionPoster, MissionProgressSteps, RewardIconRow } from "../ui/MissionVisuals";
+import IncidentDecisionCard from "../ui/IncidentDecisionCard";
+import IncidentWorkTracker from "../ui/IncidentWorkTracker";
 import { number } from "../../utils/format";
 import { applyMissionPayout, getSkillEffects } from "../../systems/skillEffects";
 
@@ -232,7 +235,9 @@ export default function Overview({ onNavigate, onOpenModal }) {
   const currentMinute = useGameStore((state) => state.currentMinute);
   const logs = useGameStore((state) => state.logs);
   const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const incidentRuntimesById = useIncidentStore((state) => state.runtimesById);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
+  const activeIncidents = useMemo(() => Object.values(incidentRuntimesById).filter((runtime) => runtime.vesselId === activeVesselId && ["queued", "pending", "settling", "waitingJob", "monitoring"].includes(runtime.status)), [incidentRuntimesById, activeVesselId]);
   const dust = useInventoryStore((state) => state.dust);
   const items = useInventoryStore((state) => state.items);
   const cards = useInventoryStore((state) => state.cards);
@@ -302,6 +307,9 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <CampaignObjectiveCard objective={campaignObjective} credits={resources.credits} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={navFuel} hull={resources.hull} livingCrew={livingCrewCount} onNavigate={onNavigate} />
 
+      <IncidentDecisionCard vesselId={activeVesselId} />
+      <IncidentWorkTracker vesselId={activeVesselId} />
+
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Rocket size={18} />다음 성장 투자</div><span className="hud-chip hud-chip-accent">함대 성장</span></div><div className="mt-3 grid gap-3 sm:grid-cols-3">{growthActions.map((card) => <CommandCard key={card.id + card.title} card={card} onNavigate={onNavigate} onOpenModal={onOpenModal} />)}</div></section>
 
       <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><NavDecisionCard currentMinute={currentMinute} onNavigate={onNavigate} /><ActiveMissionOverview mission={activeMission ? { ...activeMission, reward: applyMissionPayout(activeMission.reward, skillEffects.mission) } : null} currentNodeId={currentNodeId} pendingEncounter={pendingEncounter} onOpenModal={onOpenModal} onNavigate={onNavigate} /></div>
@@ -312,7 +320,7 @@ export default function Overview({ onNavigate, onOpenModal }) {
 
       <UnreadReportsSection unreadReports={unreadReports} unreadCount={unreadReportCount} onOpenModal={onOpenModal} />
 
-      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><div className="grid gap-3"><ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} compact onCrewClick={() => onNavigate?.("crew")} /><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Users size={18} />승무원</div><span className="hud-chip hud-chip-accent">AI {crewAiSummary.total}</span></div><div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">{crew.slice(0, 5).map((member, index) => { const activity = crewActivities.find((entry) => entry.memberId === member.id); const actionText = activity ? activity.station : getCrewActivity(member, currentMinute, index); return <button key={member.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3 text-center" onClick={() => onNavigate?.("crew")}><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-xl">{ROLE_ICON_LABEL[member.role] ?? "👤"}</div><div className="mt-2 truncate font-bold text-slate-100">{member.name}</div><div className="truncate text-xs text-slate-400">{actionText}</div><span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "mt-1 block text-xs font-bold text-amber-300" : "mt-1 block text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span></button>; })}</div></section></div><TaskQueuePanel onNavigate={onNavigate} /></div>
+      <div className="grid gap-3 lg:grid-cols-[0.9fr_1.1fr]"><div className="grid gap-3"><ShipInterior crew={crew} activities={crewActivities ?? []} rooms={rooms} activeCrises={activeCrises} incidents={activeIncidents} compact onCrewClick={() => onNavigate?.("crew")} /><section><div className="flex items-center justify-between gap-3"><div className="section-title"><Users size={18} />승무원</div><span className="hud-chip hud-chip-accent">AI {crewAiSummary.total}</span></div><div className="mt-3 grid grid-cols-2 gap-2 md:grid-cols-5">{crew.slice(0, 5).map((member, index) => { const activity = crewActivities.find((entry) => entry.memberId === member.id); const actionText = activity ? activity.station : getCrewActivity(member, currentMinute, index); return <button key={member.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3 text-center" onClick={() => onNavigate?.("crew")}><div className="mx-auto grid h-12 w-12 place-items-center rounded-xl border border-cyan-400/20 bg-cyan-400/10 text-xl">{ROLE_ICON_LABEL[member.role] ?? "👤"}</div><div className="mt-2 truncate font-bold text-slate-100">{member.name}</div><div className="truncate text-xs text-slate-400">{actionText}</div><span className={(activity?.priority === "emergency" || (member.fatigue ?? 0) > 65) ? "mt-1 block text-xs font-bold text-amber-300" : "mt-1 block text-xs font-bold text-emerald-300"}>{Math.max(0, 100 - (member.fatigue ?? 0))}%</span></button>; })}</div></section></div><TaskQueuePanel onNavigate={onNavigate} /></div>
 
       <section><div className="flex items-center justify-between gap-3"><div className="section-title"><Radar size={18} />프론티어 신호</div><span className="hud-chip hud-chip-accent">노드</span></div><div className="mt-4 grid gap-2 md:grid-cols-4">{signals.slice(0, 4).map((signal) => <button key={signal.id} className={`rounded-2xl border p-3 text-left transition hover:-translate-y-0.5 ${signal.tone}`} onClick={() => onNavigate?.(signal.targetPanel)}><div className="flex items-start justify-between gap-3"><span className="text-2xl">{signal.icon}</span><span className="hud-chip shrink-0">{signal.urgency}</span></div><div className="mt-3 truncate font-bold text-slate-50">{signal.title}</div></button>)}</div></section>
 

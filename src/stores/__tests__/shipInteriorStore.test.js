@@ -23,7 +23,7 @@ describe("shipInteriorStore.tickCrises crisisEvents (Phase 20-B)", () => {
     expect(result).toEqual({ effects: [], logs: [], crisisEvents: [] });
   });
 
-  it("emits a { kind: 'spawned' } crisisEvent, matching the '위기 발생' log line, when a room crosses its internal spawn threshold", () => {
+  it("does not spawn ambient crises because the incident director owns that authority", () => {
     // engineering's spawn branch is deterministic once load >= 94 (no dice
     // roll needed — see crisisSystem.js's shouldSpawnInternalCrisis: `load
     // >= 94 || Math.random() < 0.55` short-circuits on the first operand),
@@ -39,18 +39,10 @@ describe("shipInteriorStore.tickCrises crisisEvents (Phase 20-B)", () => {
     const result = useShipInteriorStore.getState().tickCrises({ currentMinute: 1000, deltaMinutes: 60, crisisActivities: {}, crew: [], roleCoverage: null });
 
     expect(result.effects).toEqual([]);
-    expect(result.logs.some((message) => message.startsWith("위기 발생:"))).toBe(true);
-    expect(result.crisisEvents).toHaveLength(1);
-    const [event] = result.crisisEvents;
-    expect(event.kind).toBe("spawned");
-    expect(event.roomId).toBe("engineering");
-    expect(event.crisis.type).toBe("overheat");
-    expect(event.crisis.severity).toBe(1);
-
-    // The spawn is also reflected in the store's real state (crisisEvents is
-    // additive, not a replacement for the existing activeCrises contract).
-    expect(useShipInteriorStore.getState().activeCrises).toHaveLength(1);
-    expect(useShipInteriorStore.getState().rooms.engineering.activeCrisisId).toBe(event.crisis.id);
+    expect(result.logs).toEqual([]);
+    expect(result.crisisEvents).toEqual([]);
+    expect(useShipInteriorStore.getState().activeCrises).toHaveLength(0);
+    expect(useShipInteriorStore.getState().rooms.engineering.activeCrisisId).toBeNull();
   });
 
   it("emits a { kind: 'resolved' } crisisEvent, matching the '위기 해결' log line, when an assigned responder pushes progress to 100", () => {

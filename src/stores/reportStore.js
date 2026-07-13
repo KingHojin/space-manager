@@ -124,6 +124,7 @@ export const useReportStore = create(
       reports: [],
       requisitionReceipts: {},
       storyReceipts: {},
+      incidentReceipts: {},
 
       // addReport(report): report is normally systems/reportSystem.js's
       // buildReport() (or a domain builder built on top of it) output —
@@ -151,6 +152,15 @@ export const useReportStore = create(
           if (!claimId || state.storyReceipts?.[claimId]) return state;
           applied = true;
           return { reports: capReports([normalizeReport(report, { forceUnseen: true }), ...state.reports]), storyReceipts: { ...(state.storyReceipts ?? {}), [claimId]: true } };
+        });
+        return applied;
+      },
+      applyIncidentReport: (claimId, report = {}) => {
+        let applied = false;
+        set((state) => {
+          if (!claimId || state.incidentReceipts?.[claimId]) return state;
+          applied = true;
+          return { reports: capReports([normalizeReport(report, { forceUnseen: true }), ...state.reports]), incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true } };
         });
         return applied;
       },
@@ -202,6 +212,7 @@ export const useReportStore = create(
         reports: mergeReports(persistedState?.reports),
         requisitionReceipts: persistedState?.requisitionReceipts ?? {},
         storyReceipts: persistedState?.storyReceipts ?? {},
+        incidentReceipts: persistedState?.incidentReceipts ?? {},
       }),
     },
   ),
