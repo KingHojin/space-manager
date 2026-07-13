@@ -12,7 +12,7 @@ import {
   normalizeMissionRecord,
 } from "../systems/missionSystem";
 import { generateMissionEncounter, normalizeMissionEncounterRecord, prepareMissionEncounterChoice } from "../systems/missionEncounterSystem";
-import { cancelUnknownEventRuntimes, normalizeEventRuntimeMap, normalizePendingStoryMap, normalizeStoryFlags, normalizeStoryHistory, resolveStoryEncounterChoice, STORY_HISTORY_LIMIT } from "../systems/eventChainSystem";
+import { cancelUnknownEventRuntimes, normalizeEventRuntime, normalizeEventRuntimeMap, normalizePendingStoryMap, normalizeStoryFlags, normalizeStoryHistory, prepareStoryEncounterChoice, resolveStoryEncounterChoice, STORY_HISTORY_LIMIT } from "../systems/eventChainSystem";
 import { EVENT_CHAINS, getEventChain } from "../data/eventChains";
 import { useCombatStore } from "./combatStore";
 import { useExplorationStore } from "./explorationStore";
@@ -101,6 +101,29 @@ export const useMissionStore = create(
         set((state) => {
           const pending = { ...state.pendingStoryEncounterByVesselId }; delete pending[vesselId];
           return { pendingStoryEncounterByVesselId: pending, eventRuntimesById: { ...state.eventRuntimesById, [runtimeId]: result.runtime }, storyFlags: { ...state.storyFlags, ...result.flagUpdates }, storyHistory: [result.historyEntry, ...state.storyHistory].slice(0, STORY_HISTORY_LIMIT) };
+        });
+        return result;
+      },
+      prepareStoryEncounter: ({ vesselId, runtimeId, stageId, claimId, optionId, currentMinute = 0 } = {}) => {
+        const encounter = get().pendingStoryEncounterByVesselId[vesselId];
+        const runtime = get().eventRuntimesById[encounter?.runtimeId];
+        if (runtime?.pendingClaim) {
+          if (runtime.pendingClaim.claimId === claimId && runtime.pendingClaim.optionId === optionId) return { ok: true, repeated: true, runtime, pendingClaim: runtime.pendingClaim };
+          return { ok: false, reason: "staleSettlement" };
+        }
+        const result = prepareStoryEncounterChoice({ runtime, encounter, chain: getEventChain(runtime?.chainId), runtimeId, stageId, claimId, optionId, currentMinute });
+        if (!result.ok) {
+          if (result.safeCancelled && runtime) {
+            set((state) => {
+              const pending = { ...state.pendingStoryEncounterByVesselId }; delete pending[vesselId];
+              return { pendingStoryEncounterByVesselId: pending, eventRuntimesById: { ...state.eventRuntimesById, [runtime.id]: normalizeEventRuntime({ ...runtime, status: "cancelled", pendingClaim: null, updatedAt: currentMinute }) } };
+            });
+          }
+          return result;
+        }
+        set((state) => {
+          const pending = { ...state.pendingStoryEncounterByVesselId }; delete pending[vesselId];
+          return { pendingStoryEncounterByVesselId: pending, eventRuntimesById: { ...state.eventRuntimesById, [runtimeId]: result.runtime } };
         });
         return result;
       },
@@ -265,7 +288,8 @@ export const useMissionStore = create(
           const eventRuntimesById = Object.fromEntries(Object.entries(state.eventRuntimesById).map(([id, runtime]) => [id, runtime.vesselId === vesselId && runtime.missionId === active.id && !["completed", "failed", "cancelled"].includes(runtime.status) ? { ...runtime, status: "cancelled", updatedAt: currentMinute } : runtime]));
           delete nextActive[vesselId];
           delete nextPending[vesselId];
-          delete nextStoryPending[vesselId];
+          const pendingStoryRuntime = state.eventRuntimesById[nextStoryPending[vesselId]?.runtimeId];
+          if (pendingStoryRuntime?.missionId === active.id) delete nextStoryPending[vesselId];
           return {
             activeByVesselId: nextActive,
             pendingMissionEncountersByVesselId: nextPending,
@@ -291,7 +315,8 @@ export const useMissionStore = create(
           const eventRuntimesById = Object.fromEntries(Object.entries(state.eventRuntimesById).map(([id, runtime]) => [id, runtime.vesselId === vesselId && runtime.missionId === active.id && !["completed", "failed", "cancelled"].includes(runtime.status) ? { ...runtime, status: "cancelled", updatedAt: currentMinute } : runtime]));
           delete nextActive[vesselId];
           delete nextPending[vesselId];
-          delete nextStoryPending[vesselId];
+          const pendingStoryRuntime = state.eventRuntimesById[nextStoryPending[vesselId]?.runtimeId];
+          if (pendingStoryRuntime?.missionId === active.id) delete nextStoryPending[vesselId];
           return {
             activeByVesselId: nextActive,
             pendingMissionEncountersByVesselId: nextPending,

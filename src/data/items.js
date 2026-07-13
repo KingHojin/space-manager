@@ -34,6 +34,7 @@ export const items = [
   { id: "nanite-gel", name: "나노머신 겔", rarity: "rare", qty: 2, type: "consumable" },
   { id: "ancient-relay", name: "고대 중계기", rarity: "rare", qty: 0, type: "artifact" },
   { id: "blackbox", name: "함선 블랙박스", rarity: "rare", qty: 0, type: "salvage" },
+  { id: "greywake-recorder", name: "GREYWAKE 회수 기록", rarity: "rare", qty: 0, type: "story" },
   { id: "alien-spore", name: "외계 포자", rarity: "rare", qty: 0, type: "biology" },
   { id: "mirror-scale", name: "반사 비늘", rarity: "rare", qty: 0, type: "material" },
   { id: "frozen-spine", name: "냉동 척수", rarity: "rare", qty: 0, type: "science" },

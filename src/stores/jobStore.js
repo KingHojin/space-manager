@@ -54,6 +54,7 @@ function roomsFromJobs(jobs = []) {
 }
 
 function durationForCrew(job, crew = []) {
+  if (job.payload?.story) return { effectiveDuration: job.duration, moodWorkMultiplier: 1 };
   const member = crew.find((entry) => entry.id === job.assignedCrewId || entry.id === job.payload?.targetCrewId);
   const moodWorkMultiplier = getMoodWorkMultiplier(member);
   return { effectiveDuration: Math.max(1, Math.round((job.duration ?? 1) / moodWorkMultiplier)), moodWorkMultiplier };
@@ -62,6 +63,7 @@ function durationForCrew(job, crew = []) {
 function makeJob(input = {}) {
   const type = input.type ?? "training";
   const speedMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).jobSpeedMult;
+  const duration = input.duration ?? JOB_DURATION[type] ?? 60;
   return normalizeJob({
     id: input.id ?? createId(),
     type,
@@ -71,7 +73,9 @@ function makeJob(input = {}) {
     requiredRole: input.requiredRole ?? JOB_REQUIRED_ROLE[type] ?? null,
     priority: normalizeJobPriority(input.priority),
     progress: input.progress ?? 0,
-    duration: Math.max(1, Math.round((input.duration ?? JOB_DURATION[type] ?? 60) / Math.max(0.1, speedMult))),
+    // Authored story jobs promise an exact clock duration in their choice
+    // card. Generic work-speed modifiers must not make that copy untrue.
+    duration: Math.max(1, Math.round(input.payload?.story ? duration : duration / Math.max(0.1, speedMult))),
     loadCost: input.loadCost ?? JOB_LOAD_COST[type] ?? 1,
     createdAt: input.createdAt ?? input.startedAt ?? 0,
     startedAt: input.startedAt ?? null,
@@ -163,7 +167,7 @@ export const useJobStore = create(
         const cancelled = [];
         set((state) => {
           const jobs = normalizeJobs(state.jobs).map((job) => {
-            if (!ACTIVE.has(job.status) || job.payload?.targetCrewId !== memberId) return job;
+            if (!ACTIVE.has(job.status) || (job.payload?.targetCrewId !== memberId && job.assignedCrewId !== memberId)) return job;
             cancelled.push(job);
             return { ...job, status: "failed", assignedCrewId: null, arrivalAt: null, startedAt: null };
           });

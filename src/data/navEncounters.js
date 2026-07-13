@@ -63,7 +63,7 @@ export const ENCOUNTER_TABLE = {
       title: "표류 잔해 회수",
       description: "소형 잔해대에서 쓸만한 부품과 크레딧을 회수할 수 있습니다.",
       options: [
-        { id: "salvage", label: "잔해 회수", outcome: [{ kind: "resource", delta: { credits: 220, hull: -3 } }] },
+        { id: "salvage", label: "직접 잔해 인양 · ₢220 · 선체 -3 · 미확인 기록 신호", manualOnly: true, outcome: [{ kind: "resource", delta: { credits: 220, hull: -3 } }, { kind: "startEventChain", chainId: "greywake-last-watch", manualOnly: true }] },
         { id: "skip", label: "안전 통과", outcome: [{ kind: "log", message: "잔해대를 우회했습니다." }] },
       ],
     },

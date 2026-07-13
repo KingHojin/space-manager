@@ -86,6 +86,16 @@ export const CREW_TEMPLATES = [
     portrait: "📡",
   },
   {
+    templateId: "greywake-last-watch-analyst",
+    name: "윤 서해",
+    role: "함교",
+    rarity: "rare",
+    trait: "GREYWAKE 마지막 당직",
+    baseStats: { piloting: 12, gunnery: 7, engineering: 9, medicine: 7, scouting: 17 },
+    portrait: "📻",
+    storyOnly: true,
+  },
+  {
     templateId: "rare-reactor-tech",
     name: "장 이든",
     role: "기관실",
@@ -155,7 +165,7 @@ export function getCrewTemplate(templateId) {
 }
 
 export function getTemplatesByRarity(rarity) {
-  return CREW_TEMPLATES.filter((template) => template.rarity === rarity);
+  return CREW_TEMPLATES.filter((template) => template.rarity === rarity && !template.storyOnly);
 }
 
 export function getCandidateRecruitCost(rarity) {

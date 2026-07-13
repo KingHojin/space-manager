@@ -1,7 +1,7 @@
 import { EVENT_CHAINS, getEventChain, EVENT_CHAIN_STATUS } from "../data/eventChains";
 import { createCombatState, resolveEnemyFleet } from "../systems/combatEngine";
 import { getSectorProfile } from "../systems/campaignProgression";
-import { canPresentStoryRuntime, getDueEventRuntimes } from "../systems/eventChainSystem";
+import { canPresentStoryRuntime, getDueEventRuntimes, storyEncounterClaimId } from "../systems/eventChainSystem";
 import { useCombatStore } from "../stores/combatStore";
 import { useCrewStore } from "../stores/crewStore";
 import { useExplorationStore } from "../stores/explorationStore";
@@ -180,7 +180,7 @@ export function processDueStoryRuntimes(currentMinute) {
       useMissionStore.setState((next) => ({ eventRuntimesById: { ...next.eventRuntimesById, [runtime.id]: { ...runtime, status: EVENT_CHAIN_STATUS.cancelled, pendingClaim: null, updatedAt: currentMinute } } }));
       continue;
     }
-    const encounter = { runtimeId: runtime.id, chainId: chain.id, chainTitle: chain.title, chainStageLabel: stage.label ?? stage.id, stageId: stage.id, claimId: `${runtime.id}:${stage.id}`, title: stage.title, scene: stage.scene, category: "story", timing: "story", risk: stage.risk ?? "medium", icon: stage.icon ?? "✦", manualOnly: true, options: stage.options ?? [] };
+    const encounter = { runtimeId: runtime.id, chainId: chain.id, chainTitle: chain.title, chainStageLabel: stage.label ?? stage.id, stageId: stage.id, claimId: storyEncounterClaimId(runtime), title: stage.title, scene: stage.scene, category: "story", timing: "story", risk: stage.risk ?? "medium", icon: stage.icon ?? "✦", manualOnly: true, options: stage.options ?? [] };
     useMissionStore.setState((next) => ({ eventRuntimesById: { ...next.eventRuntimesById, [runtime.id]: { ...runtime, status: EVENT_CHAIN_STATUS.pending, updatedAt: currentMinute } }, pendingStoryEncounterByVesselId: { ...next.pendingStoryEncounterByVesselId, [runtime.vesselId]: encounter } }));
     break;
   }

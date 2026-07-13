@@ -49,6 +49,9 @@ export const ENEMY_FLEETS = [
   { id: "ancient-warden", name: "고대 감시자", hull: 96, shield: 88, power: 116, reward: 720, risk: 5, lootItemId: "ancient-relay", lootItemQty: 1 },
   { id: "ancient-defense-array", name: "고대 방어 포대", hull: 122, shield: 112, power: 130, reward: 840, risk: 5, lootItemId: "phase-crystal", lootItemQty: 1 },
   { id: "blackbox-guardian", name: "블랙박스 수호함", hull: 108, shield: 94, power: 124, reward: 900, risk: 5, lootItemId: "blackbox", lootItemQty: 2 },
+  // Story payout is settled by eventChainOrchestrator after a recorded win.
+  // Zero values prevent Combat.jsx's generic loot path from paying it early.
+  { id: "greywake-claims-cutter", name: "그레이웨이크 청구권 집행선", hull: 92, shield: 76, power: 102, reward: 0, risk: 4 },
   { id: "umbra-battlecruiser", name: "엄브라 전투순양함", hull: 148, shield: 126, power: 158, reward: 1180, risk: 6, lootItemId: "void-map", lootItemQty: 1 },
   { id: "zero-throne-guard", name: "제로 왕좌 근위대", hull: 178, shield: 150, power: 190, reward: 1600, risk: 7, lootItemId: "crown-neural-core", lootItemQty: 1 },
   { id: "seraphim-auto-fleet", name: "세라핌 자동함대", hull: 164, shield: 182, power: 202, reward: 1800, risk: 7, lootItemId: "seraphim-core", lootItemQty: 1 },
