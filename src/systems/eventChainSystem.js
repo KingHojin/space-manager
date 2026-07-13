@@ -21,6 +21,7 @@ function normalizePendingClaim(pendingClaim) {
     effects: Array.isArray(pendingClaim.effects) ? pendingClaim.effects : [],
     transition: record(pendingClaim.transition),
     receipts: record(pendingClaim.receipts),
+    effectState: record(pendingClaim.effectState),
     preparedAtMinute: pendingClaim.preparedAtMinute ?? 0,
   };
 }

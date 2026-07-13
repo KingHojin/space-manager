@@ -287,6 +287,16 @@ export const useCrewStore = create(
         set((state) => ({ crew: state.crew.map((member) => member.id === crewId && member.alive && triggered ? { ...member, injury: applyInjury(member, severity === "serious" || severity === "critical" ? "중상" : "경상"), fatigue: clamp((member.fatigue ?? 0) + (severity === "serious" || severity === "critical" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, -1) } : member), encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } }));
         return true;
       },
+      applyStoryCrewOutcome: (claimId, { memberId = null, fatigue = 0, morale = 0, experience = 0 } = {}) => {
+        if (!claimId || get().encounterReceipts?.[claimId]) return false;
+        set((state) => ({
+          crew: state.crew.map((member) => member.id === memberId && member.alive
+            ? { ...member, fatigue: clamp((member.fatigue ?? 0) + fatigue * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, morale), experience: (member.experience ?? 0) + experience }
+            : member),
+          encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true },
+        }));
+        return true;
+      },
       getRoleCoverage: () => getRoleCoverage(get().crew),
       getTreatmentTarget: () => chooseTreatmentTarget(get().crew),
     }),

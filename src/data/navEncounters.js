@@ -81,10 +81,10 @@ export const ENCOUNTER_TABLE = {
     {
       id: "distress-survivor",
       title: "탈출 포드 생존자",
-      description: "구형 탈출 포드에서 생명 반응이 확인됩니다. 생존자는 승선 의사를 밝힙니다.",
+      description: "구형 탈출 포드에서 불안정한 생명 반응이 확인됩니다. 감염 여부를 알 수 없어 함장의 격리 결재가 필요합니다.",
       options: [
-        { id: "rescue", label: "구조 후 후보 등록", outcome: [{ kind: "recruitOffer", templateId: "distress-field-medic" }, { kind: "resource", delta: { oxygen: -3 } }] },
-        { id: "mark", label: "좌표만 구조망에 전송", outcome: [{ kind: "resource", delta: { credits: 80 } }] },
+        { id: "rescue", label: "수동 구조 절차 개시 · 격리 판단 필요", manualOnly: true, outcome: [{ kind: "startEventChain", chainId: "quarantine-pulse", manualOnly: true }] },
+        { id: "mark", label: "좌표만 구조망에 전송 · ₢+80", outcome: [{ kind: "resource", delta: { credits: 80 } }] },
       ],
     },
     {

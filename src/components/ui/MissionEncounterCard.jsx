@@ -93,7 +93,7 @@ export default function MissionEncounterCard({ encounter, onSelectOption, disabl
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         {(encounter.options ?? []).map((option) => (
           <div key={option.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={`${option.role ?? "함교"} 판단`} badge="선택" disabled={disabled} onClick={() => onSelectOption?.(option.id, { runtimeId: encounter.runtimeId ?? encounter.id, stageId: encounter.stageId ?? encounter.timing, claimId: encounter.claimId })} />
+            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={option.disabledReason ?? option.waitText ?? `${option.role ?? "함교"} 판단`} badge={option.disabled ? "선택 불가" : option.waitText ? "대기 등록" : "선택"} disabled={disabled || option.disabled} onClick={() => onSelectOption?.(option.id, { runtimeId: encounter.runtimeId ?? encounter.id, stageId: encounter.stageId ?? encounter.timing, claimId: encounter.claimId })} />
             <OptionMeta option={option} />
             {nonZeroEntries(option.rewardPreview ?? {}).length > 0 && <div className="mt-3"><RewardIconRow reward={option.rewardPreview} /></div>}
           </div>

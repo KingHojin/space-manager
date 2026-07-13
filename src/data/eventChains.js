@@ -1,6 +1,6 @@
 // Phase 24-A only establishes the durable schema/runtime. Story content is
 // intentionally empty until the engine has survived integration review.
-import { GREYWAKE } from "./constants";
+import { GREYWAKE, QUARANTINE_PULSE } from "./constants";
 
 export const EVENT_CHAIN_STATUS = Object.freeze({
   scheduled: "scheduled",
@@ -32,6 +32,19 @@ export const EVENT_CHAINS = Object.freeze([{
   enabled: true,
   autoRegister: false,
   title: "GREYWAKE // 마지막 당직",
+  sectorBound: true,
+  starter: { encounterId: "debris-salvage", optionId: "salvage", startedFlagId: GREYWAKE.startedFlagId },
+  reportTitle: "함선 복무기록: GREYWAKE 마지막 당직",
+  outcomeCopy: {
+    "tow-lifeboat": `구명정 견인 — 희귀 센서 분석가 후보 확보, 산소 -${GREYWAKE.rescueOxygenCost}. 편입비 ₢${GREYWAKE.recruitCost} 별도.`,
+    "sell-coordinates": `좌표 매각 — ₢${GREYWAKE.saleCredits} 확보.`,
+    "fight-claim:won": `청구권 집행선 격파 — ₢${GREYWAKE.battleCredits}, tactical-ai-chip x1 확보.`,
+    "fight-claim:retreated": "청구권 집행선 교전 이탈 — 조건부 보상 없음.",
+    "fight-claim:lost": "청구권 집행선 교전 패배 — 조건부 보상 없음.",
+    "seal-wreck": "GREYWAKE 좌표 봉인 — 사건 종료.",
+    "discard-recorder": "회수 기록장치 폐기 — 사건 종료.",
+    withdraw: "마지막 당직 신호 폐기 및 철수 — 사건 종료.",
+  },
   stages: [
     {
       id: "recovery-record",
@@ -68,7 +81,7 @@ export const EVENT_CHAINS = Object.freeze([{
           role: "관제실",
           risk: "medium",
           outcomes: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", duration: GREYWAKE.jobMinutes }],
-          effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", duration: GREYWAKE.jobMinutes, roomId: GREYWAKE.jobRoomId, nextStageId: "last-watch" }],
+          effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", type: "decode", duration: GREYWAKE.jobMinutes, roomId: GREYWAKE.jobRoomId, refundItemsBeforeStart: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }], failurePolicy: "retry", nextStageId: "last-watch" }],
           transition: { waitingStatus: "waitingJob", nextStageId: "last-watch" },
         },
         { id: "discard-recorder", label: "기록장치를 폐기하고 종료한다", role: "함교", risk: "low", outcomes: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }], effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }], transition: { terminalStatus: "cancelled" } },
@@ -116,8 +129,153 @@ export const EVENT_CHAINS = Object.freeze([{
       ],
     },
   ],
+}, {
+  id: QUARANTINE_PULSE.chainId,
+  version: 1,
+  enabled: true,
+  autoRegister: false,
+  title: "격리선의 맥박",
+  sectorBound: true,
+  starter: { encounterId: "distress-survivor", optionId: "rescue", startedFlagId: QUARANTINE_PULSE.startedFlagId, repeatLabel: "민간 구조망에 즉시 인계 · 평판 +1", repeatPreview: "격리선 사건은 이미 기록됨 · 반복 구조는 평판 +1", repeatEffects: [{ kind: "inventoryGrant", items: [{ itemId: "reputation-token", qty: 1 }] }] },
+  reportTitle: "함선 복무기록: 격리선의 맥박",
+  outcomeCopy: {
+    "civilian-network": "민간 구조망에 좌표 송신 — 평판 +1, 환자 비승선.",
+    "remote-transfer": "원격 이송 완료 — 평판 +1, 함선 치료 중단.",
+    "protective-testimony": `보호증언 계약 — 희귀 역학관 후보 확보. 편입비 ₢${QUARANTINE_PULSE.recruitCost} 별도.`,
+    "employer-transfer": `고용주 격리 이송 — ₢${QUARANTINE_PULSE.transferCredits} 확보.`,
+    "public-testimony": "공개 증언 — 평판과 위험구역 정보 공개.",
+  },
+  failureCopy: {
+    assignedMedicDied: "배정 의무관 사망으로 치료 중단",
+    assignedMedicUnavailable: "배정 의무관 부재로 치료 중단",
+    interruptedCare: "의무실 치료 중단",
+    storyJobMissing: "치료 작업 기록 유실로 안전 종료",
+    noStoryTarget: "이송 가능한 정거장·관문 없음",
+  },
+  stages: [
+    {
+      id: "quarantine-boarding",
+      label: "1/3 · 격리 판단",
+      title: "QUARANTINE // 격리선의 맥박",
+      scene: "포드 내부의 생체신호는 살아 있지만 원인을 알 수 없는 발열이 감지된다. 승선시키면 격리 격실의 산소와 관찰 시간이 필요하다.",
+      risk: "medium",
+      icon: "◉",
+      options: [
+        {
+          id: "board-quarantine",
+          label: `격리 격실에 승선 · 산소 -${QUARANTINE_PULSE.boardingOxygenCost} · ${QUARANTINE_PULSE.observationMinutes / 60}시간 관찰`,
+          role: "의무실",
+          risk: "medium",
+          manualOnly: true,
+          outcomes: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.boardingOxygenCost } }],
+          effects: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.boardingOxygenCost } }],
+          transition: { nextStageId: "vitals-drop", delayMinutes: QUARANTINE_PULSE.observationMinutes },
+        },
+        {
+          id: "civilian-network",
+          label: "좌표를 민간 구조망에 송신 · 평판 +1 · 사건 종료",
+          role: "함교",
+          risk: "low",
+          manualOnly: true,
+          outcomes: [{ kind: "inventoryGrant", items: [{ itemId: "reputation-token", qty: 1 }] }],
+          effects: [{ kind: "inventoryGrant", items: [{ itemId: "reputation-token", qty: 1 }] }],
+          transition: { terminalStatus: "completed" },
+        },
+      ],
+    },
+    {
+      id: "vitals-drop",
+      label: "2/3 · 응급 치료",
+      title: "QUARANTINE // 생체신호 급락",
+      scene: "관찰 중 환자의 생체신호가 급락한다. 의무관 한 명과 의무실 슬롯 하나를 확정 시간 동안 묶어야 한다. 치료 작업은 시작된 뒤 취소할 수 없다.",
+      risk: "high",
+      icon: "✚",
+      options: [
+        {
+          id: "standard-care",
+          label: `표준 응급치료 · 산소 -${QUARANTINE_PULSE.standardOxygenCost} · 의무실 ${QUARANTINE_PULSE.standardTreatmentMinutes / 60}시간 · 의무관 피로 +${QUARANTINE_PULSE.standardMedicFatigue}`,
+          role: "의무실",
+          risk: "medium",
+          manualOnly: true,
+          storyJob: { type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.standardTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.standardMedicFatigue, refundPolicy: { itemsBeforeStart: [] }, display: { task: "표준 응급치료" } },
+          outcomes: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.standardOxygenCost } }, { kind: "enqueueStoryJob", duration: QUARANTINE_PULSE.standardTreatmentMinutes }],
+          effects: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.standardOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.standardTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.standardMedicFatigue, failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
+          transition: { waitingStatus: "waitingJob", nextStageId: "transfer-window" },
+        },
+        {
+          id: "nanogel-care",
+          label: `나노겔 처치 · ${QUARANTINE_PULSE.gelItemId} x1 · 산소 -${QUARANTINE_PULSE.gelOxygenCost} · 의무실 ${QUARANTINE_PULSE.gelTreatmentMinutes / 60}시간 · 의무관 피로 +${QUARANTINE_PULSE.gelMedicFatigue}`,
+          role: "의무실",
+          risk: "low",
+          manualOnly: true,
+          storyJob: { type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.gelTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.gelMedicFatigue, refundPolicy: { itemsBeforeStart: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, display: { task: "나노겔 응급처치" } },
+          outcomes: [{ kind: "inventoryConsume", items: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, { kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.gelOxygenCost } }, { kind: "enqueueStoryJob", duration: QUARANTINE_PULSE.gelTreatmentMinutes }],
+          effects: [{ kind: "inventoryConsume", items: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, { kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.gelOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.gelTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.gelMedicFatigue, refundItemsBeforeStart: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }], failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
+          transition: { waitingStatus: "waitingJob", nextStageId: "transfer-window" },
+        },
+        {
+          id: "remote-transfer",
+          label: "원격 이송 요청 · 평판 +1 · 사건 종료",
+          role: "함교",
+          risk: "low",
+          manualOnly: true,
+          outcomes: [{ kind: "inventoryGrant", items: [{ itemId: "reputation-token", qty: 1 }] }],
+          effects: [{ kind: "inventoryGrant", items: [{ itemId: "reputation-token", qty: 1 }] }],
+          transition: { terminalStatus: "completed" },
+        },
+      ],
+    },
+    {
+      id: "transfer-window",
+      label: "3/3 · 이송 창구",
+      title: "QUARANTINE // 이송 창구",
+      scene: "치료 기록을 두고 환자와 고용주의 주장이 엇갈린다. 보호증언, 비공개 이송, 공개 증언 중 어떤 기록을 함선 명의로 남길지 결정해야 한다.",
+      risk: "medium",
+      icon: "⚖",
+      options: [
+        {
+          id: "protective-testimony",
+          label: `보호증언 계약 · 희귀 역학관 후보 · 편입비 ₢${QUARANTINE_PULSE.recruitCost} 별도`,
+          role: "의무실",
+          risk: "medium",
+          manualOnly: true,
+          previewText: `희귀 역학관 후보 · 편입비 ₢${QUARANTINE_PULSE.recruitCost} 별도`,
+          outcomes: [{ kind: "recruitOffer", templateId: QUARANTINE_PULSE.recruitTemplateId }],
+          effects: [{ kind: "recruitOffer", templateId: QUARANTINE_PULSE.recruitTemplateId }],
+          transition: { terminalStatus: "completed" },
+        },
+        {
+          id: "employer-transfer",
+          label: `고용주 격리 이송 · ₢${QUARANTINE_PULSE.transferCredits}`,
+          role: "함교",
+          risk: "low",
+          manualOnly: true,
+          outcomes: [{ kind: "resource", delta: { credits: QUARANTINE_PULSE.transferCredits } }],
+          effects: [{ kind: "resource", delta: { credits: QUARANTINE_PULSE.transferCredits } }],
+          transition: { terminalStatus: "completed" },
+        },
+        {
+          id: "public-testimony",
+          label: "공개 증언 · 평판 +2 · 최고위험 미탐사 구역 공개 (없으면 평판 +3)",
+          role: "함교",
+          risk: "medium",
+          manualOnly: true,
+          outcomes: [{ kind: "revealHighestDangerOrReputation" }],
+          effects: [{ kind: "revealHighestDangerOrReputation", reputationWithReveal: 2, fallbackReputation: 3 }],
+          transition: { terminalStatus: "completed" },
+        },
+      ],
+    },
+  ],
 }]);
 
 export function getEventChain(chainId) {
   return EVENT_CHAINS.find((chain) => chain.id === chainId) ?? null;
+}
+
+export function presentEventChainStarterOption(option, storyFlags = {}) {
+  const chainId = option?.outcome?.find((effect) => effect.kind === "startEventChain")?.chainId;
+  const chain = getEventChain(chainId);
+  if (!chain?.starter || !storyFlags?.[chain.starter.startedFlagId]?.value || !chain.starter.repeatLabel) return option;
+  return { ...option, label: chain.starter.repeatLabel, repeatPreview: chain.starter.repeatPreview ?? null };
 }

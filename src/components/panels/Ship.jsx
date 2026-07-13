@@ -170,7 +170,7 @@ export default function Ship() {
   const cancelQueuedJob = (job) => {
     if (job.payload?.story) {
       const storyResult = cancelEventChainJob({ jobId: job.id, currentMinute });
-      return addLog(storyResult.ok ? "GREYWAKE 해독 취소: 회수 기록장치 1개를 환급했습니다." : "작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
+      return addLog(storyResult.ok ? (storyResult.refunded ? "연속 사건 작업 취소: 시작 전 소모품을 환급했습니다." : "연속 사건 작업 취소: 선택 단계로 돌아갑니다.") : "작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
     }
     const result = cancelJob(job.id);
     if (!result.ok) return addLog("작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");

@@ -1,5 +1,6 @@
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
 import { DECODE_RULES, DRIFT, DUST, JOB_DURATION, NAVIGATION_TRAVEL } from "../../data/constants";
+import { getEventChain, presentEventChainStarterOption } from "../../data/eventChains";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useCombatStore } from "../../stores/combatStore";
@@ -66,19 +67,21 @@ function missionCombatDanger(node, combatEffect) {
 }
 
 export function presentStoryChoiceResult(result, { addLog, onNavigate } = {}) {
-  if (!result?.ok) return addLog?.(`연속 사건 선택 실패: ${result?.reason ?? "unknown"}`);
+  if (!result?.ok) return addLog?.(`연속 사건 선택 실패: ${result?.detail ?? result?.reason ?? "unknown"}`);
+  const chainTitle = getEventChain(result.runtime?.chainId)?.title ?? "연속 사건";
   if (result.waitingCombat) {
     addLog?.("GREYWAKE 교전 시작: 청구권 집행선과 교전합니다. 전투 화면으로 이동합니다.");
     onNavigate?.("combat");
     return null;
   }
-  if (result.waitingJob) return addLog?.("GREYWAKE 해독 작업이 예약되었습니다. 관제실 승무원 1명 · 정확히 4시간.");
-  if (result.runtime?.status === "cancelled") return addLog?.("GREYWAKE에서 철수했습니다. 연속 사건이 종료되었습니다.");
-  if (result.runtime?.status === "completed") return addLog?.("GREYWAKE 선택이 정산되었습니다. 연속 사건이 종료되었습니다.");
-  return addLog?.("GREYWAKE 다음 단계가 예약되었습니다.");
+  if (result.waitingJob) return addLog?.(`${chainTitle} 작업이 예약되었습니다. 카드에 표시된 고정 시간과 전용 방 슬롯을 사용합니다.`);
+  if (result.runtime?.status === "cancelled") return addLog?.(`${chainTitle}에서 철수했습니다. 연속 사건이 종료되었습니다.`);
+  if (result.runtime?.status === "completed") return addLog?.(`${chainTitle} 선택이 정산되었습니다. 연속 사건이 종료되었습니다.`);
+  return addLog?.(`${chainTitle} 다음 단계가 예약되었습니다.`);
 }
 
 function EncounterCard({ encounter, onResolve }) {
+  const storyFlags = useMissionStore((state) => state.storyFlags);
   if (!encounter) return null;
   return (
     <section className="rounded border border-red-400/45 bg-red-400/10 p-4">
@@ -90,7 +93,7 @@ function EncounterCard({ encounter, onResolve }) {
         </div>
       </div>
       <div className="mt-4 grid gap-2">
-        {encounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => onResolve(option.id, encounter.claimId)}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}
+        {encounter.options.map((rawOption) => { const option = presentEventChainStarterOption(rawOption, storyFlags); return <button key={option.id} className="secondary-button justify-between text-left" onClick={() => onResolve(option.id, encounter.claimId)}><span>{option.label}{option.repeatPreview ? <small className="mt-1 block text-xs text-slate-400">{option.repeatPreview}</small> : null}</span><span className="text-xs text-cyan-200">결재</span></button>; })}
       </div>
     </section>
   );
@@ -321,8 +324,8 @@ export default function Exploration({ onNavigate }) {
 
   const handleCancelStoryJob = (jobId) => {
     const result = cancelEventChainJob({ jobId, currentMinute });
-    if (result.ok) return addLog("GREYWAKE 해독 취소: 회수 기록장치 1개를 환급했습니다.");
-    return addLog(result.reason === "in_progress" ? "해독 취소 실패: 이미 진행 중인 작업은 취소할 수 없습니다." : `해독 취소 실패: ${result.reason}`);
+    if (result.ok) return addLog(result.refunded ? "연속 사건 작업 취소: 시작 전 소모품을 환급하고 선택 단계로 돌아갑니다." : "연속 사건 작업을 취소하고 선택 단계로 돌아갑니다.");
+    return addLog(result.reason === "in_progress" ? "작업 취소 실패: 이미 진행 중인 작업은 취소할 수 없습니다." : `작업 취소 실패: ${result.reason}`);
   };
 
   const handleDecode = (itemId) => {
