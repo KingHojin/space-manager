@@ -213,7 +213,7 @@ function EquipmentBadges({ roomId, installed, modulesById, compact }) {
   );
 }
 
-export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], compact = false, showEquipment = false, onCrewClick, onRoomClick }) {
+export default function ShipInterior({ crew = [], activities = [], rooms = {}, activeCrises = [], incidents = [], compact = false, showEquipment = false, onCrewClick, onRoomClick }) {
   const isPaused = useGameStore((state) => state.isPaused);
   const shipModules = useShipStore((state) => state.modules);
   const installed = useShipStore((state) => state.installed);
@@ -227,6 +227,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
 
   const activityByMember = useMemo(() => new Map(activities.map((activity) => [activity.memberId, activity])), [activities]);
   const crisisById = useMemo(() => new Map(activeCrises.map((crisis) => [crisis.id, crisis])), [activeCrises]);
+  const incidentByRoomId = useMemo(() => new Map(incidents.filter((incident) => incident.roomId).map((incident) => [incident.roomId, incident])), [incidents]);
   const aliveCrew = useMemo(() => crew.filter((member) => member.alive), [crew]);
   const roomAssignments = useMemo(() => slotAssignments(aliveCrew.map((member) => ({ member, activity: activityByMember.get(member.id), roomId: roomForCrewActivity(member, activityByMember.get(member.id)) }))), [aliveCrew, activityByMember]);
   const activeRooms = new Set(roomAssignments.map((assignment) => assignment.roomId));
@@ -248,7 +249,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
     <section className="ship-deck-section overflow-hidden">
       <div className="flex items-center justify-between gap-3">
         <div className="section-title"><Activity size={18} />함선 덱</div>
-        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">DECK VIEW</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{roomDiagnostics.length > 0 && <span className="hud-chip hud-chip-accent">작업 {roomDiagnostics.length}</span>}{!mapInView && <span className="hud-chip">절전</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
+        <div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">DECK VIEW</span><span className="hud-chip">구역 {DISPLAY_ROOMS.length}</span><span className="hud-chip">승무원 {aliveCrew.length}</span>{roomDiagnostics.length > 0 && <span className="hud-chip hud-chip-accent">작업 {roomDiagnostics.length}</span>}{incidents.length > 0 && <span className="hud-chip hud-chip-warn">사건 {incidents.length}</span>}{!mapInView && <span className="hud-chip">절전</span>}{activeCrises.length > 0 && <span className="hud-chip hud-chip-danger">위기 {activeCrises.length}</span>}</div>
       </div>
       <div ref={mapRef} className={`ship-interior-map ship-deck-map relative mt-4 overflow-hidden ${compact ? "h-[280px]" : "h-[500px]"}`} style={{ "--ship-map-w": `${mapSize.width}px`, "--ship-map-h": `${mapSize.height}px` }}>
         <div className="ship-hull-shell absolute inset-[3%]" />
@@ -267,6 +268,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
           const roomState = operational ? rooms[room.id] : null;
           const modifiers = operational ? calculateRoomModifiers(roomState) : null;
           const crisis = operational && roomState?.activeCrisisId ? crisisById.get(roomState.activeCrisisId) : null;
+          const incident = operational ? incidentByRoomId.get(room.id) : null;
           const crisisConfig = crisis ? CRISIS_CATALOG[crisis.type] : null;
           const CrisisIcon = crisis ? CRISIS_ICONS[crisis.type] ?? AlertTriangle : null;
           const diagnostic = operational ? roomJobDiagnostic(roomState, assigned, compact) : null;
@@ -274,6 +276,8 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
             ? { label: room.tag ?? "AUX", tone: "bg-slate-400/10 text-slate-300 border-slate-500/30" }
             : crisis
               ? { label: `${crisisConfig?.label ?? "위기"} ${crisis.severity}`, tone: "bg-red-400/25 text-red-50 border-red-300/60" }
+              : incident
+                ? { label: incident.status === "waitingJob" ? "사건 대응 중" : "사건 결재", tone: "bg-amber-300/25 text-amber-50 border-amber-300/55" }
               : roomConditionBadge(roomState) ?? buildRoomState(room.id, assigned.map((entry) => entry.member), assigned.map((entry) => entry.activity), roomState);
           const clickable = operational && Boolean(onRoomClick);
           const activateRoom = () => {
@@ -292,7 +296,7 @@ export default function ShipInterior({ crew = [], activities = [], rooms = {}, a
                   activateRoom();
                 }
               } : undefined}
-              className={`ship-room-zone absolute border p-2 ${operational ? "ship-room-operational" : "ship-room-aux"} ${clickable ? "cursor-pointer transition hover:brightness-110" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${activeRooms.has(room.id) ? "ring-1 ring-blue-200/40" : ""} ${operational && !crisis && (roomState?.condition ?? 100) <= WEAR.dangerCondition ? "border-amber-400/60" : ""}`}`}
+              className={`ship-room-zone absolute border p-2 ${operational ? "ship-room-operational" : "ship-room-aux"} ${clickable ? "cursor-pointer transition hover:brightness-110" : ""} ${crisis ? "animate-pulse border-red-300/70 bg-red-500/15 ring-2 ring-red-400/45" : `${room.tone} ${incident ? "ring-2 ring-amber-300/50" : activeRooms.has(room.id) ? "ring-1 ring-blue-200/40" : ""} ${operational && !crisis && (roomState?.condition ?? 100) <= WEAR.dangerCondition ? "border-amber-400/60" : ""}`}`}
               style={{ left: `${room.left}%`, top: `${room.top}%`, width: `${room.width}%`, height: `${room.height}%` }}
             >
               <div className="ship-room-title flex items-center justify-between gap-1"><span className="truncate">{room.label}</span>{CrisisIcon ? <CrisisIcon size={compact ? 12 : 14} className="text-red-100" /> : <Icon size={compact ? 12 : 14} />}</div>

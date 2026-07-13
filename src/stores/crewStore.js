@@ -4,7 +4,7 @@ import { CREW_NEEDS } from "../data/constants";
 import { initialCrew } from "../data/crew";
 import { DEFAULT_CREW_TRAIT_IDS, normalizeCrewTraitIds } from "../data/crewTraits";
 import { generateCrewActivities, CREW_AI_INTERVAL } from "../systems/crewAI";
-import { normalizeRelationships, updateRelationshipsFromActivities } from "../systems/crewRelations";
+import { normalizeRelationships, pairKey, relationshipBand, updateRelationshipsFromActivities } from "../systems/crewRelations";
 import {
   applyInjury,
   chooseTreatmentTarget,
@@ -191,6 +191,7 @@ export const useCrewStore = create(
       crewActivityLog: [],
       relationships: {},
       encounterReceipts: {},
+      incidentReceipts: {},
       lastCrewAiAt: null,
       recruitCrew: (crewMember) => {
         const normalized = normalizeCrew({ ...crewMember, alive: true, injury: crewMember.injury ?? "healthy", fatigue: crewMember.fatigue ?? 0, morale: crewMember.morale ?? "보통", experience: crewMember.experience ?? 0 });
@@ -271,6 +272,30 @@ export const useCrewStore = create(
       restMember: (memberId) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? applyRecovery(member, { fatigueRecovery: 28 }) : member) })),
       applyCrewNeeds: ({ memberId = null, changes = {}, mode = "manual" }) => set((state) => ({ crew: state.crew.map((member) => { if (!member.alive || (memberId && member.id !== memberId)) return member; const needs = applyNeedDelta(member.needs, changes); return { ...member, needs, morale: moraleFromNeeds(member.morale, needs), fatigue: clamp((member.fatigue ?? 0) + (changes.fatigue ?? 0), 0, 100), lastNeedMode: mode }; }) })),
       applyCrewOutcome: ({ memberId, fatigue = 0, morale = 0, injury = null, experience = 0, needs = null }) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, needs: needs ? applyNeedDelta(member.needs, needs) : normalizeNeeds(member.needs), fatigue: clamp((member.fatigue ?? 0) + fatigue * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, morale), injury: injury ? applyInjury(member, injury) : normalizeInjury(member.injury), experience: (member.experience ?? 0) + experience } : member) })),
+      applyIncidentOutcome: (claimId, { members = [], relation = null, currentMinute = 0 } = {}) => {
+        if (!claimId || get().incidentReceipts?.[claimId]) return false;
+        set((state) => {
+          const byId = new Map(members.filter((entry) => entry?.memberId).map((entry) => [entry.memberId, entry]));
+          let relationships = state.relationships;
+          if (relation?.crewIds?.length === 2) {
+            const [a, b] = relation.crewIds;
+            const key = pairKey(a, b);
+            const current = normalizeRelationships(relationships)[key] ?? { crewIds: [a, b].sort(), affinity: 0 };
+            const affinity = clamp((current.affinity ?? 0) + (relation.affinity ?? 0), -100, 100);
+            relationships = { ...normalizeRelationships(relationships), [key]: { crewIds: current.crewIds, affinity, band: relationshipBand(affinity), lastSeenAt: currentMinute } };
+          }
+          return {
+            crew: state.crew.map((member) => {
+              const change = byId.get(member.id);
+              if (!change || !member.alive) return member;
+              return { ...member, needs: change.needs ? applyNeedDelta(member.needs, change.needs) : normalizeNeeds(member.needs), fatigue: clamp((member.fatigue ?? 0) + (change.fatigue ?? 0), 0, 100), morale: shiftMorale(member.morale, change.morale ?? 0), injury: change.injury ? applyInjury(member, change.injury) : normalizeInjury(member.injury), experience: (member.experience ?? 0) + (change.experience ?? 0) };
+            }),
+            relationships,
+            incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true },
+          };
+        });
+        return true;
+      },
       // NOTE: this no longer touches trainingQueue/treatmentQueue/recoveryQueue
       // (previously filtered out the casualty's entries on death) — those
       // legacy queue *fields* are always empty by the time any gameplay call
@@ -304,7 +329,7 @@ export const useCrewStore = create(
       name: "space-manager-crew",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], relationships: normalizeRelationships(persistedState?.relationships), lastCrewAiAt: persistedState?.lastCrewAiAt ?? null, encounterReceipts: persistedState?.encounterReceipts ?? {} }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], relationships: normalizeRelationships(persistedState?.relationships), lastCrewAiAt: persistedState?.lastCrewAiAt ?? null, encounterReceipts: persistedState?.encounterReceipts ?? {}, incidentReceipts: persistedState?.incidentReceipts ?? {} }),
     },
   ),
 );

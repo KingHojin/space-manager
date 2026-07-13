@@ -10,7 +10,6 @@ import {
   getCrisisConfig,
   getCrisisLabel,
   pickAdjacentRoom,
-  shouldSpawnInternalCrisis,
 } from "../systems/crisisSystem";
 import { applyRoomTick, createInitialRoomState, deriveRoomStatus } from "../systems/roomJobs";
 import { DUST, WEAR } from "../data/constants";
@@ -63,12 +62,12 @@ function mergeCrises(savedCrises) {
     }));
 }
 
-function addCrisisToDraft({ rooms, activeCrises, roomId, type, severity = 1, currentMinute = 0 }) {
+function addCrisisToDraft({ rooms, activeCrises, roomId, type, severity = 1, currentMinute = 0, id = null }) {
   const room = rooms[roomId];
   if (!room || room.activeCrisisId) return null;
   const modifiers = calculateRoomModifiers(room);
   const resist = clamp(modifiers.crisisResist ?? 0, 0, 0.75);
-  const crisis = createCrisisRecord({ roomId, type, severity, currentMinute });
+  const crisis = createCrisisRecord({ id, roomId, type, severity, currentMinute });
   const config = getCrisisConfig(crisis.type);
   const conditionHit = (config.conditionHit + (crisis.severity - 1) * 7) * (1 - resist);
   const loadHit = (config.loadHit + (crisis.severity - 1) * 4) * (1 - resist * 0.6);
@@ -114,6 +113,7 @@ export const useShipInteriorStore = create(
     (set, get) => ({
       rooms: createInitialRoomState(),
       activeCrises: [],
+      incidentReceipts: {},
       getRoomModifiers: (roomId) => calculateRoomModifiers(get().rooms[roomId]),
       upgradeRoomTier: (roomId) => {
         let result = { ok: false, reason: "unknown" };
@@ -179,6 +179,23 @@ export const useShipInteriorStore = create(
         });
         return spawned;
       },
+      applyIncidentPhysicalEffects: (claimId, { roomEffects = [], crisis = null, currentMinute = 0 } = {}) => {
+        if (!claimId) return { ok: false, repeated: false, crisis: null };
+        if (get().incidentReceipts?.[claimId]) return { ok: true, repeated: true, crisis: crisis ? (get().activeCrises ?? []).find((entry) => entry.id === crisis.id) ?? null : null };
+        let spawned = null;
+        set((state) => {
+          const rooms = { ...state.rooms };
+          const activeCrises = [...(state.activeCrises ?? [])];
+          roomEffects.forEach((effect) => {
+            const room = rooms[effect.roomId];
+            if (!room) return;
+            rooms[effect.roomId] = withRoomStatus({ ...room, condition: clamp((room.condition ?? 100) + (effect.condition ?? 0), 0, 100), load: clamp((room.load ?? 0) + (effect.load ?? 0), 0, 100) }, currentMinute);
+          });
+          if (crisis) spawned = addCrisisToDraft({ rooms, activeCrises, roomId: crisis.roomId, type: crisis.type, severity: crisis.severity, currentMinute, id: crisis.id });
+          return { rooms, activeCrises, incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true } };
+        });
+        return { ok: true, repeated: false, crisis: spawned };
+      },
       assignCrisisResponder: (crisisId, crewId) => set((state) => ({ activeCrises: (state.activeCrises ?? []).map((crisis) => (crisis.id === crisisId ? { ...crisis, assignedCrewId: crewId, assignedCrewIds: crewId ? [crewId] : [] } : crisis)) })),
       progressCrisis: (crisisId, amount = 0, currentMinute = 0) => {
         let resolved = null;
@@ -237,21 +254,8 @@ export const useShipInteriorStore = create(
         set((state) => {
           const rooms = { ...state.rooms };
           let activeCrises = [...(state.activeCrises ?? [])];
-          ROOM_IDS.forEach((roomId) => {
-            const room = rooms[roomId];
-            const resist = calculateRoomModifiers(room).crisisResist ?? 0;
-            const spawnType = Math.random() < resist ? null : shouldSpawnInternalCrisis({ room, currentMinute, deltaMinutes });
-            if (!spawnType) return;
-            const spawned = addCrisisToDraft({ rooms, activeCrises, roomId, type: spawnType, severity: 1, currentMinute });
-            if (spawned) {
-              crisisEvents.push({ kind: "spawned", crisis: spawned, roomId });
-              if ((room.condition ?? 0) <= WEAR.dangerCondition) {
-                logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}) — 정비를 미룬 구역에서 발생 (C${Math.round(room.condition ?? 0)}).`);
-              } else {
-                logs.push(`위기 발생: ${getCrisisLabel(spawned)} (${roomId}).`);
-              }
-            }
-          });
+          // Ambient crisis creation belongs to the deterministic incident director.
+          // Existing or externally spawned crises still progress below.
           const newCrises = [];
           const blockedRoomIds = new Set(activeCrises.map((crisis) => crisis.roomId));
           activeCrises = activeCrises.map((crisis) => {
@@ -323,7 +327,7 @@ export const useShipInteriorStore = create(
         const activeCrises = mergeCrises(persistedState?.activeCrises);
         const activeIds = new Set(activeCrises.map((crisis) => crisis.id));
         ROOM_IDS.forEach((roomId) => { if (rooms[roomId]?.activeCrisisId && !activeIds.has(rooms[roomId].activeCrisisId)) rooms[roomId] = withRoomStatus({ ...rooms[roomId], activeCrisisId: null }); });
-        return { ...currentState, ...(persistedState ?? {}), rooms, activeCrises };
+        return { ...currentState, ...(persistedState ?? {}), rooms, activeCrises, incidentReceipts: persistedState?.incidentReceipts ?? {} };
       },
     },
   ),

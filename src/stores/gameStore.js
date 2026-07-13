@@ -42,6 +42,7 @@ export function mergePersistedGameState(persistedState, currentState) {
     lastLowResourceWarningAt: persistedState?.lastLowResourceWarningAt ?? null,
     requisitionReceipts: persistedState?.requisitionReceipts ?? {},
     encounterReceipts: persistedState?.encounterReceipts ?? {},
+    incidentReceipts: persistedState?.incidentReceipts ?? {},
   };
 }
 
@@ -71,6 +72,7 @@ export const useGameStore = create(
       lastLowResourceWarningAt: null,
       requisitionReceipts: {},
       encounterReceipts: {},
+      incidentReceipts: {},
       logs: ["우주력 2377년 3월 12일 14:20, 헬리오스 외연에서 항해를 시작했습니다."],
       news: ["항해 준비 완료. 스페이스바로 시간을 시작할 수 있습니다."],
       togglePause: () => set((state) => (state.gameOver ? state : { isPaused: !state.isPaused })),
@@ -119,6 +121,14 @@ export const useGameStore = create(
         set((state) => ({ resources: normalizeResources(Object.fromEntries(Object.entries(state.resources).map(([key, value]) => [key, value + (delta[key] ?? 0)]))), encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } }));
         return true;
       },
+      applyIncidentResources: (claimId, delta = {}) => {
+        if (!claimId || get().incidentReceipts?.[claimId]) return false;
+        set((state) => ({
+          resources: normalizeResources(Object.fromEntries(Object.entries(state.resources).map(([key, value]) => [key, value + (delta[key] ?? 0)]))),
+          incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true },
+        }));
+        return true;
+      },
       spendCredits: (amount) => {
         const credits = get().resources.credits;
         if (credits < amount) return false;
@@ -160,6 +170,7 @@ export const useGameStore = create(
           lastLowResourceWarningAt: null,
           requisitionReceipts: {},
           encounterReceipts: {},
+          incidentReceipts: {},
           logs: ["새 항해 기록이 생성되었습니다."],
           news: ["새 게임이 시작되었습니다."],
         }),

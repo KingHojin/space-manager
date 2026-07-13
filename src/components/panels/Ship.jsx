@@ -12,12 +12,14 @@ import { reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useIncidentStore } from "../../stores/incidentStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { applyHullRepair, getSkillEffects } from "../../systems/skillEffects";
 import { cancelEventChainJob } from "../../orchestration/eventChainOrchestrator";
+import IncidentWorkTracker from "../ui/IncidentWorkTracker";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
 const SCRAP_REPAIR_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
@@ -110,6 +112,8 @@ export default function Ship() {
   const crewActivities = useCrewStore((state) => state.crewActivities ?? []);
   const interiorRooms = useShipInteriorStore((state) => state.rooms);
   const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
+  const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const incidentRuntimesById = useIncidentStore((state) => state.runtimesById);
   const engineeringTier = interiorRooms.engineering?.tier ?? 1;
   const rawJobs = useJobStore((state) => state.jobs);
   const jobs = useMemo(() => rawJobs.filter((job) => activeJobStatuses.has(job.status)), [rawJobs]);
@@ -126,6 +130,7 @@ export default function Ship() {
   const addItem = useInventoryStore((state) => state.addItem);
   const removeItem = useInventoryStore((state) => state.removeItem);
   const [selectedRoomId, setSelectedRoomId] = useState(null);
+  const activeIncidents = useMemo(() => Object.values(incidentRuntimesById).filter((runtime) => runtime.vesselId === activeVesselId && ["queued", "pending", "settling", "waitingJob", "monitoring"].includes(runtime.status)), [incidentRuntimesById, activeVesselId]);
 
   const tritanium = getItemQty(items, "tritanium");
   const salvageScrap = getItemQty(items, "salvage-scrap");
@@ -180,6 +185,7 @@ export default function Ship() {
 
   return (
     <div className="grid gap-4">
+      <IncidentWorkTracker vesselId={activeVesselId} />
       <section>
         <div className="flex items-start justify-between gap-3">
           <div>
@@ -194,7 +200,7 @@ export default function Ship() {
           </div>
         </div>
         <div className="mt-4">
-          <ShipInterior crew={crewInterior} activities={crewActivities} rooms={interiorRooms} activeCrises={activeCrises} showEquipment onRoomClick={setSelectedRoomId} />
+          <ShipInterior crew={crewInterior} activities={crewActivities} rooms={interiorRooms} activeCrises={activeCrises} incidents={activeIncidents} showEquipment onRoomClick={setSelectedRoomId} />
         </div>
         <ScrapRepairCard hull={resources.hull} scrap={salvageScrap} task={hullRepairTask} currentMinute={currentMinute} onRepair={repairWithScrap} repairAmount={repairAmount} />
         <SalvageProcessingCard scrap={salvageScrap} tritanium={tritanium} task={salvageProcessingTask} currentMinute={currentMinute} onProcess={processSalvage} />

@@ -12,6 +12,7 @@ import { useNavStore } from "../../stores/navStore";
 import { usePolicyStore } from "../../stores/policyStore";
 import { useReportStore } from "../../stores/reportStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
+import { useIncidentStore } from "../../stores/incidentStore";
 import { createDefaultPolicyState } from "../../data/policies";
 import { GAME_TIME, JOB_ECONOMY } from "../../data/constants";
 
@@ -725,6 +726,7 @@ describe("gameClock.processTimedJobs — all four policies enabled simultaneousl
 describe("gameClock.processTimedJobs with the report system introduced but not wired (Phase 20-A)", () => {
   it("30 ticks with every policy enabled and the ship under combined pressure never add a single report", () => {
     useReportStore.setState({ reports: [] });
+    useIncidentStore.getState().resetIncidents();
 
     useGameStore.setState((state) => ({ resources: { ...state.resources, hull: 15, fuel: 15 } }));
     usePolicyStore.getState().setPolicyEnabled("auto-hull-repair", true);
@@ -769,6 +771,7 @@ describe("gameClock.processTimedJobs — report generation wired to real events 
 
   function resetReportsJobsAndInventory() {
     useReportStore.setState({ reports: [] });
+    useIncidentStore.getState().resetIncidents();
     useJobStore.setState({ jobs: [] });
     useJobStore.getState().recomputeRoomLoad();
     useInventoryStore.setState((state) => ({
@@ -925,7 +928,7 @@ describe("gameClock.processTimedJobs — report generation wired to real events 
     resetReportsJobsAndInventory();
   });
 
-  it("a room-decay-triggered crisis spawn files exactly one 'crisis' report with priority 'critical' and crisisKind 'spawned'", () => {
+  it("room decay no longer bypasses the incident director by spawning an ambient crisis directly", () => {
     resetReportsJobsAndInventory();
     useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });
     useShipInteriorStore.setState((state) => ({
@@ -936,10 +939,8 @@ describe("gameClock.processTimedJobs — report generation wired to real events 
     processTimedJobs(60);
 
     const crisisReports = useReportStore.getState().reports.filter((report) => report.category === "crisis");
-    expect(crisisReports).toHaveLength(1);
-    expect(crisisReports[0].meta).toEqual({ crisisKind: "spawned" });
-    expect(crisisReports[0].priority).toBe("critical");
-    expect(crisisReports[0].title).toBe("함내 위기 발생");
+    expect(crisisReports).toHaveLength(0);
+    expect(useShipInteriorStore.getState().activeCrises).toHaveLength(0);
 
     resetReportsJobsAndInventory();
     useShipInteriorStore.setState({ rooms: createInitialRoomState(), activeCrises: [] });

@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { ShieldCheck, Users, Wrench } from "lucide-react";
 import Badge from "../common/Badge";
 import { getRoomDef } from "../../data/shipRooms";
+import { getDirectorIncident } from "../../data/directorIncidents";
 import { roomForCrewActivity } from "../../data/shipInteriorLayout";
 import { ROOM_SLOTS } from "../../data/constants";
 import { formatMinutes, getModuleRule } from "../../data/moduleRecipes";
@@ -12,6 +13,7 @@ import { canFitPower, modulePowerCost, reactorCapacity, totalPowerDraw } from ".
 import { useCrewStore } from "../../stores/crewStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
+import { useIncidentStore } from "../../stores/incidentStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
@@ -25,6 +27,7 @@ const TABS = [
   { id: "room", label: "방 개조", icon: ShieldCheck },
   { id: "crew", label: "근무", icon: Users },
 ];
+const INCIDENT_STATUS_LABEL = { queued: "표시 대기", pending: "함장 결재 대기", settling: "결재 처리 중", waitingJob: "대응 작업 중", monitoring: "후속 관찰 중" };
 
 function canAdjustJob(job) {
   return ["backlog", "assigned"].includes(job?.status);
@@ -230,7 +233,11 @@ function CrewTab({ roomId }) {
 
 export default function RoomDetailPanel({ roomId, onClose }) {
   const [tab, setTab] = useState("equip");
+  const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const incidentRuntimesById = useIncidentStore((state) => state.runtimesById);
   const roomDef = roomId ? getRoomDef(roomId) : null;
+  const roomIncident = Object.values(incidentRuntimesById).find((runtime) => runtime.vesselId === activeVesselId && runtime.roomId === roomId && ["queued", "pending", "settling", "waitingJob", "monitoring"].includes(runtime.status));
+  const incidentTemplate = getDirectorIncident(roomIncident?.templateId);
   if (!roomDef) return null;
 
   return (
@@ -240,6 +247,7 @@ export default function RoomDetailPanel({ roomId, onClose }) {
           <h2 className="text-lg font-bold text-slate-50">{roomDef.label}</h2>
           <button className="icon-button" onClick={onClose}>닫기</button>
         </div>
+        {roomIncident && <div className="border-b border-amber-300/25 bg-amber-300/10 px-5 py-3"><div className="flex items-center justify-between gap-3"><div className="font-black text-amber-100">항해 사건 · {incidentTemplate?.title ?? roomIncident.templateId}</div><span className="hud-chip hud-chip-warn shrink-0">{INCIDENT_STATUS_LABEL[roomIncident.status] ?? roomIncident.status}</span></div><p className="mt-1 text-xs leading-5 text-slate-300">{incidentTemplate?.summary ?? "이 구역에 대응이 필요한 항해 사건이 있습니다."}</p></div>}
         <div className="flex gap-1 border-b border-slate-700/70 px-5 pt-3">
           {TABS.map((entry) => {
             const Icon = entry.icon;

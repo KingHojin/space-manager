@@ -65,6 +65,7 @@ export const REPORT_CATEGORIES = [
     icon: "💰",
     defaultPriority: "medium",
   },
+  { id: "incident", label: "항해 사건", icon: "⚠️", defaultPriority: "medium" },
 ];
 
 // Fallback used by systems/reportSystem.js when a report is built with an

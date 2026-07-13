@@ -149,3 +149,7 @@ export function buildNavigationReport({ title, summary, navKind, currentMinute, 
     meta: { navKind: navKind ?? null, ...(details && typeof details === "object" ? details : {}) },
   });
 }
+
+export function buildIncidentReport({ title, summary, incidentId, outcome, currentMinute, priority } = {}) {
+  return buildReport({ category: "incident", title, body: summary, priority, currentMinute, meta: { incidentId: incidentId ?? null, outcome: outcome ?? null } });
+}

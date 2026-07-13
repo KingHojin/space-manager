@@ -5,7 +5,6 @@ import { getRoomDef } from "../data/shipRooms";
 import { statLabel } from "../utils/format";
 import { getActiveModifiers } from "./cardEffects";
 import { getCrisisLabel } from "./crisisSystem";
-import { rollEvent } from "./eventEngine";
 import { jobToLegacyShipWork } from "./jobMigration";
 import { evaluatePolicies } from "./policyEngine";
 import { buildCrisisReport, buildNavigationReport, buildPolicyReport, buildWorkReport } from "./reportSystem";
@@ -30,6 +29,7 @@ import { applyHullRepair, getSkillEffects } from "./skillEffects";
 import { resolveEnemyFleet } from "./combatEngine";
 import { processEncounterOrchestration } from "../orchestration/missionEncounterOrchestrator";
 import { getSectorBoundStoryBlocker, processStoryJobCompletion, reconcileEventChainRuntimes, settleManualEventChainStarter } from "../orchestration/eventChainOrchestrator";
+import { processIncidentJobCompletion, processIncidentOrchestration } from "../orchestration/incidentDirectorOrchestrator";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -676,7 +676,9 @@ export function processTimedJobs(deltaMinutes = 0) {
   const currentMinute = useGameStore.getState().currentMinute;
   const migrationLogs = migrateLegacyJobsOnce();
   processJobScheduler(currentMinute);
-  const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map((job) => applyUnifiedJob(job, currentMinute)).filter(Boolean);
+  const readyJobs = useJobStore.getState().completeReadyJobs(currentMinute);
+  const incidentReadyJobs = readyJobs.filter((job) => job.payload?.incident?.runtimeId);
+  const unifiedJobLogs = readyJobs.filter((job) => !job.payload?.incident?.runtimeId).map((job) => applyUnifiedJob(job, currentMinute)).filter(Boolean);
   [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processNavigation(currentMinute, deltaMinutes);
   // Recover done story jobs and multi-store settlements even when no panel is mounted.
@@ -685,6 +687,11 @@ export function processTimedJobs(deltaMinutes = 0) {
   // Run after navigation and before crises/policies; existing gates are never overwritten.
   processEncounterOrchestration(currentMinute);
   processCrises(currentMinute, deltaMinutes);
+  incidentReadyJobs.forEach((job) => {
+    const incident = processIncidentJobCompletion(job, currentMinute);
+    if (incident.handled && incident.ok) useGameStore.getState().addLog("항해 사건 대응 작업 완료.");
+  });
+  processIncidentOrchestration(currentMinute, deltaMinutes);
   refreshCrewAiImmediatelyForCrisis();
   processCrewAI(currentMinute);
   processCrewMeals(currentMinute);
@@ -701,6 +708,7 @@ export const useGameClock = () => {
     migrateLegacyJobsOnce().forEach((message) => useGameStore.getState().addLog(message));
     reconcileEventChainRuntimes(useGameStore.getState().currentMinute);
     processEncounterOrchestration(useGameStore.getState().currentMinute);
+    processIncidentOrchestration(useGameStore.getState().currentMinute, 0);
   }, []);
   useEffect(() => {
     const onKeyDown = (event) => {
@@ -732,8 +740,6 @@ export const useGameClock = () => {
       const dustMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).dustCollectionMult;
       const dustRate = DUST.BASE_COLLECTION_PER_HOUR * (collector?.level || 1) * richness * dustMult;
       useInventoryStore.getState().addDust((dustRate * minutes) / 60);
-      const event = rollEvent();
-      if (event) useGameStore.getState().addLog(event);
     }, GAME_TIME.TICK_MS);
     return () => window.clearInterval(timer);
   }, [isPaused, speed]);

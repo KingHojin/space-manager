@@ -3,7 +3,7 @@ import { persist } from "zustand/middleware";
 import { JOB_DURATION, JOB_LOAD_COST, JOB_REQUIRED_ROLE, ROOM_CONFIG, SLOT_ROOM } from "../data/constants";
 import { getActiveModifiers } from "../systems/cardEffects";
 import { activeLegacyJobs, jobToLegacyModuleWork, jobToLegacyRecovery, jobToLegacyShipWork, jobToLegacyTraining, jobToLegacyTreatment, migrateLegacyQueues, normalizeJob, normalizeJobPriority, normalizeRoomId } from "../systems/jobMigration";
-import { getMoodWorkMultiplier } from "../systems/crewMood";
+import { getJobDurationForCrew } from "../systems/jobDuration";
 import { scheduleJobs } from "../systems/jobScheduler";
 import { tickJobs } from "../systems/jobTick";
 import { useInventoryStore } from "./inventoryStore";
@@ -53,13 +53,6 @@ function roomsFromJobs(jobs = []) {
   return rooms;
 }
 
-function durationForCrew(job, crew = []) {
-  if (job.payload?.story) return { effectiveDuration: job.duration, moodWorkMultiplier: 1 };
-  const member = crew.find((entry) => entry.id === job.assignedCrewId || entry.id === job.payload?.targetCrewId);
-  const moodWorkMultiplier = getMoodWorkMultiplier(member);
-  return { effectiveDuration: Math.max(1, Math.round((job.duration ?? 1) / moodWorkMultiplier)), moodWorkMultiplier };
-}
-
 function makeJob(input = {}) {
   const type = input.type ?? "training";
   const speedMult = getActiveModifiers(useInventoryStore.getState().getActiveCards()).jobSpeedMult;
@@ -73,9 +66,9 @@ function makeJob(input = {}) {
     requiredRole: input.requiredRole ?? JOB_REQUIRED_ROLE[type] ?? null,
     priority: normalizeJobPriority(input.priority),
     progress: input.progress ?? 0,
-    // Authored story jobs promise an exact clock duration in their choice
+    // Authored story/incident jobs promise an exact clock duration in their choice
     // card. Generic work-speed modifiers must not make that copy untrue.
-    duration: Math.max(1, Math.round(input.payload?.story ? duration : duration / Math.max(0.1, speedMult))),
+    duration: Math.max(1, Math.round(input.payload?.story || input.payload?.incident ? duration : duration / Math.max(0.1, speedMult))),
     loadCost: input.loadCost ?? JOB_LOAD_COST[type] ?? 1,
     createdAt: input.createdAt ?? input.startedAt ?? 0,
     startedAt: input.startedAt ?? null,
@@ -97,6 +90,7 @@ export const useJobStore = create(
       rooms: createRooms(),
       legacyMigrationVersion: 0,
       legacyMigrationErrors: [],
+      incidentReceipts: {},
       enqueueJob: (typeOrInput, roomId = null, payload = {}, options = {}) => {
         const input = typeof typeOrInput === "object" ? typeOrInput : { ...options, type: typeOrInput, roomId, payload };
         const job = makeJob(input);
@@ -105,6 +99,16 @@ export const useJobStore = create(
           return { jobs, rooms: roomsFromJobs(jobs) };
         });
         return job;
+      },
+      applyIncidentJob: (claimId, input = {}) => {
+        if (!claimId || get().incidentReceipts?.[claimId]) return { ok: true, repeated: true, job: get().jobs.find((entry) => entry.id === input.id) ?? null };
+        let job = null;
+        set((state) => {
+          job = normalizeJobs(state.jobs).find((entry) => entry.id === input.id) ?? makeJob(input);
+          const jobs = state.jobs.some((entry) => entry.id === job.id) ? normalizeJobs(state.jobs) : [...normalizeJobs(state.jobs), job];
+          return { jobs, rooms: roomsFromJobs(jobs), incidentReceipts: { ...(state.incidentReceipts ?? {}), [claimId]: true } };
+        });
+        return { ok: true, repeated: false, job };
       },
       enqueueShipWork: ({ type, roomId, cost = 0, duration, payload = {}, priority = "normal", completeAt = null, createdAt = null }) => {
         const jobType = type === "hullRepair" ? "hull_repair" : type === "salvageProcessing" ? "salvage" : type;
@@ -200,7 +204,7 @@ export const useJobStore = create(
             if (action.kind === "rollback") return { ...job, status: "backlog", assignedCrewId: null, arrivalAt: null, startedAt: null };
             if (action.kind === "assign") return { ...job, status: "assigned", assignedCrewId: action.crewId, arrivalAt: action.arrivalAt };
             if (action.kind === "start") {
-              const timing = durationForCrew({ ...job, assignedCrewId: action.crewId }, crew);
+              const timing = getJobDurationForCrew({ ...job, assignedCrewId: action.crewId }, crew);
               return { ...job, ...timing, status: "in_progress", assignedCrewId: action.crewId, arrivalAt: null, startedAt: job.startedAt ?? currentMinute };
             }
             return job;
@@ -268,7 +272,7 @@ export const useJobStore = create(
       },
       merge: (persistedState, currentState) => {
         const jobs = normalizeJobs(persistedState?.jobs ?? currentState.jobs);
-        return { ...currentState, ...(persistedState ?? {}), jobs, rooms: roomsFromJobs(jobs), legacyMigrationVersion: persistedState?.legacyMigrationVersion ?? 0, legacyMigrationErrors: persistedState?.legacyMigrationErrors ?? [] };
+        return { ...currentState, ...(persistedState ?? {}), jobs, rooms: roomsFromJobs(jobs), legacyMigrationVersion: persistedState?.legacyMigrationVersion ?? 0, legacyMigrationErrors: persistedState?.legacyMigrationErrors ?? [], incidentReceipts: persistedState?.incidentReceipts ?? {} };
       },
     },
   ),
