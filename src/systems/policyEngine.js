@@ -298,6 +298,7 @@ function scoreEncounterOption(option) {
 function evaluateEncounterDefaultChoice(policyState, encounter, pendingCombatEncounter) {
   if (!policyState?.enabled) return null;
   if (!encounter) return null;
+  if (encounter.manualOnly) return null;
   if (encounter.nodeType === "exit" || encounter.id === "exit-objective-locked") {
     return {
       action: {

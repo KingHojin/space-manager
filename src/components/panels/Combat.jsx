@@ -12,6 +12,7 @@ import {
   getActiveEnemySubsystems,
   getCombatDirectiveResult,
   pickEnemyFleet,
+  resolveEnemyFleet,
   resolveCombatRound,
 } from "../../systems/combatEngine";
 import { getSectorProfile } from "../../systems/campaignProgression";
@@ -30,6 +31,7 @@ import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { getSkillEffects } from "../../systems/skillEffects";
 import Hunting from "./Hunting";
+import { reconcileMissionCombatOutcome } from "../../orchestration/missionEncounterOrchestrator";
 
 const COMBAT_OUTCOME_META = {
   won: { outcome: "victory", priority: "high" },
@@ -251,7 +253,9 @@ export default function Combat({ onNavigate, onOpenModal }) {
     if (travelLocked) return pushFeed(["작전 제한: 항해 중에는 임의 교전을 시작할 수 없습니다."]);
     if (activeCrew.length === 0) return pushFeed(["출격 불가: 생존 승무원이 없습니다."]);
     const danger = pendingCombatEncounter?.danger ?? maxDanger;
-    const enemy = pickEnemyFleet(danger, { maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier });
+    const enemy = pendingCombatEncounter?.enemyId
+      ? resolveEnemyFleet(pendingCombatEncounter.enemyId, { danger, maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier, seed: pendingCombatEncounter.id }).enemy
+      : pickEnemyFleet(danger, { maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier });
     const next = createCombatState(enemy);
     startCombatRecord({ vesselId: activeVesselId, combat: next, targetId: "hull" });
     if (pendingCombatEncounter) {
@@ -272,7 +276,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
       setPaused(false);
       return;
     }
-    const failed = failMission({ vesselId: activeVesselId, currentMinute, reason: `missionCombat:${nextCombat.status}` });
+    const failed = failMission({ vesselId: activeVesselId, currentMinute, reason: `missionCombat:${nextCombat.status}`, expectedMissionId: source.missionId });
     logs.push(failed.ok ? `임무 전투 ${outcomeLabel}: ${failed.mission.title} 계약이 실패 처리되었습니다.` : `임무 전투 ${outcomeLabel}: 임무 실패 처리 실패(${failed.reason}).`);
     setPaused(false);
   };
@@ -335,6 +339,9 @@ export default function Combat({ onNavigate, onOpenModal }) {
   };
 
   const resetCombat = () => {
+    reconcileMissionCombatOutcome(currentMinute);
+    const pendingMissionSettlement = useMissionStore.getState().pendingMissionEncountersByVesselId?.[activeVesselId]?.settlement;
+    if (pendingMissionSettlement?.status === "waitingCombat") return pushFeed(["브리핑 초기화 보류: 임무 전투 결과 정산이 먼저 필요합니다."]);
     resetCombatRecord({ vesselId: activeVesselId });
     pushFeed(["전투 브리핑을 초기화했습니다."]);
   };

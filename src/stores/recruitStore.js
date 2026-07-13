@@ -53,6 +53,7 @@ export const useRecruitStore = create(
       pullHistory: [],
       candidatePool: [],
       lastResults: [],
+      encounterReceipts: {},
       addCurrency: (amount) => set((state) => ({ currency: Math.max(0, (state.currency ?? 0) + amount) })),
       addCandidate: (templateId, source = "encounter") => {
         const template = getCrewTemplate(templateId);
@@ -64,6 +65,16 @@ export const useRecruitStore = create(
           return { candidatePool: [candidate, ...(state.candidatePool ?? [])].slice(0, 12) };
         });
         return { ok: true, candidate };
+      },
+      applyEncounterCandidate: (claimId, templateId) => {
+        if (!claimId || get().encounterReceipts?.[claimId]) return false;
+        const template = getCrewTemplate(templateId);
+        if (!template) return false;
+        set((state) => {
+          const already = (state.candidatePool ?? []).some((entry) => entry.templateId === templateId);
+          return { candidatePool: already ? state.candidatePool : [{ id: `candidate-${claimId}`, templateId, source: "mission", createdAt: Date.now() }, ...(state.candidatePool ?? [])].slice(0, 12), encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } };
+        });
+        return true;
       },
       removeCandidate: (candidateId) => set((state) => ({ candidatePool: (state.candidatePool ?? []).filter((candidate) => candidate.id !== candidateId) })),
       pull: (count = 1) => {
@@ -127,7 +138,7 @@ export const useRecruitStore = create(
       name: "space-manager-recruit",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), currency: persistedState?.currency ?? 0, pity: persistedState?.pity ?? 0, pullHistory: persistedState?.pullHistory ?? [], candidatePool: persistedState?.candidatePool ?? [], lastResults: persistedState?.lastResults ?? [] }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), currency: persistedState?.currency ?? 0, pity: persistedState?.pity ?? 0, pullHistory: persistedState?.pullHistory ?? [], candidatePool: persistedState?.candidatePool ?? [], lastResults: persistedState?.lastResults ?? [], encounterReceipts: persistedState?.encounterReceipts ?? {} }),
     },
   ),
 );
