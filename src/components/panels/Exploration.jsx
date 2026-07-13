@@ -24,6 +24,7 @@ import { buildNavigationReport } from "../../systems/reportSystem";
 import { applyMissionPayout, getSkillEffects } from "../../systems/skillEffects";
 import { useReportStore } from "../../stores/reportStore";
 import { settleMissionEncounterChoice } from "../../orchestration/missionEncounterOrchestrator";
+import { cancelEventChainJob, settleEventChainChoice } from "../../orchestration/eventChainOrchestrator";
 import CampaignObjectiveCard from "../common/CampaignObjectiveCard";
 import ExplorationRewardPanel from "../exploration/ExplorationRewardPanel";
 import StarMap from "../exploration/LazyStarMap";
@@ -62,6 +63,19 @@ function injuryFromCrewRisk(crewRisk) {
 
 function missionCombatDanger(node, combatEffect) {
   return Math.max(1, Math.round((node?.danger ?? 2) + (combatEffect?.dangerBonus ?? 0)));
+}
+
+export function presentStoryChoiceResult(result, { addLog, onNavigate } = {}) {
+  if (!result?.ok) return addLog?.(`연속 사건 선택 실패: ${result?.reason ?? "unknown"}`);
+  if (result.waitingCombat) {
+    addLog?.("GREYWAKE 교전 시작: 청구권 집행선과 교전합니다. 전투 화면으로 이동합니다.");
+    onNavigate?.("combat");
+    return null;
+  }
+  if (result.waitingJob) return addLog?.("GREYWAKE 해독 작업이 예약되었습니다. 관제실 승무원 1명 · 정확히 4시간.");
+  if (result.runtime?.status === "cancelled") return addLog?.("GREYWAKE에서 철수했습니다. 연속 사건이 종료되었습니다.");
+  if (result.runtime?.status === "completed") return addLog?.("GREYWAKE 선택이 정산되었습니다. 연속 사건이 종료되었습니다.");
+  return addLog?.("GREYWAKE 다음 단계가 예약되었습니다.");
 }
 
 function EncounterCard({ encounter, onResolve }) {
@@ -148,6 +162,7 @@ export default function Exploration({ onNavigate }) {
   // diverged upward the moment a candidate was recruited or dismissed.
   const recruitCandidates = useRecruitStore((state) => state.candidatePool ?? []);
   const navLog = useNavStore((state) => state.navLog ?? []);
+  const storyMarkersByNodeId = useNavStore((state) => state.storyMarkersByNodeId ?? {});
   const selectNode = useNavStore((state) => state.selectNode);
   const planRoute = useNavStore((state) => state.planRoute);
   const getRescueQuote = useNavStore((state) => state.getRescueQuote);
@@ -157,7 +172,6 @@ export default function Exploration({ onNavigate }) {
   const pendingStoryEncounter = useMissionStore((state) => state.pendingStoryEncounterByVesselId?.[activeVesselId]);
   const resolvedMissionEncounters = useMissionStore((state) => state.resolvedMissionEncounters ?? []);
   const completeMission = useMissionStore((state) => state.completeMission);
-  const resolveStoryEncounter = useMissionStore((state) => state.resolveStoryEncounter);
   const activeCombat = useCombatStore((state) => state.combatByVesselId[activeVesselId] ?? null);
   const startCombatRecord = useCombatStore((state) => state.startCombat);
 
@@ -301,9 +315,14 @@ export default function Exploration({ onNavigate }) {
     return null;
   };
   const handleResolveStoryEncounter = (optionId, expected = {}) => {
-    const result = resolveStoryEncounter({ vesselId: activeVesselId, runtimeId: expected.runtimeId, stageId: expected.stageId, claimId: expected.claimId, optionId, currentMinute });
-    if (!result.ok) return addLog(`연속 사건 선택 실패: ${result.reason}`);
-    return addLog(result.runtime.status === "completed" ? "연속 사건이 종료되었습니다." : "연속 사건의 다음 단계가 예약되었습니다.");
+    const result = settleEventChainChoice({ vesselId: activeVesselId, runtimeId: expected.runtimeId, stageId: expected.stageId, claimId: expected.claimId, optionId, currentMinute });
+    return presentStoryChoiceResult(result, { addLog, onNavigate });
+  };
+
+  const handleCancelStoryJob = (jobId) => {
+    const result = cancelEventChainJob({ jobId, currentMinute });
+    if (result.ok) return addLog("GREYWAKE 해독 취소: 회수 기록장치 1개를 환급했습니다.");
+    return addLog(result.reason === "in_progress" ? "해독 취소 실패: 이미 진행 중인 작업은 취소할 수 없습니다." : `해독 취소 실패: ${result.reason}`);
   };
 
   const handleDecode = (itemId) => {
@@ -331,7 +350,7 @@ export default function Exploration({ onNavigate }) {
     <div className="grid grid-cols-1 gap-4 xl:h-full xl:grid-cols-[minmax(0,1.25fr)_minmax(0,0.75fr)]">
       <section className="xl:overflow-y-auto">
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Radar size={18} />{sector.name} 노드 지도</div><p className="mt-2 text-sm leading-6 text-slate-400">노드를 고르고, 항로와 조우를 시각적으로 확인합니다.</p></div><span className="hud-chip hud-chip-accent">Fuel {Math.round(fuel)}%</span></div>
-        <div className="mt-3"><StarMap zones={zones} currentZoneId={currentNodeId} selectedZoneId={selectedNodeId} discoveredZoneIds={discovered} route={route} activeTravel={travel ? { ...travel, fromZoneId: travel.fromId, toZoneId: travel.toId } : null} currentMinute={currentMinute} onSelect={handleSelect} sectorName={sector.name} exploredCount={discovered.length} totalCount={nodes.length} /></div>
+        <div className="mt-3"><StarMap zones={zones} currentZoneId={currentNodeId} selectedZoneId={selectedNodeId} discoveredZoneIds={discovered} route={route} activeTravel={travel ? { ...travel, fromZoneId: travel.fromId, toZoneId: travel.toId } : null} currentMinute={currentMinute} onSelect={handleSelect} sectorName={sector.name} exploredCount={discovered.length} totalCount={nodes.length} storyMarkersByNodeId={storyMarkersByNodeId} /></div>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4"><Info label="현재 노드" value={current?.name ?? "-"} /><Info label="발견" value={`${discovered.length}/${nodes.length}`} /><Info label="영입 후보" value={`${recruitCandidates.length}명`} /><Info label="상태" value={pendingEncounter ? "조우 대기" : pendingMissionEncounter ? "임무 카드" : combatEngaged ? "전투 중" : travel ? travel.missionId ? "임무 항해" : "항해 중" : driftState ? "표류" : "정박"} tone={pendingEncounter || driftState || combatEngaged ? "text-red-300" : pendingMissionEncounter || travel ? "text-amber-300" : ""} /></div>
       </section>
       <aside className="space-y-4">
@@ -346,6 +365,7 @@ export default function Exploration({ onNavigate }) {
         <section>
           <div className="section-title"><Briefcase size={18} />단서 해독</div>
           <div className="mt-3 grid gap-2">
+            {jobs.filter((job) => job.type === "decode" && job.payload?.story && ["backlog", "assigned", "in_progress"].includes(job.status)).map((job) => <div key={job.id} className="rounded border border-violet-400/40 bg-violet-400/10 p-3"><div className="text-sm font-bold text-violet-100">GREYWAKE // 관제실 대기</div><div className="mt-1 text-xs text-slate-300">관제실 작업 1개 · 승무원 1명 · 4시간 · {job.status === "in_progress" ? "진행 중" : "대기 중"}</div><button className="secondary-button mt-2" disabled={job.status === "in_progress"} onClick={() => handleCancelStoryJob(job.id)}>해독 취소{job.status !== "in_progress" ? " · 기록장치 환급" : " 불가"}</button></div>)}
             {Object.keys(DECODE_RULES).every((itemId) => (inventoryItems.find((item) => item.id === itemId)?.qty ?? 0) <= 0) ? (
               <p className="text-sm text-slate-500">해독할 단서가 없습니다. 난파선·유적 탐험에서 단서를 찾아보세요.</p>
             ) : (

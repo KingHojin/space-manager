@@ -105,6 +105,24 @@ export const DECODE_RULES = {
   "void-map": { reveals: 3, dustReward: 60, label: "공허 성도" },
 };
 
+// First authored story chain. Keeping every gameplay number and identifier
+// here makes the card copy, settlement code and tests read the same contract.
+export const GREYWAKE = Object.freeze({
+  chainId: "greywake-last-watch",
+  recorderItemId: "greywake-recorder",
+  jobMinutes: 240,
+  jobRoomId: "ops",
+  recruitTemplateId: "greywake-last-watch-analyst",
+  recruitCost: 240,
+  rescueOxygenCost: 8,
+  battleEnemyId: "greywake-claims-cutter",
+  battleCredits: 760,
+  battleItemId: "tactical-ai-chip",
+  saleCredits: 420,
+  markerLabel: "GREYWAKE // 마지막 당직",
+  startedFlagId: "greywakeStarted",
+});
+
 // Numeric priority storage for jobStore.jobs[].priority (lower sorts first).
 // Keys deliberately match systems/priorities.js's activity-priority strings —
 // see the boundary comment above normalizeJobPriority/priorityToActivityPriority

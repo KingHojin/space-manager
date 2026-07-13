@@ -183,7 +183,7 @@ export function rollEncounter(node, seedOffset = 0) {
   const pool = ENCOUNTER_TABLE[node.type] ?? ENCOUNTER_TABLE.unknown;
   const rng = createRng(`${node.encounterSeed}-${seedOffset}`);
   const template = pick(rng, pool);
-  return { ...template, nodeId: node.id, nodeType: node.type, icon: NODE_TYPE_ICONS[node.type], typeLabel: NODE_TYPE_LABELS[node.type] };
+  return { ...template, claimId: `nav:${node.id}:${template.id}:${seedOffset}`, nodeId: node.id, nodeType: node.type, icon: NODE_TYPE_ICONS[node.type], typeLabel: NODE_TYPE_LABELS[node.type] };
 }
 
 export function nodeToZone(node) {

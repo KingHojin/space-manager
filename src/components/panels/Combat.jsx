@@ -16,7 +16,7 @@ import {
   resolveCombatRound,
 } from "../../systems/combatEngine";
 import { getSectorProfile } from "../../systems/campaignProgression";
-import { DUST } from "../../data/constants";
+import { DUST, GREYWAKE } from "../../data/constants";
 import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
 import { buildCombatReport } from "../../systems/reportSystem";
 import { useCombatStore } from "../../stores/combatStore";
@@ -32,6 +32,7 @@ import { useSkillStore } from "../../stores/skillStore";
 import { getSkillEffects } from "../../systems/skillEffects";
 import Hunting from "./Hunting";
 import { reconcileMissionCombatOutcome } from "../../orchestration/missionEncounterOrchestrator";
+import { hasUnsettledEventChainCombat, reconcileEventChainCombatOutcome } from "../../orchestration/eventChainOrchestrator";
 
 const COMBAT_OUTCOME_META = {
   won: { outcome: "victory", priority: "high" },
@@ -150,14 +151,17 @@ function EnemySubsystemPanel({ enemy }) {
   );
 }
 
-function combatOutcomeSummary({ isMissionCombat, won, failed }) {
+function combatOutcomeSummary({ isMissionCombat, isStoryCombat, won, failed }) {
+  if (isStoryCombat && won) return `GREYWAKE 청구권을 확보했습니다. ₢${GREYWAKE.battleCredits}와 tactical-ai-chip x1이 정산되었습니다.`;
+  if (isStoryCombat && failed) return "GREYWAKE 청구권을 포기했습니다. 조건부 보상은 지급되지 않습니다.";
   if (isMissionCombat && won) return "임무 전투에서 승리했습니다. 임무는 유지되며 탐사 화면에서 보상을 수령할 수 있습니다.";
   if (isMissionCombat && failed) return "임무 전투가 실패로 종료되어 계약이 실패 처리되었습니다. 새 임무를 고르거나 함선을 정비하세요.";
   if (won) return "교전에서 승리했습니다. 전리품과 피해 상황을 확인한 뒤 다음 작전을 준비하세요.";
   return "교전이 종료되었습니다. 피해와 승무원 상태를 점검한 뒤 브리핑을 정리하세요.";
 }
 
-function combatOutcomeNextAction({ isMissionCombat, won, failed }) {
+function combatOutcomeNextAction({ isMissionCombat, isStoryCombat, won, failed }) {
+  if (isStoryCombat) return "탐사로 돌아가 함선 복무기록 확인";
   if (isMissionCombat && won) return "탐사 화면으로 복귀 → 임무 완료 보상 수령";
   if (isMissionCombat && failed) return "임무 게시판 확인 → 새 계약 선택 또는 정비";
   if (won) return "브리핑 초기화 → 다음 교전 또는 항해 준비";
@@ -167,11 +171,12 @@ function combatOutcomeNextAction({ isMissionCombat, won, failed }) {
 function CombatOutcomeActions({ combat, onNavigate, onOpenModal, onResetCombat }) {
   if (!combat || combat.status === "engaged") return null;
   const isMissionCombat = combat.source?.kind === "missionEncounter";
+  const isStoryCombat = combat.source?.kind === "eventChain";
   const won = combat.status === "won";
   const failed = combat.status === "retreated" || combat.status === "lost";
   if (!won && !failed) return null;
-  const summary = combatOutcomeSummary({ isMissionCombat, won, failed });
-  const nextAction = combatOutcomeNextAction({ isMissionCombat, won, failed });
+  const summary = combatOutcomeSummary({ isMissionCombat, isStoryCombat, won, failed });
+  const nextAction = combatOutcomeNextAction({ isMissionCombat, isStoryCombat, won, failed });
 
   return (
     <section className={`mt-3 rounded-2xl border p-3 ${won ? "border-emerald-300/35 bg-emerald-300/10" : "border-red-300/35 bg-red-400/10"}`}>
@@ -181,7 +186,7 @@ function CombatOutcomeActions({ combat, onNavigate, onOpenModal, onResetCombat }
         <div className="rounded-xl border border-slate-700/70 bg-slate-950/65 p-3"><div className="hud-label">다음 행동</div><p className={`mt-1 text-sm font-bold leading-6 ${won ? "text-emerald-100" : "text-red-100"}`}>{nextAction}</p></div>
       </div>
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
-        {isMissionCombat && won && <button className="primary-button justify-center" onClick={() => onNavigate?.("exploration")}>탐사로 돌아가 임무 완료</button>}
+        {(isMissionCombat || isStoryCombat) && won && <button className="primary-button justify-center" onClick={() => onNavigate?.("exploration")}>탐사로 돌아가기</button>}
         {isMissionCombat && failed && <button className="primary-button justify-center" onClick={() => onOpenModal?.("missions")}>임무 게시판 열기</button>}
         <button className="secondary-button justify-center" onClick={onResetCombat}>브리핑 초기화</button>
       </div>
@@ -297,7 +302,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
       casualtyLogs.push(casualty.injury === "전사" ? `치명적 손실: ${casualty.member.name} 전사. 추정 사망 위험 ${casualty.risk}%.` : `승무원 피해: ${casualty.member.name} ${casualty.injury}. 추정 부상 위험 ${casualty.risk}%.`);
     }
     let dustGain = 0;
-    if (result.combat.status === "won") {
+    if (result.combat.status === "won" && combat.source?.kind !== "eventChain") {
       dustGain = Math.round(DUST.COMBAT_REWARD_PER_RISK * (combat.enemy?.risk ?? 1));
       addDust(dustGain);
       casualtyLogs.push(`전투 승리 보상: 먼지 +${dustGain}.`);
@@ -308,6 +313,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
     }
     if (result.combat.status === "lost" && activeTravel) casualtyLogs.push("항해 중 교전 패배. 함선 피해가 누적되어 항해 지속이 매우 위험합니다.");
     appendMissionCombatOutcome(result.combat, casualtyLogs);
+    reconcileEventChainCombatOutcome(currentMinute);
     pushFeed([...result.logs, ...casualtyLogs]);
     // Phase 20-B: combat's report is filed once, right at the engaged ->
     // won/lost/retreated transition — issueDirective only ever runs while
@@ -319,15 +325,20 @@ export default function Combat({ onNavigate, onOpenModal }) {
     // result.loot, casualty) — not by parsing pushFeed's log lines.
     const outcomeMeta = COMBAT_OUTCOME_META[result.combat.status];
     if (outcomeMeta) {
+      const isStoryCombat = combat.source?.kind === "eventChain";
       const summaryParts = [`적 ${combat.enemy?.name ?? "미상 함선"}과의 교전이 ${missionCombatOutcomeLabel(result.combat.status)}(으)로 종료되었습니다.`];
-      if (result.combat.status === "won") {
+      if (isStoryCombat && result.combat.status === "won") {
+        summaryParts.push(`GREYWAKE 조건부 보상: ₢${GREYWAKE.battleCredits}, tactical-ai-chip x1 정산.`);
+      } else if (isStoryCombat) {
+        summaryParts.push("GREYWAKE 조건부 보상 없음.");
+      } else if (result.combat.status === "won") {
         const lootText = result.loot ? `, ${result.loot.itemId} x${result.loot.qty}` : "";
         summaryParts.push(`보상: 먼지 +${dustGain}${lootText}.`);
       }
       summaryParts.push(casualty ? (casualty.injury === "전사" ? `승무원 손실: ${casualty.member.name} 전사.` : `승무원 부상: ${casualty.member.name} ${casualty.injury}.`) : "승무원 피해 없음.");
       useReportStore.getState().addReport(
         buildCombatReport({
-          title: `전투 결과: ${missionCombatOutcomeLabel(result.combat.status)}`,
+          title: `${isStoryCombat ? "GREYWAKE 전투 결과" : "전투 결과"}: ${missionCombatOutcomeLabel(result.combat.status)}`,
           summary: summaryParts.join(" "),
           outcome: outcomeMeta.outcome,
           priority: outcomeMeta.priority,
@@ -340,8 +351,10 @@ export default function Combat({ onNavigate, onOpenModal }) {
 
   const resetCombat = () => {
     reconcileMissionCombatOutcome(currentMinute);
+    reconcileEventChainCombatOutcome(currentMinute);
     const pendingMissionSettlement = useMissionStore.getState().pendingMissionEncountersByVesselId?.[activeVesselId]?.settlement;
     if (pendingMissionSettlement?.status === "waitingCombat") return pushFeed(["브리핑 초기화 보류: 임무 전투 결과 정산이 먼저 필요합니다."]);
+    if (hasUnsettledEventChainCombat(activeVesselId)) return pushFeed(["브리핑 초기화 보류: GREYWAKE 전투 결과 정산이 먼저 필요합니다."]);
     resetCombatRecord({ vesselId: activeVesselId });
     pushFeed(["전투 브리핑을 초기화했습니다."]);
   };

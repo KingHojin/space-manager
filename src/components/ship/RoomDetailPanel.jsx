@@ -17,6 +17,7 @@ import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { RoomCustomizationCard } from "./RoomCustomization";
 import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
+import { cancelEventChainJob } from "../../orchestration/eventChainOrchestrator";
 
 const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary: 12 };
 const TABS = [
@@ -168,6 +169,7 @@ function CrewTab({ roomId }) {
   const addLog = useGameStore((state) => state.addLog);
   const addResources = useGameStore((state) => state.addResources);
   const addItem = useInventoryStore((state) => state.addItem);
+  const currentMinute = useGameStore((state) => state.currentMinute);
 
   const activityByMember = useMemo(() => new Map(crewActivities.map((activity) => [activity.memberId, activity])), [crewActivities]);
   const assignedCrew = crew.filter((member) => member.alive && roomForCrewActivity(member, activityByMember.get(member.id)) === roomId);
@@ -175,6 +177,10 @@ function CrewTab({ roomId }) {
   const roomState = rooms[roomId];
 
   const cancel = (job) => {
+    if (job.payload?.story) {
+      const storyResult = cancelEventChainJob({ jobId: job.id, currentMinute });
+      return addLog(storyResult.ok ? "GREYWAKE 해독 취소: 회수 기록장치 1개를 환급했습니다." : "작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
+    }
     const result = cancelJob(job.id);
     if (!result.ok) return addLog("작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
     const { items: refundItems, credits } = computeJobRefund(result.job ?? job);

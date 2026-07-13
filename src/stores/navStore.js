@@ -149,6 +149,7 @@ export function mergePersistedNavState(persistedState, currentState) {
     rescueUsesBySector: persistedState?.rescueUsesBySector ?? {},
     recruitCandidates: persistedState?.recruitCandidates ?? [],
     navLog: persistedState?.navLog ?? currentState.navLog,
+    storyMarkersByNodeId: persistedState?.storyMarkersByNodeId ?? {},
   };
 }
 
@@ -174,12 +175,13 @@ export const useNavStore = create(
         fuelAuthorityVersion: 1,
         recruitCandidates: [],
         navLog: ["항해 컴퓨터 초기화: 노드 기반 성계 지도가 활성화되었습니다."],
+        storyMarkersByNodeId: {},
         selectNode: (nodeId) => set({ selectedNodeId: nodeId }),
         generateSector: (seed = Date.now()) => {
           const sector = generateSector(seed, { sectorIndex: 0 });
           const start = firstNodeId(sector);
           const discovered = revealNeighbors(sector, [start], start);
-          set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, campaign: createCampaignState(), currentNodeId: start, selectedNodeId: null, route: [start], travel: null, discovered, visited: [start], pendingEncounter: null, driftState: null, rescueUsesBySector: {}, navLog: ["새 1차 개척 원정이 시작되었습니다."] });
+          set({ sector: withNodeFlags(sector, [start], discovered), sectorIndex: 0, campaign: createCampaignState(), currentNodeId: start, selectedNodeId: null, route: [start], travel: null, discovered, visited: [start], pendingEncounter: null, driftState: null, rescueUsesBySector: {}, storyMarkersByNodeId: {}, navLog: ["새 1차 개척 원정이 시작되었습니다."] });
         },
         getCurrentObjective: () => getSectorObjective(get()),
         previewRoute: (targetNodeId, currentMinute = 0, skillEffects = null) => buildTravelPlan(get(), targetNodeId, currentMinute, {}, skillEffects),
@@ -362,6 +364,7 @@ export const useNavStore = create(
                 discovered,
                 visited: [start],
                 driftState: null,
+                storyMarkersByNodeId: {},
                 pendingEncounter: createGateRequisitionEncounter(pendingRequisition),
               };
               logs.push(`관문 돌파: 원정 섹터 ${nextIndex + 1} 진입 · 보급 패키지 결재 대기.`);
@@ -445,6 +448,31 @@ export const useNavStore = create(
           const sector = withNodeFlags(state.sector, state.visited, discovered);
           set({ sector, discovered, navLog: [`해독으로 새 좌표 확보: ${revealed.map((node) => node.name).join(", ")}`, ...state.navLog].slice(0, 10) });
           return revealed;
+        },
+        revealStoryTarget: ({ runtimeId, nodeId, label, sectorId } = {}) => {
+          const state = get();
+          if (!runtimeId || !nodeId || !label) return { ok: false, reason: "missingTarget" };
+          if (sectorId && sectorId !== state.sector?.id) return { ok: false, reason: "sectorChanged" };
+          const node = state.sector?.nodes?.find((entry) => entry.id === nodeId);
+          if (!node) return { ok: false, reason: "nodeNotFound" };
+          const discovered = Array.from(new Set([...(state.discovered ?? []), nodeId]));
+          const sector = withNodeFlags(state.sector, state.visited, discovered);
+          const marker = { runtimeId, nodeId, label, sectorId: state.sector.id };
+          set({ sector, discovered, storyMarkersByNodeId: { ...(state.storyMarkersByNodeId ?? {}), [nodeId]: marker }, navLog: [`스토리 좌표 복원: ${node.name} · ${label}`, ...state.navLog].slice(0, 10) });
+          return { ok: true, node, marker };
+        },
+        clearStoryMarker: (runtimeId) => {
+          if (!runtimeId) return false;
+          let removed = false;
+          set((state) => {
+            const markers = Object.fromEntries(Object.entries(state.storyMarkersByNodeId ?? {}).filter(([, marker]) => {
+              const keep = marker.runtimeId !== runtimeId;
+              if (!keep) removed = true;
+              return keep;
+            }));
+            return removed ? { storyMarkersByNodeId: markers } : state;
+          });
+          return removed;
         },
         addRecruitCandidate: (templateId) => set((state) => ({ recruitCandidates: Array.from(new Set([...(state.recruitCandidates ?? []), templateId])) })),
       };

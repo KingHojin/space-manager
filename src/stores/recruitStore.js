@@ -90,7 +90,7 @@ export const useRecruitStore = create(
         let refund = 0;
         for (let index = 0; index < safeCount; index += 1) {
           const rarityRoll = rollRarity(pity);
-          const template = pick(getTemplatesByRarity(rarityRoll.rarity)) ?? pick(CREW_TEMPLATES);
+          const template = pick(getTemplatesByRarity(rarityRoll.rarity)) ?? pick(CREW_TEMPLATES.filter((entry) => !entry.storyOnly));
           const accept = canAcceptCrew(template.templateId);
           let member = null;
           let duplicateRefund = 0;

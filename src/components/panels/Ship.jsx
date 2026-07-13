@@ -17,6 +17,7 @@ import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
 import { applyHullRepair, getSkillEffects } from "../../systems/skillEffects";
+import { cancelEventChainJob } from "../../orchestration/eventChainOrchestrator";
 
 const activeJobStatuses = new Set(["backlog", "assigned", "in_progress"]);
 const SCRAP_REPAIR_COST = JOB_ECONOMY.hullRepair.salvageScrapCost;
@@ -167,6 +168,10 @@ export default function Ship() {
   };
 
   const cancelQueuedJob = (job) => {
+    if (job.payload?.story) {
+      const storyResult = cancelEventChainJob({ jobId: job.id, currentMinute });
+      return addLog(storyResult.ok ? "GREYWAKE 해독 취소: 회수 기록장치 1개를 환급했습니다." : "작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
+    }
     const result = cancelJob(job.id);
     if (!result.ok) return addLog("작업 취소 실패: 진행 중 작업은 취소할 수 없습니다.");
     const refunds = refundCancelledJob(result.job ?? job);

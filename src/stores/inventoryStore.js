@@ -25,6 +25,7 @@ export const useInventoryStore = create(
       pityCount: 0,
       requisitionReceipts: {},
       encounterReceipts: {},
+      storyConsumeReceipts: {},
       addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
       addItem: (itemId, qty = 1) =>
         set((state) => {
@@ -69,6 +70,20 @@ export const useInventoryStore = create(
           return { dust: Math.max(0, state.dust + dust), items, encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } };
         });
         return true;
+      },
+      applyStoryConsume: (claimId, costs = []) => {
+        if (!claimId || get().storyConsumeReceipts?.[claimId]) return { ok: true, repeated: true };
+        const items = get().items ?? [];
+        const missing = costs.find(({ itemId, qty }) => itemId && qty > 0 && (items.find((item) => item.id === itemId)?.qty ?? 0) < qty);
+        if (missing) return { ok: false, reason: "missingItem", itemId: missing.itemId };
+        set((state) => ({
+          items: state.items.map((item) => {
+            const cost = costs.find((entry) => entry.itemId === item.id);
+            return cost ? { ...item, qty: Math.max(0, (item.qty ?? 0) - (cost.qty ?? 0)) } : item;
+          }),
+          storyConsumeReceipts: { ...(state.storyConsumeReceipts ?? {}), [claimId]: true },
+        }));
+        return { ok: true, repeated: false };
       },
       removeItem: (itemId, qty = 1) =>
         set((state) => ({
@@ -144,6 +159,7 @@ export const useInventoryStore = create(
         items: mergeItems(persistedState?.items),
         requisitionReceipts: persistedState?.requisitionReceipts ?? {},
         encounterReceipts: persistedState?.encounterReceipts ?? {},
+        storyConsumeReceipts: persistedState?.storyConsumeReceipts ?? {},
       }),
     },
   ),

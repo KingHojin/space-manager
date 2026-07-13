@@ -85,7 +85,7 @@ function TravelShip({ fromZone, toZone, progress }) {
   );
 }
 
-function StarNode({ zone, discovered, current, selected, onSelect }) {
+function StarNode({ zone, discovered, current, selected, storyMarker, onSelect }) {
   const ref = useRef(null);
   const tone = dangerTone(zone.danger);
   const position = positionFromZone(zone);
@@ -134,6 +134,7 @@ function StarNode({ zone, discovered, current, selected, onSelect }) {
           </div>
         </button>
       </Html>
+      {storyMarker && <Html distanceFactor={7.5} center position={[0, 0.62, 0]}><div className="pointer-events-none whitespace-nowrap rounded border border-violet-300/70 bg-violet-950/90 px-2 py-1 text-[0.58rem] font-black text-violet-100 shadow-lg">✦ GREYWAKE</div></Html>}
     </group>
   );
 }
@@ -161,6 +162,7 @@ export default function StarMap({
   sectorName,
   exploredCount,
   totalCount,
+  storyMarkersByNodeId = {},
 }) {
   const isMobileTouch = useCoarsePointer();
   const [interactionMode, setInteractionMode] = useState(false);
@@ -203,6 +205,7 @@ export default function StarMap({
             discovered={discoveredSet.has(zone.id)}
             current={zone.id === currentZoneId}
             selected={selectedZoneId === zone.id && zone.id !== currentZoneId}
+            storyMarker={storyMarkersByNodeId[zone.id]}
             onSelect={onSelect}
           />
         ))}

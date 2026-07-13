@@ -28,6 +28,7 @@ import { settleGateRequisition } from "./requisitionSettlement";
 import { applyHullRepair, getSkillEffects } from "./skillEffects";
 import { resolveEnemyFleet } from "./combatEngine";
 import { processEncounterOrchestration } from "../orchestration/missionEncounterOrchestrator";
+import { hasSectorBoundStoryRuntime, processStoryJobCompletion, reconcileEventChainRuntimes, settleManualSalvageEncounter } from "../orchestration/eventChainOrchestrator";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -145,6 +146,7 @@ function gateTransitBlockReason() {
   if (missionState.pendingMissionEncountersByVesselId?.[vesselId]) return "대기 중인 임무 조우를 먼저 해결해야 합니다.";
   if (combat?.status === "engaged") return "진행 중인 전투를 먼저 끝내야 합니다.";
   if (useExplorationStore.getState().pendingCombatEncounter) return "대기 중인 긴급 교전을 먼저 해결해야 합니다.";
+  if (hasSectorBoundStoryRuntime(vesselId)) return "GREYWAKE 연속 사건을 완료하거나 철수해야 관문을 통과할 수 있습니다.";
   return null;
 }
 
@@ -155,6 +157,10 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   }
   const option = encounter?.options?.find((entry) => entry.id === optionId);
   if (!option) return { ok: false, reason: "invalidOption", effects: [], logs: [] };
+  if (option.manualOnly && !context.manual) return { ok: false, reason: "manualOnly", effects: [], logs: [] };
+  if ((option.outcome ?? []).some((effect) => effect.kind === "startEventChain")) {
+    return settleManualSalvageEncounter({ encounter, option, currentMinute, manual: context.manual, expectedClaimId: context.expectedClaimId, afterStep: context.afterStep });
+  }
   const requisitionClaim = (option?.outcome ?? []).find((effect) => effect.kind === "gateRequisitionClaim");
   if (requisitionClaim) {
     if (encounter.claimId !== requisitionClaim.claimId || context.expectedClaimId !== requisitionClaim.claimId) {
@@ -579,6 +585,14 @@ function reportJobCompletion({ title, summary, jobType, currentMinute }) {
 }
 
 function applyUnifiedJob(job, currentMinute = 0) {
+  const story = processStoryJobCompletion(job, currentMinute);
+  if (story.handled) {
+    const log = story.ok
+      ? story.waitingLocation ? "GREYWAKE 해독 완료: 마지막 당직 좌표가 지도에 표시되었습니다." : "GREYWAKE 해독 기록을 안전 종료했습니다."
+      : `GREYWAKE 해독 처리 실패: ${story.reason}.`;
+    reportJobCompletion({ title: "GREYWAKE 해독 완료", summary: log, jobType: job.type, currentMinute });
+    return log;
+  }
   if (job.type === "training") {
     const member = useCrewStore.getState().crew.find((entry) => entry.id === job.payload?.targetCrewId);
     // Like repair, training uses the doctrine active when the clock settles
@@ -662,6 +676,8 @@ export function processTimedJobs(deltaMinutes = 0) {
   const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map((job) => applyUnifiedJob(job, currentMinute)).filter(Boolean);
   [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processNavigation(currentMinute, deltaMinutes);
+  // Recover done story jobs and multi-store settlements even when no panel is mounted.
+  reconcileEventChainRuntimes(currentMinute);
   // Arrival and due-story encounters are game-loop state, not panel state.
   // Run after navigation and before crises/policies; existing gates are never overwritten.
   processEncounterOrchestration(currentMinute);
@@ -680,6 +696,7 @@ export const useGameClock = () => {
   const speed = useGameStore((state) => state.speed);
   useEffect(() => {
     migrateLegacyJobsOnce().forEach((message) => useGameStore.getState().addLog(message));
+    reconcileEventChainRuntimes(useGameStore.getState().currentMinute);
     processEncounterOrchestration(useGameStore.getState().currentMinute);
   }, []);
   useEffect(() => {

@@ -30,6 +30,7 @@ function OptionMeta({ option }) {
     <div className="mt-3 flex flex-wrap gap-1.5 text-xs">
       <span className={`hud-chip ${RISK_TONE[option.risk] ?? ""}`}><ShieldAlert size={12} />위험 {RISK_LABEL[option.risk] ?? option.risk}</span>
       <span className="hud-chip"><UserRound size={12} />{option.role ?? "함교"}</span>
+      {option.previewText && <span className="hud-chip hud-chip-accent"><Gift size={12} />{option.previewText}</span>}
       {rewards.length > 0 && <span className="hud-chip hud-chip-accent"><Gift size={12} />보상 {rewards.length}</span>}
       {resourceDeltas.map(({ key, value }) => <span key={`${key}-${value}`} className={value < 0 ? "hud-chip hud-chip-warn" : "hud-chip hud-chip-success"}>{key} {formatDelta(value)}</span>)}
       {crewRisk && <span className="hud-chip hud-chip-danger">승무원 위험 {Math.round((crewRisk.chance ?? 0) * 100)}%</span>}
