@@ -73,7 +73,7 @@ export default function MissionEncounterCard({ encounter, onSelectOption, disabl
         <div className="min-w-0">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="section-title"><AlertTriangle size={18} />임무 조우 카드</div>
+              <div className="section-title"><AlertTriangle size={18} />{encounter.chainId ? `연속 사건 · ${encounter.chainStageLabel ?? encounter.stageId}` : "임무 조우 카드"}</div>
               <h3 className="mt-2 text-xl font-black text-slate-50">{encounter.title}</h3>
             </div>
             <span className={`hud-chip shrink-0 ${RISK_TONE[encounter.risk] ?? ""}`}>위험 {RISK_LABEL[encounter.risk] ?? encounter.risk}</span>
@@ -92,7 +92,7 @@ export default function MissionEncounterCard({ encounter, onSelectOption, disabl
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         {(encounter.options ?? []).map((option) => (
           <div key={option.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={`${option.role ?? "함교"} 판단`} badge="선택" disabled={disabled} onClick={() => onSelectOption?.(option.id)} />
+            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={`${option.role ?? "함교"} 판단`} badge="선택" disabled={disabled} onClick={() => onSelectOption?.(option.id, { runtimeId: encounter.runtimeId ?? encounter.id, stageId: encounter.stageId ?? encounter.timing, claimId: encounter.claimId })} />
             <OptionMeta option={option} />
             {nonZeroEntries(option.rewardPreview ?? {}).length > 0 && <div className="mt-3"><RewardIconRow reward={option.rewardPreview} /></div>}
           </div>

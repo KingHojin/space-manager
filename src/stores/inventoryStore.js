@@ -24,6 +24,7 @@ export const useInventoryStore = create(
       lastDraw: [],
       pityCount: 0,
       requisitionReceipts: {},
+      encounterReceipts: {},
       addDust: (amount) => set((state) => ({ dust: Math.max(0, state.dust + amount) })),
       addItem: (itemId, qty = 1) =>
         set((state) => {
@@ -53,6 +54,19 @@ export const useInventoryStore = create(
               : [...items, { ...(baseItems.find((item) => item.id === itemId) ?? { id: itemId, name: itemId, rarity: "common", type: "misc" }), qty }];
           }
           return { items, requisitionReceipts: { ...(state.requisitionReceipts ?? {}), [claimId]: true } };
+        });
+        return true;
+      },
+      applyEncounterGrant: (claimId, { dust = 0, items: grants = [] } = {}) => {
+        if (!claimId || get().encounterReceipts?.[claimId]) return false;
+        set((state) => {
+          let items = state.items;
+          grants.forEach(({ itemId, qty }) => {
+            if (!itemId || !(qty > 0)) return;
+            const existing = items.find((item) => item.id === itemId);
+            items = existing ? items.map((item) => item.id === itemId ? { ...item, qty: Math.max(0, (item.qty ?? 0) + qty) } : item) : [...items, { ...(baseItems.find((item) => item.id === itemId) ?? { id: itemId, name: itemId, rarity: "common", type: "misc" }), qty }];
+          });
+          return { dust: Math.max(0, state.dust + dust), items, encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } };
         });
         return true;
       },
@@ -129,6 +143,7 @@ export const useInventoryStore = create(
         ...(persistedState ?? {}),
         items: mergeItems(persistedState?.items),
         requisitionReceipts: persistedState?.requisitionReceipts ?? {},
+        encounterReceipts: persistedState?.encounterReceipts ?? {},
       }),
     },
   ),

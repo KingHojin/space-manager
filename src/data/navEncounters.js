@@ -112,7 +112,7 @@ export const ENCOUNTER_TABLE = {
       title: "미확인 접촉",
       description: "함교에 정체불명의 전술 신호가 잡힙니다. 아직 전투 시스템 전 단계라 텍스트 결과로 기록됩니다.",
       options: [
-        { id: "hail", label: "교신 시도", outcome: [{ kind: "combat", enemyId: "raider-scout" }] },
+        { id: "hail", label: "교신 시도", outcome: [{ kind: "combat", enemyId: "scrap-raider" }] },
         { id: "dark", label: "무전 침묵", outcome: [{ kind: "log", message: "교전을 피하고 항로 기록만 남겼습니다." }] },
       ],
     },

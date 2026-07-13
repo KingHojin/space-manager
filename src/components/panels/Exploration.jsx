@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
 import { DECODE_RULES, DRIFT, DUST, JOB_DURATION, NAVIGATION_TRAVEL } from "../../data/constants";
 import { formatMinutes } from "../../data/moduleRecipes";
@@ -24,6 +23,7 @@ import { findRoute, nodeToZone, routeDistance } from "../../systems/navigationSy
 import { buildNavigationReport } from "../../systems/reportSystem";
 import { applyMissionPayout, getSkillEffects } from "../../systems/skillEffects";
 import { useReportStore } from "../../stores/reportStore";
+import { settleMissionEncounterChoice } from "../../orchestration/missionEncounterOrchestrator";
 import CampaignObjectiveCard from "../common/CampaignObjectiveCard";
 import ExplorationRewardPanel from "../exploration/ExplorationRewardPanel";
 import StarMap from "../exploration/LazyStarMap";
@@ -154,10 +154,10 @@ export default function Exploration({ onNavigate }) {
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const activeMission = useMissionStore((state) => state.activeByVesselId?.[activeVesselId]);
   const pendingMissionEncounter = useMissionStore((state) => state.pendingMissionEncountersByVesselId?.[activeVesselId]);
+  const pendingStoryEncounter = useMissionStore((state) => state.pendingStoryEncounterByVesselId?.[activeVesselId]);
   const resolvedMissionEncounters = useMissionStore((state) => state.resolvedMissionEncounters ?? []);
   const completeMission = useMissionStore((state) => state.completeMission);
-  const generateMissionEncounterForVessel = useMissionStore((state) => state.generateMissionEncounterForVessel);
-  const resolveMissionEncounter = useMissionStore((state) => state.resolveMissionEncounter);
+  const resolveStoryEncounter = useMissionStore((state) => state.resolveStoryEncounter);
   const activeCombat = useCombatStore((state) => state.combatByVesselId[activeVesselId] ?? null);
   const startCombatRecord = useCombatStore((state) => state.startCombat);
 
@@ -180,13 +180,6 @@ export default function Exploration({ onNavigate }) {
   const gateRoute = campaignObjective.gateNode ? findRoute(sector, currentNodeId, campaignObjective.gateNode.id) : [];
   const gateDistance = gateRoute.length > 1 ? routeDistance(sector, gateRoute) : campaignObjective.gateNode?.id === currentNodeId ? 0 : null;
   const sectorProfile = getSectorProfile(sectorIndex);
-
-  useEffect(() => {
-    if (!activeVesselId || !activeMission || !activeMissionArrived) return;
-    if (travel || pendingEncounter || pendingMissionEncounter || missionAlreadyResolved || combatEngaged) return;
-    const result = generateMissionEncounterForVessel({ vesselId: activeVesselId, timing: "arrival", currentMinute });
-    if (result.ok && result.generated) addLog(`임무 조우 카드 발생: ${result.encounter.title}`);
-  }, [activeVesselId, activeMission?.id, activeMissionArrived, travel, pendingEncounter, pendingMissionEncounter, missionAlreadyResolved, combatEngaged, currentMinute, generateMissionEncounterForVessel, addLog]);
 
   const handleSelect = (zone) => {
     if (!discoveredSet.has(zone.id)) return;
@@ -300,23 +293,17 @@ export default function Exploration({ onNavigate }) {
   };
 
   const handleResolve = (optionId, expectedClaimId) => applyNavigationEncounter(optionId, currentMinute, { manual: true, expectedClaimId });
-  const handleResolveMissionEncounter = (optionId) => {
+  const handleResolveMissionEncounter = (optionId, expected = {}) => {
     if (combatEngaged) return addLog("임무 조우 선택 실패: 진행 중인 전투를 먼저 끝내야 합니다.");
-    const result = resolveMissionEncounter({ vesselId: activeVesselId, optionId, currentMinute });
+    const result = settleMissionEncounterChoice({ vesselId: activeVesselId, runtimeId: expected.runtimeId, stageId: expected.stageId, claimId: expected.claimId, optionId, currentMinute });
     if (!result.ok) return addLog(`임무 조우 선택 실패: ${result.reason}`);
-    addLog(`임무 조우 선택: ${result.encounter.title} / ${result.option.label}.`);
-    result.logs.forEach((message) => addLog(`임무 조우: ${message}`));
-    if (hasEntries(result.resourceDelta)) {
-      addResources(result.resourceDelta);
-      Object.entries(result.resourceDelta).forEach(([key, value]) => addLog(`임무 조우 자원 변화: ${key} ${formatSigned(value)}.`));
-    }
-    if (hasEntries(result.reward)) {
-      const payout = applyMissionRewards(result.reward);
-      payout.logs.forEach((message) => addLog(`임무 조우 보상: ${message}`));
-    }
-    applyCrewRisk(result.crewRisk);
-    startMissionCombat(result);
+    addLog(result.waitingCombat ? "임무 조우 선택 확정: 전투 승리 후 조건부 보상이 지급됩니다." : "임무 조우 선택과 보상 정산이 완료되었습니다.");
     return null;
+  };
+  const handleResolveStoryEncounter = (optionId, expected = {}) => {
+    const result = resolveStoryEncounter({ vesselId: activeVesselId, runtimeId: expected.runtimeId, stageId: expected.stageId, claimId: expected.claimId, optionId, currentMinute });
+    if (!result.ok) return addLog(`연속 사건 선택 실패: ${result.reason}`);
+    return addLog(result.runtime.status === "completed" ? "연속 사건이 종료되었습니다." : "연속 사건의 다음 단계가 예약되었습니다.");
   };
 
   const handleDecode = (itemId) => {
@@ -351,6 +338,7 @@ export default function Exploration({ onNavigate }) {
         <CampaignObjectiveCard objective={campaignObjective} credits={resources.credits} gateDistance={gateDistance} gateHops={Math.max(0, gateRoute.length - 1)} fuel={fuel} hull={hull} livingCrew={crew.filter((member) => member.alive !== false).length} onNavigate={onNavigate} />
         <EncounterCard encounter={pendingEncounter} onResolve={handleResolve} />
         {pendingMissionEncounter && <MissionEncounterCard encounter={pendingMissionEncounter} disabled={Boolean(pendingEncounter) || combatEngaged} onSelectOption={handleResolveMissionEncounter} />}
+        {pendingStoryEncounter && <MissionEncounterCard encounter={pendingStoryEncounter} disabled={Boolean(pendingEncounter) || Boolean(pendingMissionEncounter) || combatEngaged} onSelectOption={handleResolveStoryEncounter} />}
         <ActiveMissionPanel mission={activeMission ? { ...activeMission, reward: applyMissionPayout(activeMission.reward, skillEffects.mission) } : null} currentNodeId={currentNodeId} travel={travel} pendingEncounter={pendingEncounter} pendingMissionEncounter={pendingMissionEncounter} activeCombat={activeCombat} onPlan={handlePlanMission} onComplete={handleCompleteMission} />
         {travel && <section><div className="section-title"><Clock3 size={18} />{travel.missionId ? "임무 항해 상황판" : "항해 상황판"}</div><div className="mission-travel-card mt-4 rounded-2xl border border-amber-300/35 bg-amber-300/10 p-4"><div className="flex items-start justify-between gap-3"><div>{travel.missionTitle && <div className="mb-1 text-xs font-bold text-cyan-200">{travel.missionTitle}</div>}<div className="font-semibold text-amber-100">{travelFrom?.name} → {travelTo?.name}</div><div className="mt-1 text-xs text-slate-400">도착 {formatGameDate(travel.completeAt)}</div></div><span className="hud-chip hud-chip-warn">{Math.round(travelProgress)}%</span></div><div className="hud-gauge mt-3"><span className="hud-gauge-fill" style={{ width: `${travelProgress}%` }} /></div><div className="mt-3 grid grid-cols-2 gap-2 text-sm"><Info label="남은 시간" value={formatMinutes(Math.max(0, Math.ceil(travel.completeAt - currentMinute)))} /><Info label="예상 연료" value={`${travel.fuelCost.toFixed(1)}`} /></div></div></section>}
         {driftState && <section className="rounded border border-red-400/45 bg-red-400/10 p-4"><div className="section-title"><Fuel size={18} />표류 상태</div><p className="mt-2 text-sm leading-6 text-slate-300">연료가 고갈되어 이동이 정지했습니다. 표류 중 산소·선체 압박은 계속됩니다.</p>{rescuePending ? <div className="mt-3 rounded border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">구조선 접근 중 · 도착 {formatGameDate(rescuePending.arrivesAt)} · 비상 연료 +{rescuePending.fuel}</div> : <><p className="mt-3 text-xs leading-5 text-slate-400">섹터당 {DRIFT.RESCUE_LIMIT_PER_SECTOR}회 · ₢{DRIFT.RESCUE_CREDIT_COST} 선결제 · {DRIFT.RESCUE_CHECK_MINUTES}분 후 도착</p><button className="primary-button mt-4 w-full" disabled={!rescueQuote?.ok || resources.credits < DRIFT.RESCUE_CREDIT_COST} onClick={handleRescueRequest}>유료 구조 신호 요청</button>{resources.credits < DRIFT.RESCUE_CREDIT_COST && <p className="mt-2 text-xs text-red-200">크레딧 부족: ₢{DRIFT.RESCUE_CREDIT_COST} 필요</p>}{rescueQuote?.reason === "sectorLimit" && <p className="mt-2 text-xs text-red-200">이 섹터의 긴급 구조권을 이미 사용했습니다.</p>}</>}</section>}

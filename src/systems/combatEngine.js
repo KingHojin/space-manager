@@ -54,6 +54,21 @@ export const ENEMY_FLEETS = [
   { id: "seraphim-auto-fleet", name: "세라핌 자동함대", hull: 164, shield: 182, power: 202, reward: 1800, risk: 7, lootItemId: "seraphim-core", lootItemQty: 1 },
 ];
 
+function deterministicIndex(seed, length) {
+  let hash = 2166136261;
+  for (const char of String(seed ?? "enemy")) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return length > 0 ? (hash >>> 0) % length : 0;
+}
+
+export function resolveEnemyFleet(enemyId, { danger = 2, maxRisk = 7, rewardMultiplier = 1, seed = "enemy" } = {}) {
+  const named = enemyId ? ENEMY_FLEETS.find((fleet) => fleet.id === enemyId) : null;
+  const riskCeiling = Math.min(Math.max(2, danger + 1), maxRisk);
+  const pool = ENEMY_FLEETS.filter((fleet) => fleet.risk <= riskCeiling);
+  const selected = named ?? pool[deterministicIndex(seed, pool.length)] ?? ENEMY_FLEETS[0];
+  const multiplier = Math.max(1, rewardMultiplier);
+  return { enemy: multiplier === 1 ? selected : { ...selected, baseReward: selected.reward, reward: Math.round(selected.reward * multiplier) }, exact: Boolean(named), requestedEnemyId: enemyId ?? null };
+}
+
 export const calculateCombatPower = ({ modules, crew, activeCards }) => {
   const activeCrew = crew.filter((member) => member.alive !== false);
   const modulePower = modules.reduce(

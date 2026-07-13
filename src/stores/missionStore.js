@@ -11,7 +11,12 @@ import {
   generateMissionBoard,
   normalizeMissionRecord,
 } from "../systems/missionSystem";
-import { generateMissionEncounter, normalizeMissionEncounterRecord, resolveMissionEncounterOption } from "../systems/missionEncounterSystem";
+import { generateMissionEncounter, normalizeMissionEncounterRecord, prepareMissionEncounterChoice } from "../systems/missionEncounterSystem";
+import { cancelUnknownEventRuntimes, normalizeEventRuntimeMap, normalizePendingStoryMap, normalizeStoryFlags, normalizeStoryHistory, resolveStoryEncounterChoice, STORY_HISTORY_LIMIT } from "../systems/eventChainSystem";
+import { EVENT_CHAINS, getEventChain } from "../data/eventChains";
+import { useCombatStore } from "./combatStore";
+import { useExplorationStore } from "./explorationStore";
+import { useNavStore } from "./navStore";
 import { passthroughMigrate, PERSIST_VERSION } from "./persistVersion";
 
 function normalizeList(list = []) {
@@ -44,6 +49,13 @@ function normalizeEncounterMap(encountersByVesselId = {}) {
   );
 }
 
+function normalizeEncounterMapForActive(encountersByVesselId = {}, activeByVesselId = {}) {
+  return Object.fromEntries(Object.entries(normalizeEncounterMap(encountersByVesselId)).filter(([vesselId, encounter]) => {
+    const active = activeByVesselId[vesselId];
+    return active?.status === MISSION_STATUS.active && encounter.missionId === active.id && !encounter.resolvedAt;
+  }));
+}
+
 function normalizeEncounterList(list = []) {
   return list.map(normalizeMissionEncounterRecord).filter(Boolean);
 }
@@ -64,6 +76,34 @@ export const useMissionStore = create(
       activeByVesselId: {},
       pendingMissionEncountersByVesselId: {},
       resolvedMissionEncounters: [],
+      storyFlags: {},
+      eventRuntimesById: {},
+      pendingStoryEncounterByVesselId: {},
+      storyHistory: [],
+      registerEventRuntime: (runtime) => {
+        const normalized = normalizeEventRuntimeMap(runtime?.id ? { [runtime.id]: runtime } : {});
+        const entry = runtime?.id ? normalized[runtime.id] : null;
+        const chain = getEventChain(entry?.chainId);
+        if (!entry || !chain?.stages?.some((stage) => stage.id === entry.stageId) || get().eventRuntimesById[entry.id]) return { ok: false, reason: entry && get().eventRuntimesById[entry.id] ? "duplicate" : "invalidRuntime" };
+        set((state) => ({ eventRuntimesById: { ...state.eventRuntimesById, [entry.id]: entry } }));
+        return { ok: true, runtime: entry };
+      },
+      setStoryFlag: ({ flagId, value = true, currentMinute = 0, sourceRuntimeId = null } = {}) => {
+        if (!flagId) return { ok: false, reason: "missingFlagId" };
+        set((state) => ({ storyFlags: { ...state.storyFlags, [flagId]: { value, setAtMinute: currentMinute, sourceRuntimeId } } }));
+        return { ok: true };
+      },
+      resolveStoryEncounter: ({ vesselId, runtimeId, stageId, claimId, optionId, currentMinute = 0 } = {}) => {
+        const encounter = get().pendingStoryEncounterByVesselId[vesselId];
+        const runtime = get().eventRuntimesById[encounter?.runtimeId];
+        const result = resolveStoryEncounterChoice({ runtime, encounter, chain: getEventChain(runtime?.chainId), runtimeId, stageId, claimId, optionId, currentMinute });
+        if (!result.ok) return result;
+        set((state) => {
+          const pending = { ...state.pendingStoryEncounterByVesselId }; delete pending[vesselId];
+          return { pendingStoryEncounterByVesselId: pending, eventRuntimesById: { ...state.eventRuntimesById, [runtimeId]: result.runtime }, storyFlags: { ...state.storyFlags, ...result.flagUpdates }, storyHistory: [result.historyEntry, ...state.storyHistory].slice(0, STORY_HISTORY_LIMIT) };
+        });
+        return result;
+      },
       completedMissions: [],
       missionLog: [],
       refreshBoard: ({ scopeId, sector = null, currentNodeId = null, currentMinute = 0, seed = null, count = DEFAULT_BOARD_SIZE, force = false } = {}) => {
@@ -111,6 +151,11 @@ export const useMissionStore = create(
         const state = get();
         const active = state.activeByVesselId[vesselId];
         if (!active || active.status !== MISSION_STATUS.active) return { ok: false, reason: "noActiveMission" };
+        const nav = useNavStore.getState();
+        if (nav.currentNodeId !== active.destinationNodeId) return { ok: false, reason: "notAtDestination" };
+        if (nav.travel) return { ok: false, reason: "travel" };
+        if (nav.pendingEncounter) return { ok: false, reason: "pendingNavigationEncounter" };
+        if (nav.driftState) return { ok: false, reason: "drift" };
         const existing = state.pendingMissionEncountersByVesselId[vesselId];
         if (existing && !force) return { ok: true, encounter: existing, generated: false };
         const excluded = (state.resolvedMissionEncounters ?? []).filter((encounter) => encounter.missionId === active.id).map((encounter) => encounter.templateId);
@@ -122,20 +167,46 @@ export const useMissionStore = create(
         }));
         return { ok: true, encounter, generated: true };
       },
-      resolveMissionEncounter: ({ vesselId, optionId, currentMinute = 0 } = {}) => {
+      prepareMissionEncounter: ({ vesselId, runtimeId, stageId, claimId = null, optionId, currentMinute = 0, livingCrewIds = [] } = {}) => {
         if (!vesselId) return { ok: false, reason: "missingVesselId" };
         if (!optionId) return { ok: false, reason: "missingOptionId" };
         const encounter = get().pendingMissionEncountersByVesselId[vesselId];
         if (!encounter) return { ok: false, reason: "noPendingEncounter" };
-        const result = resolveMissionEncounterOption(encounter, optionId, { currentMinute });
+        if (runtimeId !== encounter.id || stageId !== encounter.timing) return { ok: false, reason: "staleEncounter" };
+        if (claimId && (encounter.settlement?.claimId ?? encounter.claimId) !== claimId) return { ok: false, reason: "staleClaim" };
+        if (encounter.settlement && encounter.settlement.optionId !== optionId) return { ok: false, reason: "staleOption" };
+        const result = prepareMissionEncounterChoice(encounter, optionId, { currentMinute, livingCrewIds });
         if (!result.ok) return result;
+        const nextEncounter = { ...encounter, settlement: result.prepared };
+        set((state) => ({ pendingMissionEncountersByVesselId: { ...state.pendingMissionEncountersByVesselId, [vesselId]: nextEncounter } }));
+        return { ...result, encounter: nextEncounter };
+      },
+      markMissionEncounterReceipt: ({ vesselId, claimId, receiver } = {}) => {
+        const encounter = get().pendingMissionEncountersByVesselId[vesselId];
+        if (!encounter?.settlement || encounter.settlement.claimId !== claimId || !receiver) return false;
+        if (encounter.settlement.receipts?.[receiver]) return false;
+        set((state) => ({ pendingMissionEncountersByVesselId: { ...state.pendingMissionEncountersByVesselId, [vesselId]: { ...encounter, settlement: { ...encounter.settlement, receipts: { ...(encounter.settlement.receipts ?? {}), [receiver]: true } } } } }));
+        return true;
+      },
+      setMissionEncounterSettlementStatus: ({ vesselId, claimId, status, combatResult = undefined } = {}) => {
+        const encounter = get().pendingMissionEncountersByVesselId[vesselId];
+        if (!encounter?.settlement || encounter.settlement.claimId !== claimId) return false;
+        set((state) => ({ pendingMissionEncountersByVesselId: { ...state.pendingMissionEncountersByVesselId, [vesselId]: { ...encounter, settlement: { ...encounter.settlement, status, ...(combatResult === undefined ? {} : { combatResult }) } } } }));
+        return true;
+      },
+      finalizeMissionEncounter: ({ vesselId, runtimeId, stageId, claimId, optionId, currentMinute = 0 } = {}) => {
+        const encounter = get().pendingMissionEncountersByVesselId[vesselId];
+        const settlement = encounter?.settlement;
+        if (!encounter || encounter.id !== runtimeId || encounter.timing !== stageId || settlement?.claimId !== claimId || settlement.optionId !== optionId) return { ok: false, reason: "staleSettlement" };
+        if (settlement.status !== "settled") return { ok: false, reason: "notSettled" };
+        const result = { ok: true, encounter: { ...encounter, resolvedAt: currentMinute, selectedOptionId: optionId, settlement: { ...settlement, status: "finalized" } }, option: encounter.options.find((entry) => entry.id === optionId), prepared: settlement };
         set((state) => {
           const nextPending = { ...state.pendingMissionEncountersByVesselId };
           delete nextPending[vesselId];
           return {
             pendingMissionEncountersByVesselId: nextPending,
             resolvedMissionEncounters: [result.encounter, ...(state.resolvedMissionEncounters ?? [])].slice(0, 40),
-            missionLog: [`임무 조우 해결: ${result.encounter.title} / ${result.option.label}`, ...(state.missionLog ?? [])].slice(0, 12),
+            missionLog: [`임무 조우 해결: ${result.encounter.title} / ${result.option?.label ?? optionId}`, ...(state.missionLog ?? [])].slice(0, 12),
           };
         });
         return result;
@@ -154,9 +225,21 @@ export const useMissionStore = create(
       completeMission: ({ vesselId, currentMinute = 0 } = {}) => {
         if (!vesselId) return { ok: false, reason: "missingVesselId" };
         const state = get();
-        if (state.pendingMissionEncountersByVesselId[vesselId]) return { ok: false, reason: "pendingMissionEncounter" };
         const active = state.activeByVesselId[vesselId];
         if (!active || active.status !== MISSION_STATUS.active) return { ok: false, reason: "noActiveMission" };
+        const nav = useNavStore.getState();
+        if (nav.currentNodeId !== active.destinationNodeId) return { ok: false, reason: "notAtDestination" };
+        if (nav.travel) return { ok: false, reason: "travel" };
+        if (nav.pendingEncounter) return { ok: false, reason: "pendingNavigationEncounter" };
+        if (nav.driftState) return { ok: false, reason: "drift" };
+        if (state.pendingMissionEncountersByVesselId[vesselId]) return { ok: false, reason: "pendingMissionEncounter" };
+        if (state.pendingStoryEncounterByVesselId[vesselId]) return { ok: false, reason: "pendingStoryEncounter" };
+        if (Object.values(state.eventRuntimesById).some((runtime) => runtime.vesselId === vesselId && runtime.missionId === active.id && !["completed", "failed", "cancelled"].includes(runtime.status))) return { ok: false, reason: "blockingStoryRuntime" };
+        if (useCombatStore.getState().combatByVesselId?.[vesselId]?.status === "engaged" || useExplorationStore.getState().pendingCombatEncounter) return { ok: false, reason: "combat" };
+        if (!(state.resolvedMissionEncounters ?? []).some((encounter) => encounter.missionId === active.id)) {
+          const generated = get().generateMissionEncounterForVessel({ vesselId, timing: "arrival", currentMinute, seed: `${vesselId}:${active.id}:arrival` });
+          if (generated.ok) return { ok: false, reason: "pendingMissionEncounter", encounter: generated.encounter };
+        }
         const completed = completeMissionRecord(active, { currentMinute });
         set((state) => {
           const nextActive = { ...state.activeByVesselId };
@@ -169,19 +252,25 @@ export const useMissionStore = create(
         });
         return { ok: true, mission: completed, reward: completed.reward };
       },
-      failMission: ({ vesselId, currentMinute = 0, reason = "unknown" } = {}) => {
+      failMission: ({ vesselId, currentMinute = 0, reason = "unknown", expectedMissionId = null } = {}) => {
         if (!vesselId) return { ok: false, reason: "missingVesselId" };
         const active = get().activeByVesselId[vesselId];
         if (!active || active.status !== MISSION_STATUS.active) return { ok: false, reason: "noActiveMission" };
+        if (expectedMissionId && active.id !== expectedMissionId) return { ok: false, reason: "staleMission" };
         const failed = failMissionRecord(active, { currentMinute, reason });
         set((state) => {
           const nextActive = { ...state.activeByVesselId };
           const nextPending = { ...state.pendingMissionEncountersByVesselId };
+          const nextStoryPending = { ...state.pendingStoryEncounterByVesselId };
+          const eventRuntimesById = Object.fromEntries(Object.entries(state.eventRuntimesById).map(([id, runtime]) => [id, runtime.vesselId === vesselId && runtime.missionId === active.id && !["completed", "failed", "cancelled"].includes(runtime.status) ? { ...runtime, status: "cancelled", updatedAt: currentMinute } : runtime]));
           delete nextActive[vesselId];
           delete nextPending[vesselId];
+          delete nextStoryPending[vesselId];
           return {
             activeByVesselId: nextActive,
             pendingMissionEncountersByVesselId: nextPending,
+            pendingStoryEncounterByVesselId: nextStoryPending,
+            eventRuntimesById,
             completedMissions: [failed, ...(state.completedMissions ?? [])].slice(0, 30),
             missionLog: [`임무 실패 기록: ${failed.title}`, ...(state.missionLog ?? [])].slice(0, 12),
           };
@@ -192,15 +281,22 @@ export const useMissionStore = create(
         if (!vesselId) return { ok: false, reason: "missingVesselId" };
         const active = get().activeByVesselId[vesselId];
         if (!active || active.status !== MISSION_STATUS.active) return { ok: false, reason: "noActiveMission" };
+        const combat = useCombatStore.getState().combatByVesselId?.[vesselId];
+        if (combat?.status === "engaged" && combat.source?.kind === "missionEncounter" && combat.source?.missionId === active.id) return { ok: false, reason: "combat" };
         const abandoned = { ...active, status: MISSION_STATUS.abandoned, abandonedAt: currentMinute };
         set((state) => {
           const nextActive = { ...state.activeByVesselId };
           const nextPending = { ...state.pendingMissionEncountersByVesselId };
+          const nextStoryPending = { ...state.pendingStoryEncounterByVesselId };
+          const eventRuntimesById = Object.fromEntries(Object.entries(state.eventRuntimesById).map(([id, runtime]) => [id, runtime.vesselId === vesselId && runtime.missionId === active.id && !["completed", "failed", "cancelled"].includes(runtime.status) ? { ...runtime, status: "cancelled", updatedAt: currentMinute } : runtime]));
           delete nextActive[vesselId];
           delete nextPending[vesselId];
+          delete nextStoryPending[vesselId];
           return {
             activeByVesselId: nextActive,
             pendingMissionEncountersByVesselId: nextPending,
+            pendingStoryEncounterByVesselId: nextStoryPending,
+            eventRuntimesById,
             completedMissions: [abandoned, ...(state.completedMissions ?? [])].slice(0, 30),
             missionLog: [`임무 포기: ${abandoned.title}`, ...(state.missionLog ?? [])].slice(0, 12),
           };
@@ -226,20 +322,31 @@ export const useMissionStore = create(
       name: "space-manager-missions",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => ({
-        ...currentState,
-        ...(persistedState ?? {}),
-        boardsByScopeId: normalizeBoards(persistedState?.boardsByScopeId),
-        activeByVesselId: Object.fromEntries(
+      merge: (persistedState, currentState) => {
+        const activeByVesselId = Object.fromEntries(
           Object.entries(persistedState?.activeByVesselId ?? {})
             .map(([vesselId, mission]) => [vesselId, normalizeMissionRecord(mission)])
             .filter(([, mission]) => Boolean(mission)),
-        ),
-        pendingMissionEncountersByVesselId: normalizeEncounterMap(persistedState?.pendingMissionEncountersByVesselId),
+        );
+        const knownRuntimes = cancelUnknownEventRuntimes(persistedState?.eventRuntimesById, EVENT_CHAINS.map((chain) => chain.id));
+        const eventRuntimesById = Object.fromEntries(Object.entries(knownRuntimes).map(([id, runtime]) => {
+          const chain = getEventChain(runtime.chainId);
+          return [id, chain?.stages?.some((stage) => stage.id === runtime.stageId) ? runtime : { ...runtime, status: "cancelled", pendingClaim: null }];
+        }));
+        return ({
+        ...currentState,
+        ...(persistedState ?? {}),
+        boardsByScopeId: normalizeBoards(persistedState?.boardsByScopeId),
+        activeByVesselId,
+        pendingMissionEncountersByVesselId: normalizeEncounterMapForActive(persistedState?.pendingMissionEncountersByVesselId, activeByVesselId),
         resolvedMissionEncounters: normalizeEncounterList(persistedState?.resolvedMissionEncounters).slice(0, 40),
+        storyFlags: normalizeStoryFlags(persistedState?.storyFlags),
+        eventRuntimesById,
+        pendingStoryEncounterByVesselId: normalizePendingStoryMap(persistedState?.pendingStoryEncounterByVesselId, eventRuntimesById),
+        storyHistory: normalizeStoryHistory(persistedState?.storyHistory).slice(0, STORY_HISTORY_LIMIT),
         completedMissions: normalizeList(persistedState?.completedMissions).slice(0, 30),
         missionLog: persistedState?.missionLog ?? currentState.missionLog,
-      }),
+      }); },
     },
   ),
 );

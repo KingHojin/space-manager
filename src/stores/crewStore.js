@@ -190,6 +190,7 @@ export const useCrewStore = create(
       crewActivities: [],
       crewActivityLog: [],
       relationships: {},
+      encounterReceipts: {},
       lastCrewAiAt: null,
       recruitCrew: (crewMember) => {
         const normalized = normalizeCrew({ ...crewMember, alive: true, injury: crewMember.injury ?? "healthy", fatigue: crewMember.fatigue ?? 0, morale: crewMember.morale ?? "보통", experience: crewMember.experience ?? 0 });
@@ -281,6 +282,11 @@ export const useCrewStore = create(
       // applyCombatCasualtyWithJobs) for how those get cancelled now. The
       // queue *fields* themselves stay in state/merge for save-compatibility.
       applyCombatCasualty: ({ memberId, injury = "경상", morale = -1 }) => set((state) => ({ crew: state.crew.map((member) => member.id === memberId && member.alive ? { ...member, alive: injury !== "전사", injury: injury === "전사" ? normalizeInjury("incapacitated") : applyInjury(member, injury), fatigue: injury === "전사" ? 100 : clamp((member.fatigue ?? 0) + (injury === "중상" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: injury === "전사" ? "나쁨" : shiftMorale(member.morale, morale), needs: applyNeedDelta(member.needs, { mood: injury === "전사" ? -40 : -12, stress: injury === "전사" ? 40 : 18 }) } : member) })),
+      applyEncounterCrewRisk: (claimId, { crewId = null, triggered = false, severity = "minor" } = {}) => {
+        if (!claimId || get().encounterReceipts?.[claimId]) return false;
+        set((state) => ({ crew: state.crew.map((member) => member.id === crewId && member.alive && triggered ? { ...member, injury: applyInjury(member, severity === "serious" || severity === "critical" ? "중상" : "경상"), fatigue: clamp((member.fatigue ?? 0) + (severity === "serious" || severity === "critical" ? 28 : 16) * fatigueMultiplier(member), 0, 100), morale: shiftMorale(member.morale, -1) } : member), encounterReceipts: { ...(state.encounterReceipts ?? {}), [claimId]: true } }));
+        return true;
+      },
       getRoleCoverage: () => getRoleCoverage(get().crew),
       getTreatmentTarget: () => chooseTreatmentTarget(get().crew),
     }),
@@ -288,7 +294,7 @@ export const useCrewStore = create(
       name: "space-manager-crew",
       version: PERSIST_VERSION,
       migrate: passthroughMigrate,
-      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], relationships: normalizeRelationships(persistedState?.relationships), lastCrewAiAt: persistedState?.lastCrewAiAt ?? null }),
+      merge: (persistedState, currentState) => ({ ...currentState, ...(persistedState ?? {}), crew: mergeCrew(persistedState?.crew), trainingQueue: (persistedState?.trainingQueue ?? []).map((task) => normalizeTask(task, "normal")), treatmentQueue: (persistedState?.treatmentQueue ?? []).map((task) => normalizeTask(task, task.injury === "중상" || task.injury === "위독" ? "emergency" : "high")), recoveryQueue: (persistedState?.recoveryQueue ?? []).map((task) => normalizeTask(task, "normal")), crewActivities: persistedState?.crewActivities ?? [], crewActivityLog: persistedState?.crewActivityLog ?? [], relationships: normalizeRelationships(persistedState?.relationships), lastCrewAiAt: persistedState?.lastCrewAiAt ?? null, encounterReceipts: persistedState?.encounterReceipts ?? {} }),
     },
   ),
 );

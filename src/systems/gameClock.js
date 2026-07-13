@@ -26,6 +26,8 @@ import { useShipStore } from "../stores/shipStore";
 import { useSkillStore } from "../stores/skillStore";
 import { settleGateRequisition } from "./requisitionSettlement";
 import { applyHullRepair, getSkillEffects } from "./skillEffects";
+import { resolveEnemyFleet } from "./combatEngine";
+import { processEncounterOrchestration } from "../orchestration/missionEncounterOrchestrator";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -115,8 +117,9 @@ function applyNavEffect(effect, currentMinute) {
     useGameStore.getState().addLog(result.ok ? `영입 후보 확보: ${effect.templateId}. 영입 화면에서 검토할 수 있습니다.` : `영입 후보 처리 실패: ${effect.templateId} (${result.reason}).`);
   }
   if (effect.kind === "combat") {
-    useExplorationStore.getState().setPendingCombatEncounter({ id: effect.enemyId, title: "미확인 적성 함선 접촉", enemyId: effect.enemyId, fallback: true });
-    useGameStore.getState().addLog(`교전 조우 기록: ${effect.enemyId}. Phase 11 전까지 전투는 텍스트 폴백으로 보관됩니다.`);
+    const resolved = resolveEnemyFleet(effect.enemyId, { seed: effect.enemyId ?? `${currentMinute}` });
+    useExplorationStore.getState().setPendingCombatEncounter({ id: resolved.enemy.id, title: resolved.enemy.name, enemyId: resolved.enemy.id, fallback: !resolved.exact });
+    useGameStore.getState().addLog(resolved.exact ? `교전 조우 식별: ${resolved.enemy.name}.` : `알 수 없는 적 ID ${effect.enemyId ?? "없음"}; ${resolved.enemy.name}(으)로 안전 대체했습니다.`);
   }
   if (effect.kind === "campaignComplete") {
     useGameStore.getState().setPaused(true);
@@ -469,6 +472,7 @@ function applyPolicyActions(actions, currentMinute) {
       // encounter this action was computed for.
       const pending = useNavStore.getState().pendingEncounter;
       if (!pending) return;
+      if (pending.manualOnly) return;
       // Every gate interaction, including the locked gate's harmless-looking
       // "hold" option, is captain-only. Automation must not dismiss the card
       // or strand the player without a gate decision.
@@ -478,7 +482,8 @@ function applyPolicyActions(actions, currentMinute) {
       // applyNavigationEncounter already does resolveEncounter() +
       // applyNavEffect() for every effect in the chosen option's outcome —
       // reuse it verbatim instead of re-implementing that combination here.
-      applyNavigationEncounter(detail.optionId, currentMinute);
+      const result = applyNavigationEncounter(detail.optionId, currentMinute);
+      if (!result.ok) return;
       reportPolicyAction(
         action.policyId,
         `${pending.title ?? "조우"} 자동 해결 — "${detail.label ?? detail.optionId}" 선택 (${detail.stance ?? "balanced"} 전략).`,
@@ -657,6 +662,9 @@ export function processTimedJobs(deltaMinutes = 0) {
   const unifiedJobLogs = useJobStore.getState().completeReadyJobs(currentMinute).map((job) => applyUnifiedJob(job, currentMinute)).filter(Boolean);
   [...migrationLogs, ...unifiedJobLogs].forEach((message) => useGameStore.getState().addLog(message));
   processNavigation(currentMinute, deltaMinutes);
+  // Arrival and due-story encounters are game-loop state, not panel state.
+  // Run after navigation and before crises/policies; existing gates are never overwritten.
+  processEncounterOrchestration(currentMinute);
   processCrises(currentMinute, deltaMinutes);
   refreshCrewAiImmediatelyForCrisis();
   processCrewAI(currentMinute);
@@ -672,6 +680,7 @@ export const useGameClock = () => {
   const speed = useGameStore((state) => state.speed);
   useEffect(() => {
     migrateLegacyJobsOnce().forEach((message) => useGameStore.getState().addLog(message));
+    processEncounterOrchestration(useGameStore.getState().currentMinute);
   }, []);
   useEffect(() => {
     const onKeyDown = (event) => {
