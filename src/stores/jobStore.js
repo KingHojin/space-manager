@@ -169,7 +169,7 @@ export const useJobStore = create(
           const jobs = normalizeJobs(state.jobs).map((job) => {
             if (!ACTIVE.has(job.status) || (job.payload?.targetCrewId !== memberId && job.assignedCrewId !== memberId)) return job;
             cancelled.push(job);
-            return { ...job, status: "failed", assignedCrewId: null, arrivalAt: null, startedAt: null };
+            return { ...job, status: "failed", assignedCrewId: null, arrivalAt: null, startedAt: null, payload: job.payload?.story ? { ...job.payload, story: { ...job.payload.story, failureReason: "assignedMedicDied" } } : job.payload };
           });
           return { jobs, rooms: roomsFromJobs(jobs) };
         });

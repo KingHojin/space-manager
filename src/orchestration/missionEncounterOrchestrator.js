@@ -11,6 +11,7 @@ import { useMissionStore } from "../stores/missionStore";
 import { useNavStore } from "../stores/navStore";
 import { useRecruitStore } from "../stores/recruitStore";
 import { useShipStore } from "../stores/shipStore";
+import { getStoryOptionAvailability } from "./eventChainOrchestrator";
 
 function activeVesselId() { return useShipStore.getState().activeVesselId; }
 
@@ -180,7 +181,11 @@ export function processDueStoryRuntimes(currentMinute) {
       useMissionStore.setState((next) => ({ eventRuntimesById: { ...next.eventRuntimesById, [runtime.id]: { ...runtime, status: EVENT_CHAIN_STATUS.cancelled, pendingClaim: null, updatedAt: currentMinute } } }));
       continue;
     }
-    const encounter = { runtimeId: runtime.id, chainId: chain.id, chainTitle: chain.title, chainStageLabel: stage.label ?? stage.id, stageId: stage.id, claimId: storyEncounterClaimId(runtime), title: stage.title, scene: stage.scene, category: "story", timing: "story", risk: stage.risk ?? "medium", icon: stage.icon ?? "✦", manualOnly: true, options: stage.options ?? [] };
+    const options = (stage.options ?? []).map((option) => {
+      const availability = getStoryOptionAvailability(option);
+      return { ...option, previewText: availability.dynamicPreview ?? option.previewText, disabled: !availability.available, disabledReason: availability.reason ?? null, waitText: availability.waitText ?? null };
+    });
+    const encounter = { runtimeId: runtime.id, chainId: chain.id, chainTitle: chain.title, chainStageLabel: stage.label ?? stage.id, stageId: stage.id, claimId: storyEncounterClaimId(runtime), title: stage.title, scene: stage.scene, category: "story", timing: "story", risk: stage.risk ?? "medium", icon: stage.icon ?? "✦", manualOnly: true, options };
     useMissionStore.setState((next) => ({ eventRuntimesById: { ...next.eventRuntimesById, [runtime.id]: { ...runtime, status: EVENT_CHAIN_STATUS.pending, updatedAt: currentMinute } }, pendingStoryEncounterByVesselId: { ...next.pendingStoryEncounterByVesselId, [runtime.vesselId]: encounter } }));
     break;
   }

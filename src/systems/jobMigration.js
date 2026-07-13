@@ -42,6 +42,7 @@ function hasOwn(object, key) {
 }
 
 function normalizedRequiredRole(job, type) {
+  if (job?.payload?.story && hasOwn(job, "requiredRole")) return job.requiredRole;
   if (type === "recovery" || type === "treatment" || type === "training") return null;
   return hasOwn(job, "requiredRole") ? job.requiredRole : JOB_REQUIRED_ROLE[type] ?? null;
 }

@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { AlertTriangle, Archive, Bell, Briefcase, ChevronRight, Compass, Cpu, GraduationCap, Package, Radar, Rocket, Users, Wrench } from "lucide-react";
 import { RESOURCES } from "../../data/constants";
+import { presentEventChainStarterOption } from "../../data/eventChains";
 import { contracts } from "../../data/contracts";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
@@ -39,7 +40,7 @@ const EMPTY_ARRAY = [];
 export function handleOverviewNavigationEncounter({ optionId, currentMinute, pendingEncounter, onNavigate, addLog, resolve = applyNavigationEncounter }) {
   const result = resolve(optionId, currentMinute, { manual: true, expectedClaimId: pendingEncounter?.claimId });
   if (result?.ok && result.started) {
-    addLog?.("GREYWAKE 기록 신호가 탐사 화면에 도착했습니다. 탐사 화면으로 이동합니다.");
+    addLog?.(`${result.chainTitle ?? "연속 사건"} 판단 카드가 탐사 화면에 도착했습니다. 탐사 화면으로 이동합니다.`);
     onNavigate?.("exploration");
   }
   return result;
@@ -173,6 +174,7 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const travel = useNavStore((state) => state.travel);
   const fuel = useGameStore((state) => state.resources.fuel);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
+  const storyFlags = useMissionStore((state) => state.storyFlags);
   const driftState = useNavStore((state) => state.driftState);
   const selectNode = useNavStore((state) => state.selectNode);
   const planRoute = useNavStore((state) => state.planRoute);
@@ -183,7 +185,7 @@ function NavDecisionCard({ currentMinute, onNavigate }) {
   const travelProgress = travel ? Math.max(0, Math.min(100, ((currentMinute - travel.startedAt) / Math.max(1, travel.duration)) * 100)) : 0;
 
   if (pendingEncounter) {
-    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((option) => <button key={option.id} className="secondary-button justify-between text-left" onClick={() => handleOverviewNavigationEncounter({ optionId: option.id, currentMinute, pendingEncounter, onNavigate, addLog })}><span>{option.label}</span><span className="text-xs text-cyan-200">결재</span></button>)}</div></section>;
+    return <section className="rounded-2xl border border-red-400/45 bg-red-400/10 p-4"><div className="grid gap-3 sm:grid-cols-[5rem_minmax(0,1fr)]"><div className="grid h-20 place-items-center rounded-2xl border border-red-300/30 bg-red-400/10 text-4xl">{pendingEncounter.icon}</div><div><div className="section-title"><AlertTriangle size={18} />항해 조우</div><h3 className="mt-2 truncate font-black text-red-100">{pendingEncounter.title}</h3><span className="hud-chip hud-chip-danger mt-2">{pendingEncounter.typeLabel}</span></div></div><div className="mt-4 grid gap-2">{pendingEncounter.options.map((rawOption) => { const option = presentEventChainStarterOption(rawOption, storyFlags); return <button key={option.id} className="secondary-button justify-between text-left" onClick={() => handleOverviewNavigationEncounter({ optionId: option.id, currentMinute, pendingEncounter, onNavigate, addLog })}><span>{option.label}{option.repeatPreview ? <small className="mt-1 block text-xs text-slate-400">{option.repeatPreview}</small> : null}</span><span className="text-xs text-cyan-200">결재</span></button>; })}</div></section>;
   }
 
   if (travel) {

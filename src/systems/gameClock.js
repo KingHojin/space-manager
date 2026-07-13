@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { DECODE_RULES, DUST, GAME_TIME } from "../data/constants";
+import { getEventChain } from "../data/eventChains";
 import { getRoomDef } from "../data/shipRooms";
 import { statLabel } from "../utils/format";
 import { getActiveModifiers } from "./cardEffects";
@@ -28,7 +29,7 @@ import { settleGateRequisition } from "./requisitionSettlement";
 import { applyHullRepair, getSkillEffects } from "./skillEffects";
 import { resolveEnemyFleet } from "./combatEngine";
 import { processEncounterOrchestration } from "../orchestration/missionEncounterOrchestrator";
-import { hasSectorBoundStoryRuntime, processStoryJobCompletion, reconcileEventChainRuntimes, settleManualSalvageEncounter } from "../orchestration/eventChainOrchestrator";
+import { getSectorBoundStoryBlocker, processStoryJobCompletion, reconcileEventChainRuntimes, settleManualEventChainStarter } from "../orchestration/eventChainOrchestrator";
 
 const MEAL_COOLDOWN_MINUTES = 120;
 const LEGACY_JOB_MIGRATION_VERSION = 3;
@@ -146,7 +147,8 @@ function gateTransitBlockReason() {
   if (missionState.pendingMissionEncountersByVesselId?.[vesselId]) return "대기 중인 임무 조우를 먼저 해결해야 합니다.";
   if (combat?.status === "engaged") return "진행 중인 전투를 먼저 끝내야 합니다.";
   if (useExplorationStore.getState().pendingCombatEncounter) return "대기 중인 긴급 교전을 먼저 해결해야 합니다.";
-  if (hasSectorBoundStoryRuntime(vesselId)) return "GREYWAKE 연속 사건을 완료하거나 철수해야 관문을 통과할 수 있습니다.";
+  const storyBlocker = getSectorBoundStoryBlocker(vesselId);
+  if (storyBlocker) return `${storyBlocker.title} 연속 사건을 완료하거나 철수해야 관문을 통과할 수 있습니다.`;
   return null;
 }
 
@@ -159,7 +161,7 @@ export function applyNavigationEncounter(optionId, currentMinute = useGameStore.
   if (!option) return { ok: false, reason: "invalidOption", effects: [], logs: [] };
   if (option.manualOnly && !context.manual) return { ok: false, reason: "manualOnly", effects: [], logs: [] };
   if ((option.outcome ?? []).some((effect) => effect.kind === "startEventChain")) {
-    return settleManualSalvageEncounter({ encounter, option, currentMinute, manual: context.manual, expectedClaimId: context.expectedClaimId, afterStep: context.afterStep });
+    return settleManualEventChainStarter({ encounter, option, currentMinute, manual: context.manual, expectedClaimId: context.expectedClaimId, afterStep: context.afterStep });
   }
   const requisitionClaim = (option?.outcome ?? []).find((effect) => effect.kind === "gateRequisitionClaim");
   if (requisitionClaim) {
@@ -587,10 +589,11 @@ function reportJobCompletion({ title, summary, jobType, currentMinute }) {
 function applyUnifiedJob(job, currentMinute = 0) {
   const story = processStoryJobCompletion(job, currentMinute);
   if (story.handled) {
+    const chainTitle = getEventChain(job.payload?.story?.chainId)?.title ?? "연속 사건";
     const log = story.ok
-      ? story.waitingLocation ? "GREYWAKE 해독 완료: 마지막 당직 좌표가 지도에 표시되었습니다." : "GREYWAKE 해독 기록을 안전 종료했습니다."
-      : `GREYWAKE 해독 처리 실패: ${story.reason}.`;
-    reportJobCompletion({ title: "GREYWAKE 해독 완료", summary: log, jobType: job.type, currentMinute });
+      ? story.waitingLocation ? `${chainTitle} 작업 완료: 목표 좌표가 지도에 표시되었습니다.` : `${chainTitle} 작업을 안전 종료했습니다.`
+      : `${chainTitle} 작업 처리 실패: ${story.reason}.`;
+    reportJobCompletion({ title: `${chainTitle} 작업 완료`, summary: log, jobType: job.type, currentMinute });
     return log;
   }
   if (job.type === "training") {

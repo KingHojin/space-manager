@@ -96,6 +96,16 @@ export const CREW_TEMPLATES = [
     storyOnly: true,
   },
   {
+    templateId: "quarantine-pulse-epidemiologist",
+    name: "한 이솔",
+    role: "의무실",
+    rarity: "rare",
+    trait: "격리선 역학관",
+    baseStats: { piloting: 5, gunnery: 5, engineering: 8, medicine: 17, scouting: 12 },
+    portrait: "🧬",
+    storyOnly: true,
+  },
+  {
     templateId: "rare-reactor-tech",
     name: "장 이든",
     role: "기관실",

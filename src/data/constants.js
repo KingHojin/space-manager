@@ -123,6 +123,24 @@ export const GREYWAKE = Object.freeze({
   startedFlagId: "greywakeStarted",
 });
 
+export const QUARANTINE_PULSE = Object.freeze({
+  chainId: "quarantine-pulse",
+  startedFlagId: "quarantinePulseStarted",
+  markerLabel: "QUARANTINE // 이송 창구",
+  observationMinutes: 240,
+  standardTreatmentMinutes: 360,
+  gelTreatmentMinutes: 180,
+  standardOxygenCost: 7,
+  gelOxygenCost: 3,
+  boardingOxygenCost: 5,
+  standardMedicFatigue: 18,
+  gelMedicFatigue: 8,
+  gelItemId: "nanite-gel",
+  recruitTemplateId: "quarantine-pulse-epidemiologist",
+  recruitCost: 240,
+  transferCredits: 360,
+});
+
 // Numeric priority storage for jobStore.jobs[].priority (lower sorts first).
 // Keys deliberately match systems/priorities.js's activity-priority strings —
 // see the boundary comment above normalizeJobPriority/priorityToActivityPriority
