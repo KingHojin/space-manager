@@ -11,15 +11,18 @@ import { computeJobRefund } from "../../systems/jobEconomy";
 import { jobTypeLabel } from "../../systems/jobMigration";
 import { canFitPower, modulePowerCost, reactorCapacity, totalPowerDraw } from "../../systems/powerSystem";
 import { useCrewStore } from "../../stores/crewStore";
+import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useIncidentStore } from "../../stores/incidentStore";
 import { useJobStore } from "../../stores/jobStore";
+import { useNavStore } from "../../stores/navStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useShipStore } from "../../stores/shipStore";
 import { RoomCustomizationCard } from "./RoomCustomization";
 import InvestmentBalanceHint from "../common/InvestmentBalanceHint";
 import { cancelEventChainJob } from "../../orchestration/eventChainOrchestrator";
+import { crewWorkPreviewLabel, prepareCrewWorkSnapshot } from "../../systems/crewWorkProjection";
 
 const upgradeMaterialQty = { common: 2, uncommon: 3, rare: 5, epic: 8, legendary: 12 };
 const TABS = [
@@ -38,10 +41,11 @@ function getItemQty(items, itemId) {
 }
 
 function Progress({ task, currentMinute, label = "작업 진행" }) {
-  const rawProgress = task.progress !== undefined ? task.progress * 100 : ((currentMinute - (task.startedAt ?? currentMinute)) / Math.max(1, task.duration ?? 1)) * 100;
+  const duration = task.effectiveDuration ?? task.duration ?? 1;
+  const rawProgress = task.progress !== undefined ? task.progress * 100 : ((currentMinute - (task.startedAt ?? currentMinute)) / Math.max(1, duration)) * 100;
   const progress = Math.max(0, Math.min(100, Math.round(rawProgress)));
-  const remaining = Math.max(0, Math.round((task.duration ?? 0) * (1 - progress / 100)));
-  const completeAt = task.startedAt !== null && task.startedAt !== undefined ? task.startedAt + task.duration : task.completeAt;
+  const remaining = Math.max(0, Math.round(duration * (1 - progress / 100)));
+  const completeAt = task.startedAt !== null && task.startedAt !== undefined ? task.startedAt + duration : task.completeAt;
   return (
     <div className="mt-3 rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3">
       <div className="mb-1 flex items-center justify-between text-xs"><span className="hud-label">{label}</span><span className="hud-value">{progress}%</span></div>
@@ -64,8 +68,14 @@ function EquipTab({ roomId }) {
   const engineeringTier = useShipInteriorStore((state) => state.rooms.engineering?.tier ?? 1);
   const rawJobs = useJobStore((state) => state.jobs);
   const enqueueModuleWork = useJobStore((state) => state.enqueueModuleWork);
+  const crew = useCrewStore((state) => state.crew);
+  const claimSpecialtyUse = useCrewStore((state) => state.claimSpecialtyUse);
+  const equipmentInstances = useEquipmentStore((state) => state.instances);
+  const sectorIndex = useNavStore((state) => state.sectorIndex ?? 0);
   const items = useInventoryStore((state) => state.items);
   const removeItem = useInventoryStore((state) => state.removeItem);
+  const [workerId, setWorkerId] = useState("");
+  const [useSpecialty, setUseSpecialty] = useState(false);
 
   const modulesById = useMemo(() => new Map(modules.map((module) => [module.id, module])), [modules]);
   const moduleWorkQueue = useMemo(() => rawJobs.filter((job) => job.type === "module_upgrade" && ["backlog", "assigned", "in_progress"].includes(job.status)), [rawJobs]);
@@ -81,6 +91,20 @@ function EquipTab({ roomId }) {
   const installedModules = Object.values(effectiveInstalled).map((id) => modulesById.get(id)).filter(Boolean);
   const capacity = reactorCapacity(shipGrade, engineeringTier);
   const draw = totalPowerDraw(installedModules);
+  const sectorId = `sector:${sectorIndex}`;
+  const worker = crew.find((member) => member.id === workerId);
+  const workerSnapshot = worker ? prepareCrewWorkSnapshot({ jobType: "module_upgrade", member: worker, equipmentInstances, sectorId, useSpecialty }) : null;
+  const requireWorker = (duration) => {
+    if (!workerSnapshot?.ok) { addLog("모듈 작업 실패: 담당 승무원을 직접 지정하세요."); return null; }
+    return { workerCrewId: workerSnapshot.workerCrewId, workerSnapshot, preview: crewWorkPreviewLabel(workerSnapshot, duration) };
+  };
+  const claimAssignmentSpecialty = (assignment, actionId) => {
+    if (!assignment.workerSnapshot.specialty) return true;
+    const specialty = assignment.workerSnapshot.specialty;
+    const claim = claimSpecialtyUse({ crewId: specialty.crewId, sectorId, claimId: `job:${currentMinute}:module:${actionId}:${specialty.crewId}` });
+    if (!claim.ok) { addLog(`모듈 작업 특기 실패: ${claim.reason}.`); return false; }
+    return true;
+  };
 
   const equip = (slot, module) => {
     if (!unlockedModuleIds.includes(module.id)) return addLog(`${module.name} 모듈은 아직 보유하지 않았습니다. 시장에서 구매하거나 제작하세요.`);
@@ -91,9 +115,13 @@ function EquipTab({ roomId }) {
       return addLog(`${module.name} 장착 실패: 동력 예산 초과 (필요 ${modulePowerCost(module)}, 여유 ${Math.max(0, capacity - draw + freed)}).`);
     }
     const rule = getModuleRule(module);
+    const assignment = requireWorker(rule.installMinutes);
+    if (!assignment) return null;
+    if (resources.credits < rule.installCredits) return addLog(`${module.name} 장착 실패: 크레딧이 부족합니다.`);
+    if (!claimAssignmentSpecialty(assignment, `equip:${slot}:${module.id}`)) return null;
     if (!spendCredits(rule.installCredits)) return addLog(`${module.name} 장착 실패: 크레딧이 부족합니다.`);
-    enqueueModuleWork({ action: "equip", slot, moduleId: module.id, cost: rule.installCredits, duration: rule.installMinutes, priority: "high", createdAt: currentMinute, payload: { creditCost: rule.installCredits } });
-    return addLog(`${module.name} 장착 작업 대기열 등록: ${slot} 슬롯 · ₢${rule.installCredits} · ${formatMinutes(rule.installMinutes)}.`);
+    enqueueModuleWork({ action: "equip", slot, moduleId: module.id, cost: rule.installCredits, duration: rule.installMinutes, priority: "high", createdAt: currentMinute, workerCrewId: assignment.workerCrewId, workerSnapshot: assignment.workerSnapshot, payload: { creditCost: rule.installCredits } });
+    return addLog(`${module.name} 장착 작업 대기열 등록: ${assignment.preview} · ${worker?.name ?? assignment.workerCrewId} 지정.`);
   };
 
   const upgrade = (module) => {
@@ -102,10 +130,14 @@ function EquipTab({ roomId }) {
     const rule = getModuleRule(module);
     const materialQty = upgradeMaterialQty[module.rarity] ?? 2;
     if (getItemQty(items, "tritanium") < materialQty) return addLog(`${module.name} 개선 실패: 트리타늄 ${materialQty}개가 필요합니다.`);
+    const assignment = requireWorker(rule.upgradeMinutes);
+    if (!assignment) return null;
+    if (resources.credits < rule.upgradeCredits) return addLog(`${module.name} 개선 실패: 크레딧이 부족합니다.`);
+    if (!claimAssignmentSpecialty(assignment, `upgrade:${module.id}`)) return null;
     if (!spendCredits(rule.upgradeCredits)) return addLog(`${module.name} 개선 실패: 크레딧이 부족합니다.`);
     removeItem("tritanium", materialQty);
-    enqueueModuleWork({ action: "upgrade", slot: module.slot, moduleId: module.id, cost: rule.upgradeCredits, duration: rule.upgradeMinutes, priority: "normal", createdAt: currentMinute, payload: { creditCost: rule.upgradeCredits, inputItems: [{ itemId: "tritanium", qty: materialQty }] } });
-    return addLog(`${module.name} 개선 작업 대기열 등록: 트리타늄 ${materialQty}개, ₢${rule.upgradeCredits}, ${formatMinutes(rule.upgradeMinutes)}.`);
+    enqueueModuleWork({ action: "upgrade", slot: module.slot, moduleId: module.id, cost: rule.upgradeCredits, duration: rule.upgradeMinutes, priority: "normal", createdAt: currentMinute, workerCrewId: assignment.workerCrewId, workerSnapshot: assignment.workerSnapshot, payload: { creditCost: rule.upgradeCredits, inputItems: [{ itemId: "tritanium", qty: materialQty }] } });
+    return addLog(`${module.name} 개선 작업 대기열 등록: ${assignment.preview} · ${worker?.name ?? assignment.workerCrewId} 지정.`);
   };
 
   return (
@@ -114,6 +146,7 @@ function EquipTab({ roomId }) {
         <div className="flex items-center justify-between text-xs"><span className="hud-label">동력 예산</span><span className={`hud-value ${draw > capacity ? "text-red-300" : ""}`}>{draw} / {capacity}</span></div>
         <div className="hud-gauge mt-2"><span className={`hud-gauge-fill ${draw > capacity ? "bg-red-400" : ""}`} style={{ width: `${Math.min(100, Math.round((draw / Math.max(1, capacity)) * 100))}%` }} /></div>
       </div>
+      <div className="rounded-xl border border-cyan-300/25 bg-cyan-300/5 p-3 text-xs"><div className="font-black text-slate-100">모듈 작업 담당 · 결재 시 ETA 고정</div><select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-100" value={workerId} onChange={(event) => { setWorkerId(event.target.value); setUseSpecialty(false); }}><option value="">직접 지정</option>{crew.filter((member) => member.alive !== false).map((member) => <option key={member.id} value={member.id}>{member.name} · 기관 실효 {prepareCrewWorkSnapshot({ jobType: "module_upgrade", member, equipmentInstances, sectorId }).lead?.profile?.effective ?? 0}</option>)}</select>{workerSnapshot?.ok && <div className="mt-2 text-cyan-100">{crewWorkPreviewLabel(workerSnapshot, 60)}</div>}{workerSnapshot && !workerSnapshot.ok && <div className="mt-2 text-red-200">지정 불가: {workerSnapshot.reason}</div>}{prepareCrewWorkSnapshot({ jobType: "module_upgrade", member: worker, equipmentInstances, sectorId, useSpecialty: true })?.ok && <label className="mt-2 flex items-center gap-2 text-violet-100"><input type="checkbox" checked={useSpecialty} onChange={(event) => setUseSpecialty(event.target.checked)} />우회 배선 사용 · -30분 · 이번 구역 1회</label>}</div>
       {slots.map((slot) => {
         const slotModules = modules.filter((module) => module.slot === slot);
         const activeId = installed[slot];

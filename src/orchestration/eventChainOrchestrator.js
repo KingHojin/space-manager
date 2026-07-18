@@ -1,6 +1,6 @@
 import { EVENT_CHAIN_STATUS, getEventChain } from "../data/eventChains";
 import { ROOM_CONFIG } from "../data/constants";
-import { createCombatState, resolveEnemyFleet } from "../systems/combatEngine";
+import { autoAssignTacticalCrew, buildTacticalStationSnapshot, createCombatState, resolveEnemyFleet } from "../systems/combatEngine";
 import { createEventRuntime, isStoryRuntimeTerminal, normalizeEventRuntime, selectDeterministicStoryTarget } from "../systems/eventChainSystem";
 import { useCombatStore } from "../stores/combatStore";
 import { useCrewStore } from "../stores/crewStore";
@@ -253,8 +253,12 @@ function applyEffectOnce({ runtime, effect, index, currentMinute, afterStep }) {
     if (useExplorationStore.getState().pendingCombatEncounter) return { ok: false, reason: "combatEncounterPending" };
     const resolved = resolveEnemyFleet(effect.enemyId, { seed: claimId });
     if (!resolved.exact) return { ok: false, reason: "enemyNotFound" };
+    const crew = useCrewStore.getState().crew.filter((member) => member.alive !== false);
+    const equipmentInstances = useEquipmentStore.getState().instances;
+    const assignments = autoAssignTacticalCrew(crew, equipmentInstances);
+    const stationSnapshot = buildTacticalStationSnapshot({ crew, equipmentInstances, assignments, mode: "auto" });
     const combat = {
-      ...createCombatState(resolved.enemy),
+      ...createCombatState(resolved.enemy, { stationSnapshot }),
       source: { kind: "eventChain", runtimeId: runtime.id, stageId: runtime.pendingClaim.stageId, claimId, optionId: runtime.pendingClaim.optionId, chainId: runtime.chainId },
     };
     const started = useCombatStore.getState().startCombat({ vesselId, combat, targetId: "hull", feed: [`${getEventChain(runtime.chainId)?.title ?? "연속 사건"} 교전: ${resolved.enemy.name}`, "승리 전에는 조건부 보상이 지급되지 않습니다."] });

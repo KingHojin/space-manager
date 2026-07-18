@@ -33,6 +33,9 @@ export function getEffectiveCrewProfile({ member, context = "scouting", equipmen
 }
 
 export function outcomeTier(profile, threshold = 10) { if (!profile?.usable) return "unavailable"; if (profile.effective < threshold) return "below"; if (profile.effective >= threshold + 4) return "expert"; return "standard"; }
+// P27-B operational work and combat use these fixed, player-facing bands.
+// Story chains retain outcomeTier's authored per-option thresholds above.
+export function operationalTier(profile) { if (!profile?.usable) return "unavailable"; if (profile.effective < 10) return "below"; if (profile.effective < 14) return "assist"; if (profile.effective < 18) return "standard"; return "expert"; }
 export function getSpecialty(id) { return CREW_SPECIALTIES[id] ?? null; }
 export function specialtyAvailability({ member, sectorId, context, profile } = {}) {
   const specialty = getSpecialty(member?.specialtyId);
@@ -54,7 +57,7 @@ export function prepareCrewLead({ member, context, threshold, equipment = [] } =
 export function projectActionModifiers(lead) {
   const effect = lead?.profile?.gearEffect ?? {};
   return {
-    durationMinutes: Number(effect.durationMinutes ?? 0) + (lead?.tier === "expert" ? -30 : lead?.tier === "below" ? 30 : 0),
+    durationMinutes: Number(effect.durationMinutes ?? 0) + (lead?.tier === "expert" ? -30 : lead?.tier === "assist" ? 15 : lead?.tier === "below" ? 30 : 0),
     fatigueDelta: Number(effect.fatigueDelta ?? 0),
     penaltyTier: Number(effect.penaltyTier ?? 0),
     failureTier: Number(effect.failureTier ?? 0),

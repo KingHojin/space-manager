@@ -1,6 +1,8 @@
 import { getActiveModifiers } from "./cardEffects";
 import { isHealthy } from "./injurySystem";
 import { applyOutgoingDamage } from "./skillEffects";
+import { equipmentForCrew } from "../stores/equipmentStore";
+import { getEffectiveCrewProfile, operationalTier } from "./crewCapabilitySystem";
 
 const moraleScore = {
   나쁨: -4,
@@ -34,6 +36,23 @@ export const TACTICAL_STATIONS = Object.freeze({
   engineering: { id: "engineering", label: "기관실 담당", role: "기관실", stat: "engineering", desc: "방어막·피해 억제 보정" },
   medbay: { id: "medbay", label: "의무 대응", role: "의무실", stat: "medicine", desc: "승무원 부상 위험 완화" },
 });
+
+export function buildTacticalStationSnapshot({ crew = [], equipmentInstances = [], assignments = {}, mode = "auto" } = {}) {
+  const byId = new Map(crew.map((member) => [member.id, member]));
+  const used = new Set();
+  const stations = {};
+  for (const station of Object.values(TACTICAL_STATIONS)) {
+    const crewId = assignments[station.id] ?? null;
+    const member = byId.get(crewId);
+    if (!member || used.has(crewId)) { stations[station.id] = { stationId: station.id, crewId: null, profile: null, gear: null }; continue; }
+    const equipment = equipmentForCrew(equipmentInstances, member.id);
+    const profile = getEffectiveCrewProfile({ member, context: station.stat, equipment });
+    if (!profile.usable) { stations[station.id] = { stationId: station.id, crewId: null, profile: { ...profile, unavailable: true }, gear: null }; continue; }
+    used.add(crewId);
+    stations[station.id] = { stationId: station.id, crewId, name: member.name, role: member.role, profile, tier: operationalTier(profile), gear: profile.gearEffect?.combat ?? null, equipment: profile.equipment };
+  }
+  return { mode, stations };
+}
 
 export const ENEMY_FLEETS = [
   { id: "scrap-raider", name: "폐품 약탈선", hull: 44, shield: 22, power: 40, reward: 140, risk: 1, lootItemId: "machine-fang", lootItemQty: 1 },
@@ -127,7 +146,7 @@ export function getActiveEnemySubsystems(enemy = {}) {
     .filter((state) => state.turns > 0);
 }
 
-export function createCombatState(enemyTemplate) {
+export function createCombatState(enemyTemplate, { stationSnapshot = null } = {}) {
   return {
     round: 1,
     enemy: { ...enemyTemplate, hullNow: enemyTemplate.hull, shieldNow: enemyTemplate.shield, subsystems: normalizeSubsystems(enemyTemplate.subsystems) },
@@ -136,6 +155,7 @@ export function createCombatState(enemyTemplate) {
     lastTarget: "hull",
     lastDamage: 0,
     lastTaken: 0,
+    stationSnapshot,
   };
 }
 
@@ -152,20 +172,44 @@ function statScore(member, stat) {
   return Math.max(0, member.stats?.[stat] ?? 0) * (member.fatigue >= 75 ? 0.65 : member.fatigue >= 55 ? 0.82 : 1);
 }
 
-export function autoAssignTacticalCrew(crew = []) {
+export function autoAssignTacticalCrew(crew = [], equipmentInstances = []) {
   const alive = crew.filter((member) => member.alive !== false);
   const used = new Set();
-  return Object.fromEntries(Object.values(TACTICAL_STATIONS).map((station) => {
-    const preferred = alive
-      .filter((member) => !used.has(member.id) && member.role === station.role)
-      .sort((a, b) => statScore(b, station.stat) - statScore(a, station.stat))[0];
-    const fallback = preferred ?? alive.filter((member) => !used.has(member.id)).sort((a, b) => statScore(b, station.stat) - statScore(a, station.stat))[0];
-    if (fallback) used.add(fallback.id);
-    return [station.id, fallback?.id ?? null];
-  }));
+  const result = Object.fromEntries(Object.values(TACTICAL_STATIONS).map((station) => [station.id, null]));
+  const ranked = (station, members) => members.filter((member) => !used.has(member.id) && getEffectiveCrewProfile({ member, context: station.stat, equipment: equipmentForCrew(equipmentInstances, member.id) }).usable).sort((a, b) => getEffectiveCrewProfile({ member: b, context: station.stat, equipment: equipmentForCrew(equipmentInstances, b.id) }).effective - getEffectiveCrewProfile({ member: a, context: station.stat, equipment: equipmentForCrew(equipmentInstances, a.id) }).effective);
+  // Role matches are allocated before any fallback. Otherwise the bridge's
+  // fallback pass can steal the best gunner/engineer before its own station is
+  // considered, which makes AUTO disagree with the displayed role profile.
+  Object.values(TACTICAL_STATIONS).forEach((station) => {
+    const member = ranked(station, alive.filter((entry) => entry.role === station.role))[0];
+    if (member) { result[station.id] = member.id; used.add(member.id); }
+  });
+  Object.values(TACTICAL_STATIONS).forEach((station) => {
+    if (result[station.id]) return;
+    const member = ranked(station, alive)[0];
+    if (member) { result[station.id] = member.id; used.add(member.id); }
+  });
+  return result;
 }
 
-export function calculateTacticalCrewBonus({ crew = [], assignments = {} } = {}) {
+export function calculateTacticalCrewBonus({ crew = [], assignments = {}, equipmentInstances = [], stationSnapshot = null } = {}) {
+  const snapshot = stationSnapshot ?? buildTacticalStationSnapshot({ crew, equipmentInstances, assignments });
+  const station = (id) => snapshot.stations?.[id] ?? {};
+  const score = (id) => Number(station(id).profile?.effective ?? 0);
+  const gear = (id, key) => Number(station(id).gear?.[key] ?? 0);
+  if (stationSnapshot) {
+    const gunnerScore = score("gunnery");
+    const bridgeScore = score("bridge");
+    const engineerScore = score("engineering");
+    const medicScore = score("medbay");
+    const tierBonus = (id, below, assist, expert) => station(id).tier === "expert" ? expert : station(id).tier === "assist" ? assist : station(id).tier === "below" ? below : 0;
+    const damageMul = Math.max(0.9, 1 + clamp(gunnerScore / 900, 0, 0.06) + tierBonus("gunnery", -0.04, -0.015, 0.04));
+    const bridgeDefense = Math.max(0, clamp(bridgeScore / 1000, 0, 0.055) + tierBonus("bridge", -0.015, -0.006, 0.02) + gear("bridge", "takenReduction"));
+    const engineerDefense = Math.max(0, clamp(engineerScore / 950, 0, 0.06) + tierBonus("engineering", -0.015, -0.006, 0.02) + gear("engineering", "takenReduction"));
+    const medicalSafety = Math.max(0, clamp(medicScore / 1200, 0, 0.05) + tierBonus("medbay", -0.015, -0.006, 0.02) + gear("medbay", "casualtyReduction"));
+    const labels = Object.values(TACTICAL_STATIONS).flatMap((definition) => { const entry = station(definition.id); const gearText = entry.gear?.takenReduction ? ` · 장비 피격 -${Math.round(entry.gear.takenReduction * 100)}%` : entry.gear?.casualtyReduction ? ` · 장비 부상 -${Math.round(entry.gear.casualtyReduction * 1000) / 10}%p` : ""; return entry.crewId ? [`${entry.name ?? entry.crewId} ${definition.label} 실효 ${entry.profile?.effective ?? 0} · ${entry.tier === "expert" ? "전문" : entry.tier === "assist" ? "지원" : entry.tier === "below" ? "미달" : "표준"}${gearText}`] : []; });
+    return { damageMul, takenMul: Math.max(0.72, 1 - bridgeDefense - engineerDefense), retreatThresholdShift: clamp(bridgeScore / 900 + engineerScore / 1300 + tierBonus("bridge", -0.02, -0.008, 0.025), 0, 0.15), casualtyRiskMul: Math.max(0.72, 1 - medicalSafety), labels, stationSnapshot: snapshot };
+  }
   const byId = new Map(crew.map((member) => [member.id, member]));
   const bridge = byId.get(assignments.bridge);
   const gunner = byId.get(assignments.gunnery);

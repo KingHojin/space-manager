@@ -1,11 +1,12 @@
 import { AlertTriangle, Crosshair, Shield, Skull, Swords, Target, Users, Zap } from "lucide-react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import BattleScene from "../common/BattleScene";
 import { ActionCard, FeedList, StatTile } from "../ui/VisualPrimitives";
 import {
   COMBAT_TARGETS,
   TACTICAL_STATIONS,
   autoAssignTacticalCrew,
+  buildTacticalStationSnapshot,
   calculateCombatPower,
   calculateTacticalCrewBonus,
   createCombatState,
@@ -21,6 +22,7 @@ import { applyCombatCasualtyWithJobs } from "../../systems/gameClock";
 import { buildCombatReport } from "../../systems/reportSystem";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
+import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -110,18 +112,20 @@ function TargetCard({ target, active, disabled, onSelect }) {
   );
 }
 
-function TacticalCrewPanel({ crew, assignments, bonus }) {
+function TacticalCrewPanel({ crew, assignments, bonus, mode, onMode, onAssignment, locked = false }) {
   const byId = new Map(crew.map((member) => [member.id, member]));
   return (
     <section className="mt-4 rounded-2xl border border-sky-300/25 bg-sky-300/10 p-3">
-      <div className="flex items-center justify-between gap-2"><div className="section-title"><Users size={16} />전술 담당 승무원</div><span className="hud-chip hud-chip-accent">AUTO</span></div>
+      <div className="flex items-center justify-between gap-2"><div className="section-title"><Users size={16} />전술 담당 승무원</div><button className="hud-chip hud-chip-accent disabled:opacity-60" disabled={locked} onClick={() => onMode?.(mode === "auto" ? "manual" : "auto")}>{locked ? "LOCKED" : mode === "auto" ? "AUTO" : "MANUAL"}</button></div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         {Object.values(TACTICAL_STATIONS).map((station) => {
           const member = byId.get(assignments[station.id]);
           const stat = member?.stats?.[station.stat] ?? 0;
+          const snapshotEntry = bonus.stationSnapshot?.stations?.[station.id];
+          const usedElsewhere = new Set(Object.entries(assignments).filter(([id, crewId]) => id !== station.id && crewId).map(([, crewId]) => crewId));
           return (
             <div key={station.id} className="rounded-xl border border-slate-700/70 bg-slate-950/65 p-2">
-              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-black text-slate-100">{station.label}</div><div className="mt-0.5 truncate text-[11px] text-slate-400">{member?.name ?? "미배치"}</div></div><span className="hud-chip bg-slate-950/70">{station.stat} {stat}</span></div>
+              <div className="flex items-start justify-between gap-2"><div className="min-w-0"><div className="truncate text-xs font-black text-slate-100">{station.label}</div>{mode === "manual" && !locked ? <select className="mt-1 w-full rounded bg-slate-950 px-1 py-0.5 text-[11px] text-slate-100" value={assignments[station.id] ?? ""} onChange={(event) => onAssignment?.(station.id, event.target.value || null)}><option value="">미배치</option>{crew.filter((candidate) => candidate.alive !== false).map((candidate) => <option key={candidate.id} value={candidate.id} disabled={usedElsewhere.has(candidate.id)}>{candidate.name}</option>)}</select> : <div className="mt-0.5 truncate text-[11px] text-slate-400">{member?.name ?? "미배치"}</div>}</div><span className="hud-chip bg-slate-950/70">{snapshotEntry?.crewId ? `실효 ${snapshotEntry.profile?.effective ?? stat} · ${snapshotEntry.tier === "expert" ? "전문" : snapshotEntry.tier === "assist" ? "지원" : snapshotEntry.tier === "below" ? "미달" : "표준"}` : "미배치 · 효과 없음"}</span></div>
               <div className="mt-1 truncate text-[10px] text-slate-500">{station.desc}</div>
             </div>
           );
@@ -204,6 +208,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const installedModules = useShipStore((state) => state.getInstalledModules());
   const activeVesselId = useShipStore((state) => state.activeVesselId);
   const crew = useCrewStore((state) => state.crew);
+  const equipmentInstances = useEquipmentStore((state) => state.instances);
   const applyCrewOutcome = useCrewStore((state) => state.applyCrewOutcome);
   const activeTravel = useNavStore((state) => state.travel);
   const navSector = useNavStore((state) => state.sector);
@@ -232,8 +237,12 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const addCombatFeed = useCombatStore((state) => state.addFeed);
   const activeCrew = crew.filter((member) => member.alive !== false);
   const fallenCrew = crew.filter((member) => member.alive === false);
-  const tacticalAssignments = useMemo(() => autoAssignTacticalCrew(activeCrew), [activeCrew]);
-  const tacticalBonus = useMemo(() => calculateTacticalCrewBonus({ crew: activeCrew, assignments: tacticalAssignments }), [activeCrew, tacticalAssignments]);
+  const [stationMode, setStationMode] = useState("auto");
+  const [manualAssignments, setManualAssignments] = useState({});
+  const autoAssignments = useMemo(() => autoAssignTacticalCrew(activeCrew, equipmentInstances), [activeCrew, equipmentInstances]);
+  const tacticalAssignments = stationMode === "manual" ? manualAssignments : autoAssignments;
+  const tacticalSnapshot = useMemo(() => buildTacticalStationSnapshot({ crew: activeCrew, equipmentInstances, assignments: tacticalAssignments, mode: stationMode }), [activeCrew, equipmentInstances, tacticalAssignments, stationMode]);
+  const tacticalBonus = useMemo(() => calculateTacticalCrewBonus({ stationSnapshot: tacticalSnapshot }), [tacticalSnapshot]);
   const activeCards = useMemo(() => cards.filter((card) => activeCardIds.includes(card.instanceId)), [cards, activeCardIds]);
   const power = calculateCombatPower({ modules: installedModules, crew, activeCards });
   // Live danger ceiling — see docs/NEXT_CHAT_HANDOFF.md "알려진 지뢰": the old
@@ -261,7 +270,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
     const enemy = pendingCombatEncounter?.enemyId
       ? resolveEnemyFleet(pendingCombatEncounter.enemyId, { danger, maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier, seed: pendingCombatEncounter.id }).enemy
       : pickEnemyFleet(danger, { maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier });
-    const next = createCombatState(enemy);
+    const next = createCombatState(enemy, { stationSnapshot: tacticalSnapshot });
     startCombatRecord({ vesselId: activeVesselId, combat: next, targetId: "hull" });
     if (pendingCombatEncounter) {
       clearPendingCombatEncounter();
@@ -289,13 +298,14 @@ export default function Combat({ onNavigate, onOpenModal }) {
   const issueDirective = (directive) => {
     if (!combat || combat.status !== "engaged") return pushFeed([getCombatDirectiveResult(directive), travelLocked ? "항해 중이라 훈련 교전도 제한됩니다." : "교전이 없어 훈련 중계만 기록됩니다."]);
     if (activeCrew.length === 0) return pushFeed(["지시 불가: 생존 승무원이 없습니다."]);
-    const result = resolveCombatRound({ directive, combat, power, targetId, tacticalCrewBonus: tacticalBonus, skillEffects });
+    const snapshotBonus = calculateTacticalCrewBonus({ stationSnapshot: combat.stationSnapshot ?? tacticalSnapshot });
+    const result = resolveCombatRound({ directive, combat, power, targetId, tacticalCrewBonus: snapshotBonus, skillEffects });
     updateCombatRecord({ vesselId: activeVesselId, combat: result.combat });
     addResources(result.resourceChanges);
     if (result.loot) addItem(result.loot.itemId, result.loot.qty);
     const lead = activeCrew[Math.floor(Math.random() * activeCrew.length)];
     if (lead) applyCrewOutcome({ memberId: lead.id, fatigue: 6, experience: 5, morale: result.combat.status === "won" ? 1 : 0 });
-    const casualty = rollCrewCasualty({ crew, enemy: combat.enemy, directive, hullDamage: Math.abs(result.resourceChanges.hull ?? 0), shipHull: resources.hull + (result.resourceChanges.hull ?? 0), casualtyRiskMul: tacticalBonus.casualtyRiskMul ?? 1 });
+    const casualty = rollCrewCasualty({ crew, enemy: combat.enemy, directive, hullDamage: Math.abs(result.resourceChanges.hull ?? 0), shipHull: resources.hull + (result.resourceChanges.hull ?? 0), casualtyRiskMul: snapshotBonus.casualtyRiskMul ?? 1 });
     const casualtyLogs = [];
     if (casualty) {
       applyCombatCasualtyWithJobs({ memberId: casualty.member.id, injury: casualty.injury, morale: casualty.injury === "전사" ? -3 : -1 });
@@ -375,7 +385,7 @@ export default function Combat({ onNavigate, onOpenModal }) {
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Crosshair size={18} />전술 콘솔</div><p className="mt-2 text-sm text-slate-400">타겟 서브시스템과 전술 지시를 조합해 교전을 결재합니다.</p></div><span className="hud-chip hud-chip-accent">PWR {power}</span></div>
         <div className="mt-4 grid gap-3 sm:grid-cols-[0.95fr_1.05fr]"><ThreatPoster enemy={enemy} pendingCombatEncounter={pendingCombatEncounter} combat={combat} travelLocked={travelLocked} /><div className="grid grid-cols-3 gap-2"><StatTile icon={Shield} label="선체" value={`${Math.round(resources.hull)}%`} /><StatTile icon={Zap} label="연료" value={`${Math.round(resources.fuel)}%`} /><StatTile icon={Skull} label="생존/전사" value={`${activeCrew.length}/${fallenCrew.length}`} /></div></div>
         {activeTravel && <div className={`mt-4 rounded-2xl border p-3 text-sm ${pendingCombatEncounter || combatEngaged ? "border-red-400/40 bg-red-400/10 text-red-100" : "border-amber-300/35 bg-amber-300/10 text-amber-100"}`}><div className="flex items-center gap-2 font-bold"><AlertTriangle size={16} />{pendingCombatEncounter || combatEngaged ? "항해 중 긴급 교전" : "항해 작전 진행 중"}</div></div>}
-        <TacticalCrewPanel crew={activeCrew} assignments={tacticalAssignments} bonus={tacticalBonus} />
+        <TacticalCrewPanel crew={activeCrew} assignments={combat?.stationSnapshot ? Object.fromEntries(Object.entries(combat.stationSnapshot.stations ?? {}).map(([id, entry]) => [id, entry.crewId])) : tacticalAssignments} bonus={combat?.stationSnapshot ? calculateTacticalCrewBonus({ stationSnapshot: combat.stationSnapshot }) : tacticalBonus} mode={combat?.stationSnapshot?.mode ?? stationMode} locked={Boolean(combat?.stationSnapshot)} onMode={(nextMode) => { if (nextMode === "manual") setManualAssignments(autoAssignments); setStationMode(nextMode); }} onAssignment={(stationId, crewId) => setManualAssignments((current) => ({ ...current, [stationId]: crewId }))} />
         <div className="mt-4 rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
           <div className="flex items-center justify-between gap-2"><div><div className="hud-label">교전 대상</div><div className="font-black text-slate-100">{enemy?.name ?? (pendingCombatEncounter ? pendingCombatEncounter.title : "없음")}</div></div><span className={`hud-chip ${combatStatusChip(combat?.status, combatEngaged)}`}>{combat?.status ?? "대기"}</span></div>
           {enemy && <div className="mt-3 grid grid-cols-2 gap-2"><StatTile icon={Shield} label="적 선체" value={`${enemyHull}%`} /><StatTile icon={Zap} label="적 방어막" value={`${enemyShield}%`} /></div>}

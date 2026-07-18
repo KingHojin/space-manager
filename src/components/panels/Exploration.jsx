@@ -1,10 +1,12 @@
 import { AlertTriangle, Briefcase, CheckCircle2, Clock3, Fuel, MapPin, Radar, Rocket, Route } from "lucide-react";
+import { useState } from "react";
 import { DECODE_RULES, DRIFT, DUST, JOB_DURATION, NAVIGATION_TRAVEL } from "../../data/constants";
 import { getEventChain, presentEventChainStarterOption } from "../../data/eventChains";
 import { formatMinutes } from "../../data/moduleRecipes";
 import { NODE_TYPE_ICONS, NODE_TYPE_LABELS } from "../../data/navEncounters";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
+import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useExplorationStore } from "../../stores/explorationStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
@@ -14,7 +16,8 @@ import { useNavStore } from "../../stores/navStore";
 import { useRecruitStore } from "../../stores/recruitStore";
 import { useShipStore } from "../../stores/shipStore";
 import { useSkillStore } from "../../stores/skillStore";
-import { createCombatState, pickEnemyFleet } from "../../systems/combatEngine";
+import { autoAssignTacticalCrew, buildTacticalStationSnapshot, createCombatState, pickEnemyFleet } from "../../systems/combatEngine";
+import { crewWorkPreviewLabel, getCrewWorkCandidates, prepareCrewWorkSnapshot } from "../../systems/crewWorkProjection";
 import { getSectorObjective, getSectorProfile } from "../../systems/campaignProgression";
 import { explorationBlockLabel, explorationFuelCost } from "../../systems/explorationRules";
 import { applyCombatCasualtyWithJobs, applyNavigationEncounter, formatGameDate, requestDriftRescue } from "../../systems/gameClock";
@@ -143,6 +146,8 @@ export default function Exploration({ onNavigate }) {
   const jobs = useJobStore((state) => state.jobs ?? []);
   const enqueueJob = useJobStore((state) => state.enqueueJob);
   const crew = useCrewStore((state) => state.crew);
+  const claimSpecialtyUse = useCrewStore((state) => state.claimSpecialtyUse);
+  const equipmentInstances = useEquipmentStore((state) => state.instances);
   const zoneRuntime = useExplorationStore((state) => state.zoneRuntime ?? {});
   const exploreZone = useExplorationStore((state) => state.exploreZone);
   const sector = useNavStore((state) => state.sector);
@@ -154,6 +159,8 @@ export default function Exploration({ onNavigate }) {
   const discovered = useNavStore((state) => state.discovered ?? []);
   const visited = useNavStore((state) => state.visited ?? []);
   const sectorIndex = useNavStore((state) => state.sectorIndex ?? 0);
+  const [decodeWorkerId, setDecodeWorkerId] = useState("");
+  const [decodeSpecialty, setDecodeSpecialty] = useState(false);
   const campaign = useNavStore((state) => state.campaign);
   const pendingEncounter = useNavStore((state) => state.pendingEncounter);
   const driftState = useNavStore((state) => state.driftState);
@@ -291,7 +298,10 @@ export default function Exploration({ onNavigate }) {
     }
     const danger = missionCombatDanger(current, result.combat);
     const enemy = pickEnemyFleet(danger, { maxRisk: sectorProfile.enemyRiskCeiling, rewardMultiplier: sectorProfile.rewardMultiplier });
-    const combat = { ...createCombatState(enemy), source: { kind: "missionEncounter", encounterId: result.encounter.id, missionId: result.encounter.missionId, optionId: result.option.id, danger } };
+    const livingCrew = crew.filter((member) => member.alive !== false);
+    const assignments = autoAssignTacticalCrew(livingCrew, equipmentInstances);
+    const stationSnapshot = buildTacticalStationSnapshot({ crew: livingCrew, equipmentInstances, assignments, mode: "auto" });
+    const combat = { ...createCombatState(enemy, { stationSnapshot }), source: { kind: "missionEncounter", encounterId: result.encounter.id, missionId: result.encounter.missionId, optionId: result.option.id, danger } };
     const started = startCombatRecord({
       vesselId: activeVesselId,
       combat,
@@ -333,9 +343,17 @@ export default function Exploration({ onNavigate }) {
     if (!rule) return;
     const hasActiveDecode = jobs.some((job) => job.type === "decode" && job.payload?.itemId === itemId && ["backlog", "assigned", "in_progress"].includes(job.status));
     if (hasActiveDecode) return addLog("이미 해독 작업이 진행 중입니다.");
+    const member = crew.find((entry) => entry.id === decodeWorkerId);
+    const sectorId = `sector:${sectorIndex}`;
+    const snapshot = prepareCrewWorkSnapshot({ jobType: "decode", member, equipmentInstances, sectorId, useSpecialty: decodeSpecialty });
+    if (!snapshot.ok) return addLog(`단서 해독 실패: ${snapshot.reason ?? "담당 승무원을 직접 지정하세요"}.`);
+    if (snapshot.specialty) {
+      const claimed = claimSpecialtyUse({ crewId: snapshot.specialty.crewId, sectorId, claimId: `job:${currentMinute}:decode:${itemId}:${snapshot.specialty.crewId}` });
+      if (!claimed.ok) return addLog(`단서 해독 특기 실패: ${claimed.reason}.`);
+    }
     removeItem(itemId, 1);
-    enqueueJob({ type: "decode", roomId: "ops", duration: JOB_DURATION.decode, priority: "normal", createdAt: currentMinute, payload: { itemId, inputItems: [{ itemId, qty: 1 }] } });
-    return addLog(`단서 해독 작업 등록: ${rule.label} · 관제실 슬롯 필요 · 4시간.`);
+    enqueueJob({ type: "decode", roomId: "ops", duration: JOB_DURATION.decode, priority: "normal", createdAt: currentMinute, payload: { itemId, inputItems: [{ itemId, qty: 1 }], workerCrewId: snapshot.workerCrewId, workerSnapshot: snapshot } });
+    return addLog(`단서 해독 작업 등록: ${rule.label} · ${crewWorkPreviewLabel(snapshot, JOB_DURATION.decode)} · ${member.name} 지정.`);
   };
 
   const handleRescueRequest = () => {
@@ -368,6 +386,7 @@ export default function Exploration({ onNavigate }) {
         <section>
           <div className="section-title"><Briefcase size={18} />단서 해독</div>
           <div className="mt-3 grid gap-2">
+            <div className="rounded border border-cyan-300/25 bg-cyan-300/5 p-3 text-xs"><div className="font-black text-slate-100">해독 담당 · 결재 시 실효수치/ETA 고정</div><select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1.5 text-slate-100" value={decodeWorkerId} onChange={(event) => { setDecodeWorkerId(event.target.value); setDecodeSpecialty(false); }}><option value="">직접 지정</option>{getCrewWorkCandidates({ jobType: "decode", crew, equipmentInstances }).map((candidate) => <option key={candidate.leadCrewId} value={candidate.leadCrewId}>{crew.find((member) => member.id === candidate.leadCrewId)?.name ?? candidate.leadCrewId} · {candidate.profile.base}→{candidate.profile.effective} · {candidate.tier === "expert" ? "전문" : candidate.tier === "assist" ? "지원" : candidate.tier === "below" ? "미달" : "표준"}</option>)}</select>{decodeWorkerId && (() => { const member = crew.find((entry) => entry.id === decodeWorkerId); const preview = prepareCrewWorkSnapshot({ jobType: "decode", member, equipmentInstances, sectorId: `sector:${sectorIndex}`, useSpecialty: decodeSpecialty }); const special = prepareCrewWorkSnapshot({ jobType: "decode", member, equipmentInstances, sectorId: `sector:${sectorIndex}`, useSpecialty: true }); return <>{preview.ok && <div className="mt-2 text-cyan-100">{crewWorkPreviewLabel(preview, JOB_DURATION.decode)} · 먼지 {formatSigned(preview.outcome.dustDelta ?? 0)}</div>}{special.ok && <label className="mt-2 flex items-center gap-2 text-violet-100"><input type="checkbox" checked={decodeSpecialty} onChange={(event) => setDecodeSpecialty(event.target.checked)} />신호 분리 사용 · -60분 · 이번 구역 1회</label>}</>; })()}</div>
             {jobs.filter((job) => job.type === "decode" && job.payload?.story && ["backlog", "assigned", "in_progress"].includes(job.status)).map((job) => <div key={job.id} className="rounded border border-violet-400/40 bg-violet-400/10 p-3"><div className="text-sm font-bold text-violet-100">GREYWAKE // 관제실 대기</div><div className="mt-1 text-xs text-slate-300">관제실 작업 1개 · 승무원 1명 · 4시간 · {job.status === "in_progress" ? "진행 중" : "대기 중"}</div><button className="secondary-button mt-2" disabled={job.status === "in_progress"} onClick={() => handleCancelStoryJob(job.id)}>해독 취소{job.status !== "in_progress" ? " · 기록장치 환급" : " 불가"}</button></div>)}
             {Object.keys(DECODE_RULES).every((itemId) => (inventoryItems.find((item) => item.id === itemId)?.qty ?? 0) <= 0) ? (
               <p className="text-sm text-slate-500">해독할 단서가 없습니다. 난파선·유적 탐험에서 단서를 찾아보세요.</p>
