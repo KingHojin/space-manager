@@ -570,12 +570,15 @@ function applyShipWork(task) {
     // Deliberately resolve against the doctrine active at completion time.
     // Skill changes while a job is queued therefore affect the final result.
     const effects = getSkillEffects(useSkillStore.getState().levels);
-    const hullDelta = applyHullRepair(task.payload?.hullDelta ?? 0, effects.repair);
+    const hullDelta = applyHullRepair((task.payload?.hullDelta ?? 0) + (task.payload?.workerSnapshot?.outcome?.hullDelta ?? 0), effects.repair);
     if (hullDelta > 0) useGameStore.getState().addResources({ hull: hullDelta });
     return `선체 정비 완료: 선체 +${hullDelta}%.`;
   }
   if (task.type === "salvageProcessing") {
-    const awarded = applyItemOutputs(task.payload?.outputItems ?? []);
+    const outputs = [...(task.payload?.outputItems ?? [])];
+    const bonus = Math.max(0, Number(task.payload?.workerSnapshot?.outcome?.outputBonus ?? 0));
+    if (bonus > 0 && outputs[0]) outputs[0] = { ...outputs[0], qty: outputs[0].qty + bonus };
+    const awarded = applyItemOutputs(outputs);
     return `잔해 분해 완료: ${awarded.length > 0 ? awarded.join(", ") : "회수 자원 없음"}.`;
   }
   return `함선 작업 완료: ${task.type}.`;
@@ -639,12 +642,13 @@ function applyUnifiedJob(job, currentMinute = 0) {
     const rule = DECODE_RULES[job.payload?.itemId];
     if (!rule) return "해독 완료: 판독 불가 데이터.";
     const revealed = useNavStore.getState().revealHiddenNodes(rule.reveals);
-    useInventoryStore.getState().addDust(rule.dustReward);
+    const dustReward = Math.max(0, rule.dustReward + Number(job.payload?.workerSnapshot?.outcome?.dustDelta ?? 0));
+    useInventoryStore.getState().addDust(dustReward);
     const names = revealed.map((node) => node.name).join(", ");
     const log =
       revealed.length > 0
-        ? `${rule.label} 해독 완료: ${names} 좌표 확보 (+먼지 ${rule.dustReward}).`
-        : `${rule.label} 해독 완료: 새 좌표 없음, 항법 데이터로 환원 (+먼지 ${rule.dustReward}).`;
+        ? `${rule.label} 해독 완료: ${names} 좌표 확보 (+먼지 ${dustReward}).`
+        : `${rule.label} 해독 완료: 새 좌표 없음, 항법 데이터로 환원 (+먼지 ${dustReward}).`;
     reportJobCompletion({ title: "해독 완료", summary: log, jobType: job.type, currentMinute });
     return log;
   }

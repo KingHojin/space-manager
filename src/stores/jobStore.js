@@ -110,12 +110,12 @@ export const useJobStore = create(
         });
         return { ok: true, repeated: false, job };
       },
-      enqueueShipWork: ({ type, roomId, cost = 0, duration, payload = {}, priority = "normal", completeAt = null, createdAt = null }) => {
+      enqueueShipWork: ({ type, roomId, cost = 0, duration, payload = {}, priority = "normal", completeAt = null, createdAt = null, workerCrewId = null, workerSnapshot = null }) => {
         const jobType = type === "hullRepair" ? "hull_repair" : type === "salvageProcessing" ? "salvage" : type;
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
-        return get().enqueueJob({ type: jobType, roomId, cost, duration, priority, createdAt: start, payload });
+        return get().enqueueJob({ type: jobType, roomId, cost, duration, priority, createdAt: start, payload: { ...payload, ...(workerCrewId ? { workerCrewId } : {}), ...(workerSnapshot ? { workerSnapshot } : {}) } });
       },
-      enqueueModuleWork: ({ action = "upgrade", slot = null, moduleId, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null, payload = {} }) => {
+      enqueueModuleWork: ({ action = "upgrade", slot = null, moduleId, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null, payload = {}, workerCrewId = null, workerSnapshot = null }) => {
         const start = createdAt ?? (completeAt && duration ? completeAt - duration : 0);
         const roomId = moduleRoom(slot);
         return get().enqueueJob({
@@ -125,7 +125,7 @@ export const useJobStore = create(
           duration,
           priority,
           createdAt: start,
-          payload: { ...payload, action, slot, moduleId },
+          payload: { ...payload, action, slot, moduleId, ...(workerCrewId ? { workerCrewId } : {}), ...(workerSnapshot ? { workerSnapshot } : {}) },
         });
       },
       enqueueTraining: ({ memberId, statKey, cost = 0, duration, priority = "normal", completeAt = null, createdAt = null }) => {

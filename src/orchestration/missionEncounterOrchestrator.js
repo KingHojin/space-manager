@@ -1,9 +1,10 @@
 import { EVENT_CHAINS, getEventChain, EVENT_CHAIN_STATUS } from "../data/eventChains";
-import { createCombatState, resolveEnemyFleet } from "../systems/combatEngine";
+import { autoAssignTacticalCrew, buildTacticalStationSnapshot, createCombatState, resolveEnemyFleet } from "../systems/combatEngine";
 import { getSectorProfile } from "../systems/campaignProgression";
 import { canPresentStoryRuntime, getDueEventRuntimes, storyEncounterClaimId } from "../systems/eventChainSystem";
 import { useCombatStore } from "../stores/combatStore";
 import { useCrewStore } from "../stores/crewStore";
+import { useEquipmentStore } from "../stores/equipmentStore";
 import { useExplorationStore } from "../stores/explorationStore";
 import { useGameStore } from "../stores/gameStore";
 import { useInventoryStore } from "../stores/inventoryStore";
@@ -86,7 +87,11 @@ function startPreparedCombat(vesselId, encounter, settlement, combatEffect) {
   const profile = getSectorProfile(nav.sectorIndex ?? 0);
   const resolved = resolveEnemyFleet(combatEffect?.enemyId, { danger, maxRisk: profile.enemyRiskCeiling, rewardMultiplier: profile.rewardMultiplier, seed: settlement.claimId });
   if (!resolved.exact && combatEffect?.enemyId) useGameStore.getState().addLog(`알 수 없는 임무 적 ID ${combatEffect.enemyId}; ${resolved.enemy.name}(으)로 안전 대체했습니다.`);
-  const combat = { ...createCombatState(resolved.enemy), source: { kind: "missionEncounter", encounterId: encounter.id, runtimeId: encounter.id, stageId: encounter.timing, missionId: encounter.missionId, optionId: settlement.optionId, claimId: settlement.claimId, danger } };
+  const crew = useCrewStore.getState().crew.filter((member) => member.alive !== false);
+  const equipmentInstances = useEquipmentStore.getState().instances;
+  const assignments = autoAssignTacticalCrew(crew, equipmentInstances);
+  const stationSnapshot = buildTacticalStationSnapshot({ crew, equipmentInstances, assignments, mode: "auto" });
+  const combat = { ...createCombatState(resolved.enemy, { stationSnapshot }), source: { kind: "missionEncounter", encounterId: encounter.id, runtimeId: encounter.id, stageId: encounter.timing, missionId: encounter.missionId, optionId: settlement.optionId, claimId: settlement.claimId, danger } };
   return useCombatStore.getState().startCombat({ vesselId, combat, targetId: "hull", feed: [`임무 조우 전투 발생: ${encounter.title}`, `${resolved.enemy.name} 식별.`] });
 }
 

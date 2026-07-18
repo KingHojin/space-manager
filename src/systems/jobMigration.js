@@ -224,7 +224,8 @@ export function migrateLegacyQueues(shipWorkQueue = [], recoveryQueue = [], trai
 export function jobToLegacyShipWork(job) {
   const normalized = normalizeJob(job);
   if (normalized.type !== "hull_repair" && normalized.type !== "salvage") return null;
-  return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, payload: normalized.payload, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + normalized.duration };
+  const duration = normalized.effectiveDuration ?? normalized.duration;
+  return { id: normalized.id, type: normalized.type === "hull_repair" ? "hullRepair" : "salvageProcessing", roomId: normalized.roomId, status: normalized.status, cost: normalized.cost, duration: normalized.duration, effectiveDuration: normalized.effectiveDuration, payload: normalized.payload, priority: priorityToActivityPriority(normalized.priority), startedAt: normalized.startedAt ?? normalized.createdAt, completeAt: (normalized.startedAt ?? normalized.createdAt) + duration };
 }
 
 export function jobToLegacyModuleWork(job) {

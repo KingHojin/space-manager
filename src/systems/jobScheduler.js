@@ -53,7 +53,15 @@ function assignedCrewIds(jobs) {
 }
 
 function findCandidateForJob(job, crew, reservedCrewIds) {
+  const workerCrewId = job.payload?.workerCrewId;
   const targetCrewId = job.payload?.targetCrewId;
+
+  if (workerCrewId) {
+    const worker = crew.find((member) => member.id === workerCrewId);
+    if (!isCrewUsable(worker) || reservedCrewIds.has(workerCrewId)) return null;
+    if (!matchesRole(worker, job.requiredRole)) return null;
+    return worker;
+  }
 
   if (targetCrewId) {
     const target = crew.find((member) => member.id === targetCrewId);
@@ -110,6 +118,6 @@ export function explainBacklogReason(job, jobs = [], rooms = {}, crew = []) {
   const usedIds = usedSlotIdsForRoom(jobs, job.roomId);
   if (!hasSlot(room, usedIds)) return "슬롯 대기";
   const hasCrew = Boolean(findCandidateForJob(job, crew, assignedCrewIds(jobs)));
-  if (!hasCrew) return "크루 대기";
+  if (!hasCrew) return job.payload?.workerCrewId ? "지정 승무원 대기" : "크루 대기";
   return "배정 대기";
 }
