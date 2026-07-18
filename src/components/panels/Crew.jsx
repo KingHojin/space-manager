@@ -22,6 +22,11 @@ import { useGameStore } from "../../stores/gameStore";
 import { useJobStore } from "../../stores/jobStore";
 import { useShipInteriorStore } from "../../stores/shipInteriorStore";
 import { useSkillStore } from "../../stores/skillStore";
+import { useEquipmentStore, equipmentForCrew } from "../../stores/equipmentStore";
+import { useCombatStore } from "../../stores/combatStore";
+import { useShipStore } from "../../stores/shipStore";
+import { getCrewEquipment } from "../../data/crewEquipment";
+import { getEffectiveCrewProfile, getSpecialty } from "../../systems/crewCapabilitySystem";
 import { applyTrainingOutcome, getSkillEffects } from "../../systems/skillEffects";
 import { statLabel } from "../../utils/format";
 import CrewFacilityStatus from "../crew/CrewFacilityStatus";
@@ -169,6 +174,14 @@ export default function Crew() {
   const addLog = useGameStore((state) => state.addLog);
   const rooms = useShipInteriorStore((state) => state.rooms);
   const activeCrises = useShipInteriorStore((state) => state.activeCrises ?? []);
+  const equipmentInstances = useEquipmentStore((state) => state.instances);
+  const equipmentRevision = useEquipmentStore((state) => state.revision);
+  const equip = useEquipmentStore((state) => state.equip);
+  const unequip = useEquipmentStore((state) => state.unequip);
+  const recoverEscrow = useEquipmentStore((state) => state.recoverEscrow);
+  const activeVesselId = useShipStore((state) => state.activeVesselId);
+  const combatActive = useCombatStore((state) => state.combatByVesselId?.[activeVesselId]?.status === "engaged");
+  const combatByVesselId = useCombatStore((state) => state.combatByVesselId);
 
   const aiSummary = summarizeCrewAI(crewActivities ?? []);
   const coverage = getRoleCoverage(crew);
@@ -176,6 +189,7 @@ export default function Crew() {
   const missingRoles = coverage.missingRoles ?? [];
   const roomCount = Object.keys(rooms ?? {}).length;
   const injuredCrewCount = useMemo(() => crew.filter((member) => member.alive && isInjured(member.injury)).length, [crew]);
+  const escrowedEquipment = useMemo(() => equipmentInstances.filter((entry) => entry.escrowedForCrewId), [equipmentInstances]);
   const taskByMemberId = useMemo(() => ({ training: indexByMemberId(trainingQueue), treatment: indexByMemberId(treatmentQueue), recovery: indexByMemberId(recoveryQueue) }), [trainingQueue, treatmentQueue, recoveryQueue]);
   const activityByMemberId = useMemo(() => indexByMemberId(crewActivities ?? []), [crewActivities]);
   const busy = (memberId) => taskByMemberId.training.has(memberId) || taskByMemberId.treatment.has(memberId) || taskByMemberId.recovery.has(memberId);
@@ -233,6 +247,7 @@ export default function Crew() {
       <section>
         <div className="flex items-start justify-between gap-3"><div><div className="section-title"><Users size={18} />승무원 스쿼드</div><p className="mt-2 text-sm text-slate-400">승무원 상태를 카드/컨디션 중심으로 확인합니다.</p></div><div className="flex flex-wrap justify-end gap-1.5"><span className="hud-chip hud-chip-accent">AI {aiSummary.total}</span><span className="hud-chip">긴급 {aiSummary.emergency}</span><span className="hud-chip">부상 {injuredCrewCount}</span></div></div>
         {missingRoles.length > 0 && <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-sm leading-6 text-amber-100">역할 공백: {missingRoles.join(", ")}</div>}
+        {escrowedEquipment.length > 0 && <div className="mt-3 rounded-xl border border-amber-300/35 bg-amber-300/10 p-3 text-sm text-amber-50"><div className="font-black">전사자 장비 보관함</div><div className="mt-1 text-xs text-amber-100">회수 전에는 장착할 수 없습니다. 회수하면 비어 있는 장비로 돌아옵니다.</div><div className="mt-2 flex flex-wrap gap-2">{escrowedEquipment.map((entry) => <button key={entry.instanceId} className="secondary-button text-xs" onClick={() => { const ok = recoverEscrow({ crewId: entry.escrowedForCrewId, instanceId: entry.instanceId, claimId: `crew-ui:recover:${entry.instanceId}:${equipmentRevision}` }); addLog(ok ? `${getCrewEquipment(entry.equipmentId)?.label ?? entry.equipmentId} 회수 완료.` : "장비 회수에 실패했습니다."); }}>{getCrewEquipment(entry.equipmentId)?.label ?? entry.equipmentId} 회수</button>)}</div></div>}
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {crew.map((member) => {
             const mainStat = trainingByRole[member.role] ?? "scouting";
@@ -244,6 +259,9 @@ export default function Crew() {
             const rule = treatmentRule(member.injury);
             const injury = normalizeInjury(member.injury);
             const actionGridClass = isInjuredNow ? "grid-cols-3" : "grid-cols-2";
+            const equipped = equipmentForCrew(equipmentInstances, member.id);
+            const specialty = getSpecialty(member.specialtyId);
+            const mainProfile = getEffectiveCrewProfile({ member, context: mainStat === "piloting" ? "piloting" : mainStat, equipment: equipped });
             return (
               <article key={member.id} className={`mission-contract-card rounded-2xl border p-3 ${member.alive ? "border-slate-700/70 bg-slate-950/60" : "border-red-900/70 bg-red-950/20 opacity-80"}`}>
                 <CrewPortrait member={member} />
@@ -258,6 +276,8 @@ export default function Crew() {
                 {recoveryTask && <Progress task={recoveryTask} currentMinute={currentMinute} label="회복 진행" />}
                 {injury.permanentTraits.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{injury.permanentTraits.map((trait) => <span key={trait} className="hud-chip hud-chip-warn">{PERMANENT_TRAITS[trait]?.label ?? trait}</span>)}</div>}
                 <div className="mt-3 flex flex-wrap gap-1.5">{Object.entries(member.stats ?? {}).map(([key, value]) => <span key={key} className={`mission-reward-icon ${key === mainStat ? "border-cyan-300/45 bg-cyan-300/10" : ""}`}>{statLabel[key] ?? key} {value}</span>)}</div>
+                <div className="mt-3 rounded-xl border border-violet-400/25 bg-violet-400/5 p-2 text-xs"><div className="font-black text-violet-100">{specialty?.label ?? "전문 분야 없음"} · {specialty?.reuse ?? ""}</div><div className="mt-1 text-slate-300">{specialty?.effect ?? "영입·사건 보상으로 해금될 수 있습니다."}</div><div className="mt-1 text-slate-400">주 역할 실효 {mainProfile.base} → {mainProfile.effective} (피로 -{mainProfile.fatigueLoss} · 부상 -{mainProfile.injuryLoss} · 장비 +{mainProfile.gearBonus})</div></div>
+                <div className="mt-3 rounded-xl border border-slate-700/70 bg-slate-900/45 p-2 text-xs"><div className="font-black text-slate-200">장비 · 전투/작업 중 교체 불가</div>{["primary", "utility"].map((slot) => { const equippedItem = equipped.find((entry) => entry.equippedSlot === slot); const available = equipmentInstances.filter((entry) => !entry.escrowedForCrewId && getCrewEquipment(entry.equipmentId)?.slot === slot); const snapshot = { crew, jobs: rawJobs, combatByVesselId }; return <div key={slot} className="mt-2 flex items-center gap-2"><span className="w-12 text-slate-400">{slot === "primary" ? "주" : "보조"}</span><select className="min-w-0 flex-1 rounded border border-slate-600 bg-slate-950 px-2 py-1 text-slate-100" value={equippedItem?.instanceId ?? ""} onChange={(event) => { const claimId = `crew-ui:${member.id}:${slot}:${event.target.value || "none"}:${equipmentRevision}`; if (event.target.value) equip({ crewId: member.id, slot, instanceId: event.target.value, revision: equipmentRevision, claimId, ...snapshot }); else unequip({ crewId: member.id, slot, revision: equipmentRevision, claimId, ...snapshot }); }} disabled={!member.alive || busy(member.id) || combatActive}><option value="">비움</option>{available.map((entry) => <option key={entry.instanceId} value={entry.instanceId}>{getCrewEquipment(entry.equipmentId)?.label ?? entry.equipmentId}{entry.ownerCrewId && entry.ownerCrewId !== member.id ? " · 장착 해제 후 이동" : ""}</option>)}</select></div>; })}</div>
                 <div className={`mt-4 grid ${actionGridClass} gap-2`}>
                   <button className="secondary-button justify-center" disabled={!member.alive || Boolean(treatmentTask || recoveryTask) || (!trainingTask && (!isHealthy(member.injury) || resources.credits < TRAINING_COST)) || (trainingTask && !canCancelTask(trainingTask))} onClick={() => train(member, trainingTask)}>{trainingTask ? canCancelTask(trainingTask) ? "훈련 취소" : "훈련 중" : treatmentTask ? "치료 중" : recoveryTask ? "회복 중" : "훈련"}</button>
                   <button className="secondary-button justify-center" disabled={!member.alive || Boolean(trainingTask || treatmentTask) || (!recoveryTask && resources.credits < RECOVERY_COST) || (recoveryTask && !canCancelTask(recoveryTask))} onClick={() => recover(member, recoveryTask)}>{recoveryTask ? canCancelTask(recoveryTask) ? "회복 취소" : "회복 중" : treatmentTask ? "치료 중" : trainingTask ? "훈련 중" : "회복"}</button>

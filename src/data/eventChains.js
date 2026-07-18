@@ -81,7 +81,7 @@ export const EVENT_CHAINS = Object.freeze([{
           role: "관제실",
           risk: "medium",
           outcomes: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", duration: GREYWAKE.jobMinutes }],
-          effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", type: "decode", duration: GREYWAKE.jobMinutes, roomId: GREYWAKE.jobRoomId, refundItemsBeforeStart: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }], failurePolicy: "retry", nextStageId: "last-watch" }],
+          effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }, { kind: "enqueueStoryJob", type: "decode", context: "greywake", threshold: 14, duration: GREYWAKE.jobMinutes, roomId: GREYWAKE.jobRoomId, refundItemsBeforeStart: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }], failurePolicy: "retry", nextStageId: "last-watch" }],
           transition: { waitingStatus: "waitingJob", nextStageId: "last-watch" },
         },
         { id: "discard-recorder", label: "기록장치를 폐기하고 종료한다", role: "함교", risk: "low", outcomes: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }], effects: [{ kind: "inventoryConsume", items: [{ itemId: GREYWAKE.recorderItemId, qty: 1 }] }], transition: { terminalStatus: "cancelled" } },
@@ -199,7 +199,7 @@ export const EVENT_CHAINS = Object.freeze([{
           manualOnly: true,
           storyJob: { type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.standardTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.standardMedicFatigue, refundPolicy: { itemsBeforeStart: [] }, display: { task: "표준 응급치료" } },
           outcomes: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.standardOxygenCost } }, { kind: "enqueueStoryJob", duration: QUARANTINE_PULSE.standardTreatmentMinutes }],
-          effects: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.standardOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.standardTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.standardMedicFatigue, failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
+          effects: [{ kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.standardOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", context: "quarantine", threshold: 14, roomId: "medbay", duration: QUARANTINE_PULSE.standardTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.standardMedicFatigue, failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
           transition: { waitingStatus: "waitingJob", nextStageId: "transfer-window" },
         },
         {
@@ -210,7 +210,7 @@ export const EVENT_CHAINS = Object.freeze([{
           manualOnly: true,
           storyJob: { type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.gelTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.gelMedicFatigue, refundPolicy: { itemsBeforeStart: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, display: { task: "나노겔 응급처치" } },
           outcomes: [{ kind: "inventoryConsume", items: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, { kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.gelOxygenCost } }, { kind: "enqueueStoryJob", duration: QUARANTINE_PULSE.gelTreatmentMinutes }],
-          effects: [{ kind: "inventoryConsume", items: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, { kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.gelOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", roomId: "medbay", duration: QUARANTINE_PULSE.gelTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.gelMedicFatigue, refundItemsBeforeStart: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }], failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
+          effects: [{ kind: "inventoryConsume", items: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }] }, { kind: "resource", delta: { oxygen: -QUARANTINE_PULSE.gelOxygenCost } }, { kind: "enqueueStoryJob", type: "treatment", context: "quarantine", threshold: 14, roomId: "medbay", duration: QUARANTINE_PULSE.gelTreatmentMinutes, requiredRole: "medic", completionCrewFatigue: QUARANTINE_PULSE.gelMedicFatigue, refundItemsBeforeStart: [{ itemId: QUARANTINE_PULSE.gelItemId, qty: 1 }], failurePolicy: "terminal", nextStageId: "transfer-window", target: { nodeTypes: ["station", "exit"] }, markerLabel: QUARANTINE_PULSE.markerLabel }],
           transition: { waitingStatus: "waitingJob", nextStageId: "transfer-window" },
         },
         {

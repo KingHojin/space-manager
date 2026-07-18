@@ -167,6 +167,36 @@ describe("Phase 26 incident director integration", () => {
     expect(useIncidentStore.getState().runtimesById[runtime.id].status).toBe("resolved");
   });
 
+  it("binds an explicitly selected incident lead through scheduling and never silently substitutes another crew member", () => {
+    const runtime = addAndPresent("sensor-zero-drift");
+    expect(settleIncidentChoice({ runtimeId: runtime.id, stageId: runtime.stageId, claimId: runtime.offerClaimId, optionId: "calibrate", leadCrewId: "captain-yun", manual: true, currentMinute: 100 })).toMatchObject({ ok: true, waitingJob: true });
+    let job = useJobStore.getState().jobs[0];
+    expect(job).toMatchObject({ assignedCrewId: "captain-yun", payload: { targetCrewId: "captain-yun", incident: { leadCrewId: "captain-yun" } } });
+    useJobStore.getState().runScheduler({ currentMinute: 100, crew: useCrewStore.getState().crew });
+    useJobStore.getState().runScheduler({ currentMinute: 110, crew: useCrewStore.getState().crew });
+    job = useJobStore.getState().jobs[0];
+    expect(job).toMatchObject({ status: "in_progress", assignedCrewId: "captain-yun", payload: { targetCrewId: "captain-yun" } });
+
+    // A selected lead becoming unavailable leaves the response queued; an
+    // otherwise eligible engineer must not take over a player-owned choice.
+    useIncidentStore.setState({ runtimesById: {}, queueByVesselId: {}, presentedByVesselId: {} });
+    useJobStore.setState({ jobs: [], incidentReceipts: {} });
+    const second = addAndPresent("sensor-zero-drift", 200);
+    expect(settleIncidentChoice({ runtimeId: second.id, stageId: second.stageId, claimId: second.offerClaimId, optionId: "calibrate", leadCrewId: "captain-yun", manual: true, currentMinute: 200 })).toMatchObject({ ok: true, waitingJob: true });
+    useCrewStore.setState((state) => ({ crew: state.crew.map((member) => member.id === "captain-yun" ? { ...member, fatigue: 90 } : member) }));
+    useJobStore.getState().runScheduler({ currentMinute: 200, crew: useCrewStore.getState().crew });
+    expect(useJobStore.getState().jobs[0]).toMatchObject({ status: "backlog", assignedCrewId: "captain-yun", payload: { targetCrewId: "captain-yun" } });
+  });
+
+  it("applies a deadline specialty bonus once across a crash/retry", () => {
+    const runtime = addAndPresent("quiet-watch");
+    const originalDeadline = runtime.deadlineAtMinute;
+    expect(() => settleIncidentChoice({ runtimeId: runtime.id, stageId: runtime.stageId, claimId: runtime.offerClaimId, optionId: "maintenance", leadCrewId: "captain-yun", useSpecialty: true, manual: true, currentMinute: 100, afterStep: (step) => { if (step === "effects") throw new Error("crash-after-deadline-bonus"); } })).toThrow("crash-after-deadline-bonus");
+    expect(useIncidentStore.getState().runtimesById[runtime.id]).toMatchObject({ deadlineAtMinute: originalDeadline + 90, pendingClaim: { snapshot: { specialty: { id: "steady-command", deadlineBonusApplied: true } } } });
+    processIncidentOrchestration(101, 0);
+    expect(useIncidentStore.getState().runtimesById[runtime.id].deadlineAtMinute).toBe(originalDeadline + 90);
+  });
+
   it("keeps authored incident job duration exact despite active speed cards and poor mood", () => {
     useInventoryStore.setState({ cards: [{ id: "omega-blueprint", instanceId: "speed-card", modifiers: { jobSpeedMult: 1.2 } }], activeCardIds: ["speed-card"] });
     useCrewStore.setState((state) => ({ crew: state.crew.map((member) => member.id === "engineer-min" ? { ...member, needs: { ...member.needs, mood: 5, stress: 95 }, fatigue: 70 } : member) }));

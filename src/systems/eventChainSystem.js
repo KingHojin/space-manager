@@ -13,6 +13,12 @@ function record(value) {
 
 function normalizePendingClaim(pendingClaim) {
   if (!pendingClaim?.claimId || !pendingClaim?.stageId || !pendingClaim?.optionId) return null;
+  const lead = pendingClaim.lead && typeof pendingClaim.lead === "object" && pendingClaim.lead.leadCrewId
+    ? { leadCrewId: pendingClaim.lead.leadCrewId, context: pendingClaim.lead.context ?? null, threshold: Number(pendingClaim.lead.threshold ?? 0), tier: pendingClaim.lead.tier ?? "standard", profile: record(pendingClaim.lead.profile), modifiers: record(pendingClaim.lead.modifiers) }
+    : null;
+  const specialty = pendingClaim.specialty && typeof pendingClaim.specialty === "object" && pendingClaim.specialty.crewId && pendingClaim.specialty.sectorId
+    ? { id: pendingClaim.specialty.id ?? null, crewId: pendingClaim.specialty.crewId, sectorId: pendingClaim.specialty.sectorId }
+    : null;
   return {
     claimId: pendingClaim.claimId,
     stageId: pendingClaim.stageId,
@@ -23,6 +29,8 @@ function normalizePendingClaim(pendingClaim) {
     receipts: record(pendingClaim.receipts),
     effectState: record(pendingClaim.effectState),
     preparedAtMinute: pendingClaim.preparedAtMinute ?? 0,
+    lead,
+    specialty,
   };
 }
 
