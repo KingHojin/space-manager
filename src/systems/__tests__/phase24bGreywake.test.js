@@ -5,11 +5,12 @@ import { ENCOUNTER_TABLE } from "../../data/navEncounters";
 import { getCandidateRecruitCost, getTemplatesByRarity } from "../../data/recruitment";
 import { presentStoryChoiceResult } from "../../components/panels/Exploration";
 import { handleOverviewNavigationEncounter } from "../../components/panels/Overview";
-import { settleEventChainChoice, cancelEventChainJob, hasSectorBoundStoryRuntime, reconcileEventChainCombatOutcome, reconcileEventChainRuntimes } from "../../orchestration/eventChainOrchestrator";
+import { getStoryLeadProjection, settleEventChainChoice, cancelEventChainJob, hasSectorBoundStoryRuntime, reconcileEventChainCombatOutcome, reconcileEventChainRuntimes } from "../../orchestration/eventChainOrchestrator";
 import { processEncounterOrchestration } from "../../orchestration/missionEncounterOrchestrator";
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
+import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
@@ -67,7 +68,8 @@ function present() {
 
 function choose(optionId, afterStep) {
   const encounter = useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId];
-  return settleEventChainChoice({ vesselId, runtimeId: encounter.runtimeId, stageId: encounter.stageId, claimId: encounter.claimId, optionId, currentMinute: useGameStore.getState().currentMinute, afterStep });
+  const leadCrewId = optionId === "decode-last-watch" ? "captain-yun" : null;
+  return settleEventChainChoice({ vesselId, runtimeId: encounter.runtimeId, stageId: encounter.stageId, claimId: encounter.claimId, optionId, leadCrewId, currentMinute: useGameStore.getState().currentMinute, afterStep });
 }
 
 function startAndRecover() {
@@ -152,12 +154,15 @@ describe("Phase 24-B Greywake vertical slice", () => {
     expect(useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId].claimId).toBe(encounter.claimId);
   });
 
-  it("queues a dedicated four-hour job, cancels backlog once, refunds once, and rejects in-progress cancel", () => {
+  it("queues the selected scout's Greywake job, cancels backlog once, refunds once, and rejects in-progress cancel", () => {
     startAndRecover();
     expect(itemQty(GREYWAKE.recorderItemId)).toBe(1);
     expect(choose("decode-last-watch")).toMatchObject({ ok: true, waitingJob: true });
     const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
-    expect(job).toMatchObject({ type: "decode", roomId: "ops", duration: 240, status: "backlog" });
+    // Captain Yun is 12 against Greywake's 14 threshold (+30), but starts
+    // with the calibration case (-20): authored 240 → resolved 250 minutes.
+    expect(job).toMatchObject({ type: "decode", roomId: "ops", assignedCrewId: "captain-yun", duration: 250, status: "backlog" });
+    expect(job.payload.story.lead).toMatchObject({ leadCrewId: "captain-yun", context: "greywake", threshold: 14, tier: "below", modifiers: { durationMinutes: 10 } });
     expect(job.payload.inputItems).toBeUndefined();
     expect(itemQty(GREYWAKE.recorderItemId)).toBe(0);
     expect(cancelEventChainJob({ jobId: job.id, currentMinute: 101 })).toMatchObject({ ok: true, refunded: true });
@@ -174,17 +179,17 @@ describe("Phase 24-B Greywake vertical slice", () => {
     expect(itemQty(GREYWAKE.recorderItemId)).toBe(0);
   });
 
-  it("keeps the authored story decode at exactly four hours under work-speed cards", () => {
+  it("keeps the selected lead's resolved Greywake duration under work-speed cards", () => {
     startAndRecover();
     useInventoryStore.setState({ cards: [{ id: "salvage-team", instanceId: "speed-card", modifiers: { jobSpeedMult: 1.1 } }], activeCardIds: ["speed-card"] });
     choose("decode-last-watch");
     let job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
-    expect(job.duration).toBe(GREYWAKE.jobMinutes);
-    const tiredCrew = [{ id: "tired-operator", alive: true, role: "함교", injury: "healthy", morale: "나쁨", fatigue: 80, stats: {} }];
+    expect(job.duration).toBe(250);
+    const tiredCrew = useCrewStore.getState().crew.map((member) => member.id === "captain-yun" ? { ...member, morale: "나쁨", fatigue: 80 } : member);
     useJobStore.getState().runScheduler({ currentMinute: 100, crew: tiredCrew });
     useJobStore.getState().runScheduler({ currentMinute: 200, crew: tiredCrew });
     job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
-    expect(job).toMatchObject({ status: "in_progress", effectiveDuration: GREYWAKE.jobMinutes, moodWorkMultiplier: 1 });
+    expect(job).toMatchObject({ status: "in_progress", effectiveDuration: 250, moodWorkMultiplier: 1 });
   });
 
   it("recovers a done story job without UI, pins one exact hidden node and persists its marker", () => {
@@ -267,8 +272,9 @@ describe("Phase 24-B Greywake vertical slice", () => {
     const encounter = useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId];
 
     useRecruitStore.setState({ candidatePool: [{ id: "duplicate", templateId: GREYWAKE.recruitTemplateId }] });
+    const oxygenBeforeRejectedRescue = useGameStore.getState().resources.oxygen;
     expect(choose("tow-lifeboat")).toMatchObject({ ok: false, reason: "recruitUnavailable" });
-    expect(useGameStore.getState().resources.oxygen).toBe(100);
+    expect(useGameStore.getState().resources.oxygen).toBe(oxygenBeforeRejectedRescue);
     expect(useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId].claimId).toBe(encounter.claimId);
 
     useRecruitStore.setState({ candidatePool: [] });
@@ -350,7 +356,7 @@ describe("Phase 24-B Greywake vertical slice", () => {
   it("large ticks with no panel mounted recover completion and terminal/cancel paths leave no blocker", () => {
     startAndRecover(); choose("decode-last-watch");
     const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
-    useJobStore.setState((state) => ({ jobs: state.jobs.map((entry) => entry.id === job.id ? { ...entry, status: "in_progress", startedAt: 100, effectiveDuration: 240 } : entry) }));
+    useJobStore.setState((state) => ({ jobs: state.jobs.map((entry) => entry.id === job.id ? { ...entry, status: "in_progress", startedAt: 100, effectiveDuration: 250 } : entry) }));
     useGameStore.setState({ currentMinute: 500 });
     expect(() => processTimedJobs(400)).not.toThrow();
     expect(runtime().status).toBe("waitingLocation");
@@ -370,4 +376,40 @@ describe("Phase 24-B Greywake vertical slice", () => {
     expect(useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId]).toMatchObject({ runtimeId: encounter.runtimeId });
     expect(runtime().status).toBe("pending");
   });
+
+  it("snapshots the selected scouting lead and authored calibration case into Greywake duration", () => {
+    useEquipmentStore.setState({
+      instances: [{ instanceId: "case", equipmentId: "calibration-case", ownerCrewId: "captain-yun", equippedSlot: "utility", escrowedForCrewId: null }], revision: 0, receipts: {},
+    });
+    startAndRecover();
+    const option = getEventChain(GREYWAKE.chainId).stages.find((stage) => stage.id === "ops-wait").options.find((entry) => entry.id === "decode-last-watch");
+    const preview = getStoryLeadProjection(runtime(), option, "captain-yun");
+    expect(preview).toMatchObject({ ok: true, duration: 250, lead: { leadCrewId: "captain-yun", modifiers: { durationMinutes: 10 } } });
+    expect(choose("decode-last-watch")).toMatchObject({ ok: true, waitingJob: true });
+    const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
+    // Captain Yun: scouting 12 vs 14 = below (+30); calibration case -20.
+    expect(job).toMatchObject({ assignedCrewId: "captain-yun", duration: 250 });
+    expect(job.payload.story.lead).toMatchObject(preview.lead);
+    expect(job.payload.story.lead.profile.gearDescription).toContain("GREYWAKE");
+  });
+
+  it("keeps the selected Greywake lead as the only scheduler candidate", () => {
+    startAndRecover();
+    expect(choose("decode-last-watch")).toMatchObject({ ok: true, waitingJob: true });
+    const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
+    expect(job.payload).toMatchObject({ targetCrewId: "captain-yun", story: { leadCrewId: "captain-yun" } });
+    useJobStore.getState().runScheduler({ currentMinute: 100, crew: useCrewStore.getState().crew });
+    useJobStore.getState().runScheduler({ currentMinute: 110, crew: useCrewStore.getState().crew });
+    expect(useJobStore.getState().jobs.find((entry) => entry.id === job.id)).toMatchObject({ status: "in_progress", assignedCrewId: "captain-yun" });
+
+  });
+
+  it("leaves an unavailable selected Greywake lead queued instead of substituting another crew member", () => {
+    startAndRecover();
+    expect(choose("decode-last-watch")).toMatchObject({ ok: true, waitingJob: true });
+    useCrewStore.setState((state) => ({ crew: state.crew.map((member) => member.id === "captain-yun" ? { ...member, fatigue: 90 } : member) }));
+    useJobStore.getState().runScheduler({ currentMinute: 100, crew: useCrewStore.getState().crew });
+    expect(useJobStore.getState().jobs.find((entry) => entry.payload?.story)).toMatchObject({ status: "backlog", assignedCrewId: "captain-yun", payload: { targetCrewId: "captain-yun" } });
+  });
+
 });

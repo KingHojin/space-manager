@@ -1,4 +1,6 @@
 import { AlertTriangle, Gift, ShieldAlert, Sparkles, UserRound } from "lucide-react";
+import { useState } from "react";
+import { getStoryLeadCandidates, getStoryLeadProjection } from "../../orchestration/eventChainOrchestrator";
 import { ActionCard, GaugeBar } from "./VisualPrimitives";
 import { RewardIconRow } from "./MissionVisuals";
 
@@ -58,6 +60,8 @@ function EncounterPoster({ encounter }) {
 }
 
 export default function MissionEncounterCard({ encounter, onSelectOption, disabled = false }) {
+  const [leadByOption, setLeadByOption] = useState({});
+  const [specialtyByOption, setSpecialtyByOption] = useState({});
   if (!encounter) {
     return (
       <section className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-4">
@@ -91,13 +95,20 @@ export default function MissionEncounterCard({ encounter, onSelectOption, disabl
       </div>
 
       <div className="mt-4 grid gap-3 md:grid-cols-3">
-        {(encounter.options ?? []).map((option) => (
-          <div key={option.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
-            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={option.disabledReason ?? option.waitText ?? `${option.role ?? "함교"} 판단`} badge={option.disabled ? "선택 불가" : option.waitText ? "대기 등록" : "선택"} disabled={disabled || option.disabled} onClick={() => onSelectOption?.(option.id, { runtimeId: encounter.runtimeId ?? encounter.id, stageId: encounter.stageId ?? encounter.timing, claimId: encounter.claimId })} />
+        {(encounter.options ?? []).map((option) => {
+          const candidates = encounter.chainId ? getStoryLeadCandidates({ id: encounter.runtimeId, chainId: encounter.chainId }, option) : [];
+          const selectedLeadId = leadByOption[option.id] ?? "";
+          const useSpecialty = Boolean(specialtyByOption[option.id]);
+          const projection = selectedLeadId ? getStoryLeadProjection({ id: encounter.runtimeId, chainId: encounter.chainId }, option, selectedLeadId, useSpecialty) : null;
+          const specialtyProjection = selectedLeadId ? getStoryLeadProjection({ id: encounter.runtimeId, chainId: encounter.chainId }, option, selectedLeadId, true) : null;
+          const specialtyAvailable = Boolean(specialtyProjection?.ok);
+          return <div key={option.id} className="rounded-2xl border border-slate-700/70 bg-slate-950/60 p-3">
+            <ActionCard icon={option.risk === "high" ? "⚠" : option.risk === "low" ? "✓" : "◆"} title={option.label} desc={option.disabledReason ?? option.waitText ?? `${option.role ?? "함교"} 판단`} badge={option.disabled ? "선택 불가" : option.waitText ? "대기 등록" : "선택"} disabled={disabled || option.disabled || Boolean(candidates.length && !selectedLeadId)} onClick={() => onSelectOption?.(option.id, { runtimeId: encounter.runtimeId ?? encounter.id, stageId: encounter.stageId ?? encounter.timing, claimId: encounter.claimId, leadCrewId: selectedLeadId || null, useSpecialty })} />
+            {candidates.length > 0 && <><select className="mt-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1 text-xs text-slate-100" value={selectedLeadId} onChange={(event) => setLeadByOption((current) => ({ ...current, [option.id]: event.target.value }))}><option value="">담당 승무원 선택 · 기준 {candidates[0]?.threshold}</option>{candidates.map((candidate) => <option key={candidate.leadCrewId} value={candidate.leadCrewId}>{candidate.leadCrewId} · {candidate.profile.base}→{candidate.profile.effective} · {candidate.tier === "expert" ? "전문" : candidate.tier === "below" ? "미달" : "표준"}{candidate.profile.gearDescription ? ` · ${candidate.profile.gearDescription}` : ""}</option>)}</select>{projection?.ok && <div className="mt-2 rounded border border-cyan-300/25 bg-cyan-300/5 p-2 text-xs text-cyan-100">확정 예정 {projection.duration}분{Object.entries(projection.resourceDelta ?? {}).filter(([, value]) => value).map(([key, value]) => ` · ${key} ${formatDelta(value)}`).join("")}{projection.lead.profile.gearDescription ? ` · ${projection.lead.profile.gearDescription}` : ""}</div>}{selectedLeadId && <label className="mt-2 flex items-center gap-2 text-xs text-slate-300"><input type="checkbox" checked={useSpecialty} disabled={!specialtyAvailable} onChange={(event) => setSpecialtyByOption((current) => ({ ...current, [option.id]: event.target.checked }))} />전문 능력 사용 · 이번 구역 1회</label>}{selectedLeadId && !specialtyAvailable && <div className="mt-1 text-xs text-amber-200">전문 능력 불가: {specialtyProjection?.reason?.replace("specialty:", "") ?? "조건 미달"}</div>}{useSpecialty && specialtyProjection?.ok && <div className="mt-1 text-xs text-violet-200">전문 능력 반영: {specialtyProjection.specialty.id}</div>}</>}
             <OptionMeta option={option} />
             {nonZeroEntries(option.rewardPreview ?? {}).length > 0 && <div className="mt-3"><RewardIconRow reward={option.rewardPreview} /></div>}
-          </div>
-        ))}
+          </div>;
+        })}
       </div>
     </section>
   );

@@ -27,6 +27,7 @@ const knownSaveKeys = [
   "space-manager-policies",
   "space-manager-reports",
   "space-manager-incidents",
+  "space-manager-equipment",
 ];
 
 function getPersistedKeys() {

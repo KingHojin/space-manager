@@ -8,6 +8,7 @@ import { processEncounterOrchestration } from "../../orchestration/missionEncoun
 import { useCombatStore } from "../../stores/combatStore";
 import { useCrewStore } from "../../stores/crewStore";
 import { useExplorationStore } from "../../stores/explorationStore";
+import { useEquipmentStore } from "../../stores/equipmentStore";
 import { useGameStore } from "../../stores/gameStore";
 import { useInventoryStore } from "../../stores/inventoryStore";
 import { useJobStore } from "../../stores/jobStore";
@@ -39,7 +40,8 @@ function runtime() { return Object.values(useMissionStore.getState().eventRuntim
 function present(minute = useGameStore.getState().currentMinute) { processEncounterOrchestration(minute); return useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId]; }
 function choose(optionId, afterStep) {
   const encounter = useMissionStore.getState().pendingStoryEncounterByVesselId[vesselId];
-  return settleEventChainChoice({ vesselId, runtimeId: encounter.runtimeId, stageId: encounter.stageId, claimId: encounter.claimId, optionId, currentMinute: useGameStore.getState().currentMinute, afterStep });
+  const leadCrewId = ["standard-care", "nanogel-care"].includes(optionId) ? "medic-rho" : null;
+  return settleEventChainChoice({ vesselId, runtimeId: encounter.runtimeId, stageId: encounter.stageId, claimId: encounter.claimId, optionId, leadCrewId, currentMinute: useGameStore.getState().currentMinute, afterStep });
 }
 function startBoarding() {
   useNavStore.setState({ pendingEncounter: distress });
@@ -152,7 +154,7 @@ describe("Phase 25 quarantine pulse", () => {
     expect(useGameStore.getState().resources.oxygen).toBe(100);
   });
 
-  it("uses fixed medbay jobs, queues behind a busy slot, refunds only nanogel before start, and never refunds oxygen", () => {
+  it("uses the selected medic's resolved nanogel job, queues behind a busy slot, refunds only nanogel before start, and never refunds oxygen", () => {
     startBoarding();
     useJobStore.getState().enqueueJob({ id: "busy-medbay", type: "recovery", roomId: "medbay", status: "in_progress", assignedCrewId: "captain-yun", duration: 999, startedAt: 0, payload: { targetCrewId: "captain-yun" } });
     useMissionStore.setState((state) => ({ pendingStoryEncounterByVesselId: {}, eventRuntimesById: { ...state.eventRuntimesById, [runtime().id]: { ...runtime(), status: "scheduled" } } }));
@@ -160,8 +162,11 @@ describe("Phase 25 quarantine pulse", () => {
     expect(card.options.find((option) => option.id === "nanogel-care").waitText).toContain("대기열");
     expect(choose("nanogel-care")).toMatchObject({ ok: true, waitingJob: true });
     const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
-    expect(job).toMatchObject({ type: "treatment", roomId: "medbay", duration: 180, requiredRole: "medic", status: "backlog" });
-    expect(job.payload.targetCrewId).toBeUndefined();
+    // Medic Rho meets the threshold; the equipped trauma harness resolves
+    // authored 180 minutes to 150 and reduces the completion fatigue by 4.
+    expect(job).toMatchObject({ type: "treatment", roomId: "medbay", assignedCrewId: "medic-rho", duration: 150, requiredRole: "medic", status: "backlog" });
+    expect(job.payload.story.lead).toMatchObject({ leadCrewId: "medic-rho", context: "quarantine", threshold: 14, tier: "standard", modifiers: { durationMinutes: -30, fatigueDelta: -4 } });
+    expect(job.payload.targetCrewId).toBe("medic-rho");
     expect(itemQty("nanite-gel")).toBe(0);
     expect(useGameStore.getState().resources.oxygen).toBe(92);
     expect(cancelEventChainJob({ jobId: job.id, currentMinute: 341 })).toMatchObject({ ok: true, refunded: true });
@@ -197,16 +202,20 @@ describe("Phase 25 quarantine pulse", () => {
     expect(useGameStore.getState().resources.oxygen).toBe(92);
   });
 
-  it("pins the assigned medic, applies fatigue once, persists the nearest station marker, and blocks the gate", () => {
+  it("pins the selected medic and trauma harness result, applies resolved fatigue once, persists the nearest station marker, and blocks the gate", () => {
     const before = useCrewStore.getState().crew.find((member) => member.id === "medic-rho").fatigue;
     const { job, targetId } = finishTreatment("standard-care");
-    expect(job).toMatchObject({ duration: 360, assignedCrewId: "medic-rho" });
+    // Standard care: authored 360 - trauma harness 30 = 330 minutes.
+    expect(job).toMatchObject({ duration: 330, assignedCrewId: "medic-rho" });
+    expect(job.payload.story.lead).toMatchObject({ leadCrewId: "medic-rho", context: "quarantine", tier: "standard", modifiers: { durationMinutes: -30, fatigueDelta: -4 } });
     expect(runtime()).toMatchObject({ status: "waitingLocation", waitingLocation: { nodeId: "station", sectorId: sector.id } });
     expect(targetId).toBe("station");
     expect(useNavStore.getState().storyMarkersByNodeId.station.label).toBe(QUARANTINE_PULSE.markerLabel);
-    expect(useCrewStore.getState().crew.find((member) => member.id === "medic-rho").fatigue).toBe(before + QUARANTINE_PULSE.standardMedicFatigue);
+    // The scheduler's normal work fatigue remains; the harness lowers the
+    // immutable completion payload from 18 to 14, for a net +18 here.
+    expect(useCrewStore.getState().crew.find((member) => member.id === "medic-rho").fatigue).toBe(before + 18);
     reconcileEventChainRuntimes(701);
-    expect(useCrewStore.getState().crew.find((member) => member.id === "medic-rho").fatigue).toBe(before + QUARANTINE_PULSE.standardMedicFatigue);
+    expect(useCrewStore.getState().crew.find((member) => member.id === "medic-rho").fatigue).toBe(before + 18);
     expect(hasSectorBoundStoryRuntime(vesselId)).toBe(true);
     expect(getSectorBoundStoryBlocker(vesselId).title).toBe("격리선의 맥박");
   });
@@ -311,5 +320,17 @@ describe("Phase 25 quarantine pulse", () => {
     expect(report.body).toBe("공개 증언 — 평판 +3, 새 좌표 없음.");
     expect(report.meta).toMatchObject({ targetNodeId: null, reputation: 3 });
     expect(useGameStore.getState().logs.some((entry) => entry.includes("평판 +3, 새 좌표 없음"))).toBe(true);
+  });
+
+  it("snapshots the selected medic and authored trauma harness into Quarantine treatment", () => {
+    useEquipmentStore.setState({ instances: [{ instanceId: "harness", equipmentId: "trauma-harness", ownerCrewId: "medic-rho", equippedSlot: "primary", escrowedForCrewId: null }], revision: 0, receipts: {} });
+    startBoarding();
+    expect(choose("standard-care")).toMatchObject({ ok: true, waitingJob: true });
+    const job = useJobStore.getState().jobs.find((entry) => entry.payload?.story);
+    expect(job).toMatchObject({ assignedCrewId: "medic-rho", duration: 330, payload: { targetCrewId: "medic-rho", story: { leadCrewId: "medic-rho" } } });
+    expect(job.payload.story.completionCrewFatigue).toBe(14);
+    useJobStore.getState().runScheduler({ currentMinute: 340, crew: useCrewStore.getState().crew });
+    useJobStore.getState().runScheduler({ currentMinute: 350, crew: useCrewStore.getState().crew });
+    expect(useJobStore.getState().jobs.find((entry) => entry.id === job.id)).toMatchObject({ status: "in_progress", assignedCrewId: "medic-rho" });
   });
 });
